@@ -28,13 +28,21 @@ function makeModalityReport(
     clean: number,
     lure: number,
     all = clean,
-    criterion = 0
+    criterion = 0,
+    sampleOverrides?: Partial<{
+        lureSampleOk: boolean;
+        targetCount: number;
+        lureNonTargetCount: number;
+    }>
 ): ModalitySdtReport {
     return {
         modality,
         all: fakeSensitivity(all, criterion),
         clean: fakeSensitivity(clean, criterion),
         lure: fakeSensitivity(lure, criterion),
+        lureSampleOk: sampleOverrides?.lureSampleOk ?? true,
+        targetCount: sampleOverrides?.targetCount ?? 10,
+        lureNonTargetCount: sampleOverrides?.lureNonTargetCount ?? 10,
         lureCost: 0,
         medianCorrectRtMs: null,
     };
@@ -43,7 +51,18 @@ function makeModalityReport(
 function makeBlock(
     modalities: ModalityId[],
     byMod: Partial<
-        Record<ModalityId, { clean: number; lure: number; all?: number; c?: number }>
+        Record<
+            ModalityId,
+            {
+                clean: number;
+                lure: number;
+                all?: number;
+                c?: number;
+                lureSampleOk?: boolean;
+                targetCount?: number;
+                lureNonTargetCount?: number;
+            }
+        >
     >,
     medianCorrectRtMs: number | null = null
 ): BlockSdtReport {
@@ -55,7 +74,12 @@ function makeBlock(
             spec.clean,
             spec.lure,
             spec.all ?? spec.clean,
-            spec.c ?? 0
+            spec.c ?? 0,
+            {
+                lureSampleOk: spec.lureSampleOk,
+                targetCount: spec.targetCount,
+                lureNonTargetCount: spec.lureNonTargetCount,
+            }
         );
     }
     return { modalities, byModality, medianCorrectRtMs };
@@ -219,6 +243,72 @@ describe('decideAdaptive', () => {
         expect(atFloor).toEqual({
             action: 'hold',
             reason: 'clean load failure at minimum n; hold and practice current level',
+        });
+    });
+
+    it('holds lureUp when lure stratum has zero non-target samples (stage A)', () => {
+        const noLures = makeBlock(DUAL, {
+            position: {
+                clean: 2.5,
+                lure: 2.0,
+                lureSampleOk: false,
+                lureNonTargetCount: 0,
+            },
+            audio: {
+                clean: 2.5,
+                lure: 2.0,
+                lureSampleOk: false,
+                lureNonTargetCount: 0,
+            },
+        });
+        const window = repeatBlock(noLures, ADAPTIVE_THRESHOLDS.windowSize);
+        const ladder: LadderState = { n: 2, lureStage: 'A', isiTier: 0 };
+
+        const action = decideAdaptive(window, ladder, DUAL, {
+            previousWindowPromoted: true,
+        });
+
+        expect(action).toEqual({
+            action: 'hold',
+            reason: 'insufficient lure samples',
+        });
+    });
+
+    it('does not demote lure from phantom d′ when lure samples are absent', () => {
+        const noLures = makeBlock(DUAL, {
+            position: {
+                clean: 2.5,
+                lure: 0,
+                lureSampleOk: false,
+                lureNonTargetCount: 0,
+            },
+            audio: {
+                clean: 2.5,
+                lure: 0,
+                lureSampleOk: false,
+                lureNonTargetCount: 0,
+            },
+        });
+        const window = repeatBlock(noLures, ADAPTIVE_THRESHOLDS.windowSize);
+        const ladder: LadderState = { n: 2, lureStage: 'C', isiTier: 0 };
+
+        const action = decideAdaptive(window, ladder, DUAL);
+
+        expect(action.action).not.toBe('lureDown');
+    });
+
+    it('holds when window lacks minimum target samples per modality', () => {
+        const sparse = makeBlock(DUAL, {
+            position: { clean: 2.5, lure: 2.0, targetCount: 0 },
+            audio: { clean: 2.5, lure: 2.0, targetCount: 0 },
+        });
+        const window = repeatBlock(sparse, ADAPTIVE_THRESHOLDS.windowSize);
+
+        const action = decideAdaptive(window, baseLadder, DUAL);
+
+        expect(action).toEqual({
+            action: 'hold',
+            reason: 'insufficient samples',
         });
     });
 });

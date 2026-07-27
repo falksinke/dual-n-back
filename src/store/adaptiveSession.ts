@@ -208,7 +208,11 @@ export function applyControllerAction(
                 lureStage: reduceLureStageAfterNUp(ladder.lureStage),
             };
         case 'nDown':
-            return { ...ladder, n: Math.max(2, ladder.n - 1) };
+            return {
+                ...ladder,
+                n: Math.max(2, ladder.n - 1),
+                lureStage: reduceLureStageAfterNUp(ladder.lureStage, 2),
+            };
         case 'isiTighten':
             return {
                 ...ladder,

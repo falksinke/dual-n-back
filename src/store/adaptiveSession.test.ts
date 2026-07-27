@@ -34,13 +34,21 @@ function makeModalityReport(
     clean: number,
     lure: number,
     all = clean,
-    criterion = 0
+    criterion = 0,
+    sampleOverrides?: Partial<{
+        lureSampleOk: boolean;
+        targetCount: number;
+        lureNonTargetCount: number;
+    }>
 ): ModalitySdtReport {
     return {
         modality,
         all: fakeSensitivity(all, criterion),
         clean: fakeSensitivity(clean, criterion),
         lure: fakeSensitivity(lure, criterion),
+        lureSampleOk: sampleOverrides?.lureSampleOk ?? true,
+        targetCount: sampleOverrides?.targetCount ?? 10,
+        lureNonTargetCount: sampleOverrides?.lureNonTargetCount ?? 10,
         lureCost: 0,
         medianCorrectRtMs: null,
     };
@@ -99,6 +107,16 @@ describe('adaptiveSession helpers', () => {
         });
         expect(next.n).toBe(2);
         expect(next.isiTier).toBe(1);
+    });
+
+    it('applyControllerAction nDown reduces lure stage like nUp', () => {
+        const ladder: LadderState = { n: 4, lureStage: 'E', isiTier: 0 };
+        const next = applyControllerAction(ladder, {
+            action: 'nDown',
+            reason: 'test',
+        });
+        expect(next.n).toBe(3);
+        expect(next.lureStage).toBe('C');
     });
 
     it('nextBlockConfig returns anchor-open blocks before adaptive quota', () => {

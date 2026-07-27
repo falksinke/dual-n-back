@@ -35,6 +35,12 @@ export interface ModalitySdtReport {
     all: SdtSensitivity;
     clean: SdtSensitivity;
     lure: SdtSensitivity;
+    /** False when lure stratum has zero non-target trials (d′ would be phantom). */
+    lureSampleOk: boolean;
+    /** Target trials (hits + misses) for this modality in the block. */
+    targetCount: number;
+    /** Lure non-target trials (FA + CR on lure stratum). */
+    lureNonTargetCount: number;
     /** FA_lure rate − FA_clean rate (uncorrected rates). */
     lureCost: number;
     medianCorrectRtMs: number | null;
@@ -182,10 +188,22 @@ export function buildBlockSdtReport(
             }
         }
 
+        const targetCount = hits + misses;
+        const lureNonTargetCount = faLure + crLure;
+        const lureSampleOk = lureNonTargetCount > 0;
+
         const all = sensitivityFromCounts(hits, misses, faAll, crAll);
         // Same target hits/misses; stratum-specific FA/CR only.
         const clean = sensitivityFromCounts(hits, misses, faClean, crClean);
-        const lure = sensitivityFromCounts(hits, misses, faLure, crLure);
+        const lure = lureSampleOk
+            ? sensitivityFromCounts(hits, misses, faLure, crLure)
+            : {
+                  counts: emptySdtCounts(),
+                  hitRate: targetCount > 0 ? (hits + 0.5) / (targetCount + 1) : 0.5,
+                  falseAlarmRate: 0.5,
+                  dPrime: 0,
+                  criterion: 0,
+              };
         const modalityMedianRt = median(correctRts);
         if (modalityMedianRt != null) allCorrectRts.push(...correctRts);
 
@@ -194,6 +212,9 @@ export function buildBlockSdtReport(
             all,
             clean,
             lure,
+            lureSampleOk,
+            targetCount,
+            lureNonTargetCount,
             lureCost: rawFaRate(faLure, crLure) - rawFaRate(faClean, crClean),
             medianCorrectRtMs: modalityMedianRt,
         };

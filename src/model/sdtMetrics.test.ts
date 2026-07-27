@@ -78,4 +78,20 @@ describe('sdtMetrics', () => {
         expect(report.byModality.audio!.medianCorrectRtMs).toBe(200);
         expect(report.medianCorrectRtMs).toBe(200);
     });
+
+    it('marks lure sensitivity insufficient when lure stratum has no non-targets', () => {
+        const events: SdtTrialEvent[] = [
+            { modality: 'position', cell: 'hit', stratum: 'clean' },
+            { modality: 'position', cell: 'hit', stratum: 'clean' },
+            { modality: 'position', cell: 'cr', stratum: 'clean' },
+            { modality: 'position', cell: 'cr', stratum: 'clean' },
+        ];
+
+        const report = buildBlockSdtReport(events, ['position']);
+        const pos = report.byModality.position!;
+
+        expect(pos.lureSampleOk).toBe(false);
+        expect(pos.lureNonTargetCount).toBe(0);
+        expect(pos.lure.dPrime).toBe(0);
+    });
 });

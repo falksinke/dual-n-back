@@ -35,6 +35,14 @@ export const INTERFERENCE_OPTIONS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.
 
 export type InterferenceChance = (typeof INTERFERENCE_OPTIONS)[number];
 
+export interface FreePlaySettingsSnapshot {
+    level: number;
+    isiMin: number;
+    isiMax: number;
+    variableN: boolean;
+    interferenceChance: InterferenceChance;
+}
+
 /** Pre-round flash countdown (3 → 2 → 1). */
 export const COUNTDOWN_START = 3;
 export const COUNTDOWN_TICK_MS = 1000;
@@ -86,6 +94,8 @@ export interface GameStoreState {
     lastControllerAction: ControllerAction | null;
     /** Subset modalities for remediation blocks; null uses full mode preset. */
     blockModalities: ModalityId[] | null;
+    /** Free-play settings saved when entering adaptive mode. */
+    freePlaySettingsSnapshot: FreePlaySettingsSnapshot | null;
 }
 
 export interface GameStoreActions {
@@ -345,6 +355,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     lastBlockRole: null,
     lastControllerAction: null,
     blockModalities: null,
+    freePlaySettingsSnapshot: null,
     startGame: () => {
         if (get().game !== null) {
             throw new Error('Game is already defined');
@@ -420,14 +431,56 @@ export const useGameStore = create<GameStore>((set, get) => ({
     },
     cancelGame: () => {
         clearCountdownTimer();
-        get().game?.cancel();
+        const stateBeforeCancel = get();
+        stateBeforeCancel.game?.cancel();
         const state = get();
         const modalities = getModalitiesForMode(state.settings.mode);
-        const clearAdaptive =
-            state.settings.playMode === 'adaptive' && state.adaptiveSession != null;
+
+        if (state.settings.playMode === 'adaptive' && state.adaptiveSession != null) {
+            const session = state.adaptiveSession;
+            const hadProgress =
+                session.openAnchorsDone > 0 ||
+                session.adaptiveBlocksDone > 0 ||
+                session.closeAnchorDone ||
+                session.remediatedThisSession.length > 0;
+
+            if (stateBeforeCancel.countdown !== null && state.game === null) {
+                set({
+                    countdown: null,
+                    blockModalities: null,
+                    activeModalities: modalities,
+                    btns: createEmptyButtons(modalities),
+                    boardState: { ...defaultBoardState },
+                    adaptiveSession: hadProgress
+                        ? {
+                              ...session,
+                              phase: 'interstitial',
+                              pendingContinue: true,
+                          }
+                        : session,
+                });
+                return;
+            }
+
+            if (stateBeforeCancel.game !== null) {
+                set({
+                    countdown: null,
+                    blockModalities: null,
+                    activeModalities: modalities,
+                    btns: createEmptyButtons(modalities),
+                    boardState: { ...defaultBoardState },
+                    adaptiveSession: {
+                        ...session,
+                        phase: 'interstitial',
+                        pendingContinue: true,
+                    },
+                });
+                return;
+            }
+        }
+
         set({
             countdown: null,
-            adaptiveSession: clearAdaptive ? null : state.adaptiveSession,
             blockModalities: null,
             activeModalities: modalities,
             btns: createEmptyButtons(modalities),
@@ -576,16 +629,45 @@ export const useGameStore = create<GameStore>((set, get) => ({
         set((current) => {
             if (playMode === 'adaptive') {
                 const modeLadder = current.ladder[current.settings.mode];
+                const enteringFromFree = current.settings.playMode === 'free';
                 return {
+                    freePlaySettingsSnapshot: enteringFromFree
+                        ? {
+                              level: current.settings.level,
+                              isiMin: current.settings.isiMin,
+                              isiMax: current.settings.isiMax,
+                              variableN: current.settings.variableN,
+                              interferenceChance: current.settings.interferenceChance,
+                          }
+                        : current.freePlaySettingsSnapshot,
                     settings: applyAdaptiveLadderToSettings(
                         { ...current.settings, playMode },
                         modeLadder
                     ),
                 };
             }
+
+            const snapshot = current.freePlaySettingsSnapshot;
             const { lureStage: _removed, ...rest } = current.settings;
+            let settings: GameStoreState['settings'] = { ...rest, playMode };
+            if (snapshot != null) {
+                settings = {
+                    ...settings,
+                    level: snapshot.level,
+                    isiMin: snapshot.isiMin,
+                    isiMax: snapshot.isiMax,
+                    variableN: snapshot.variableN,
+                    interferenceChance: snapshot.interferenceChance,
+                };
+            }
+
             return {
-                settings: { ...rest, playMode },
+                settings,
+                freePlaySettingsSnapshot: null,
+                adaptiveSession: null,
+                lastBlockRole: null,
+                lastControllerAction: null,
+                blockModalities: null,
             };
         });
     },

@@ -20,6 +20,8 @@ export const ADAPTIVE_THRESHOLDS = {
     lureDPrimeMin: 1.2,
     criterionExtreme: 1.5,
     windowSize: 3,
+    minTargetsPerModality: 3,
+    minLureNonTargetsPerModality: 3,
     /** Latest-block median correct RT at or below this qualifies for ISI tighten. */
     speedRtThresholdMs: 2000,
     maxIsiTier: 3,
@@ -41,6 +43,8 @@ interface BlockAggregates {
     minLure: number;
     maxAbsCriterion: number;
     modalityClean: Record<ModalityId, number>;
+    lureSamplesOk: boolean;
+    targetSamplesOk: boolean;
 }
 
 interface WindowAggregates {
@@ -53,6 +57,8 @@ interface WindowAggregates {
     maxAbsCriterion: number;
     modalityMeanClean: Record<ModalityId, number>;
     latestMedianCorrectRtMs: number | null;
+    lureSamplesOk: boolean;
+    targetSamplesOk: boolean;
 }
 
 function median(values: number[]): number | null {
@@ -80,13 +86,15 @@ function aggregateBlock(report: BlockSdtReport, modalities: ModalityId[]): Block
         if (!mod) continue;
         cleanValues.push(mod.clean.dPrime);
         allValues.push(mod.all.dPrime);
-        lureValues.push(mod.lure.dPrime);
+        if (mod.lureSampleOk) {
+            lureValues.push(mod.lure.dPrime);
+        }
         modalityClean[modality] = mod.clean.dPrime;
         maxAbsCriterion = Math.max(
             maxAbsCriterion,
             Math.abs(mod.all.criterion),
             Math.abs(mod.clean.criterion),
-            Math.abs(mod.lure.criterion)
+            mod.lureSampleOk ? Math.abs(mod.lure.criterion) : 0
         );
     }
 
@@ -99,7 +107,36 @@ function aggregateBlock(report: BlockSdtReport, modalities: ModalityId[]): Block
         minLure: lureValues.length ? Math.min(...lureValues) : 0,
         maxAbsCriterion,
         modalityClean: modalityClean as Record<ModalityId, number>,
+        lureSamplesOk: true,
+        targetSamplesOk: true,
     };
+}
+
+function windowSampleFlags(
+    window: BlockSdtReport[],
+    modalities: ModalityId[]
+): { lureSamplesOk: boolean; targetSamplesOk: boolean } {
+    let targetSamplesOk = true;
+    let lureSamplesOk = true;
+
+    for (const modality of modalities) {
+        let targetCount = 0;
+        let lureNonTargetCount = 0;
+        for (const block of window) {
+            const mod = block.byModality[modality];
+            if (!mod) continue;
+            targetCount += mod.targetCount;
+            lureNonTargetCount += mod.lureNonTargetCount;
+        }
+        if (targetCount < ADAPTIVE_THRESHOLDS.minTargetsPerModality) {
+            targetSamplesOk = false;
+        }
+        if (lureNonTargetCount < ADAPTIVE_THRESHOLDS.minLureNonTargetsPerModality) {
+            lureSamplesOk = false;
+        }
+    }
+
+    return { lureSamplesOk, targetSamplesOk };
 }
 
 /**
@@ -120,6 +157,7 @@ function aggregateWindow(
     }
 
     const latest = window[window.length - 1];
+    const sampleFlags = windowSampleFlags(window, modalities);
 
     return {
         meanMedianClean: mean(perBlock.map((block) => block.medianClean)),
@@ -131,6 +169,8 @@ function aggregateWindow(
         maxAbsCriterion: Math.max(...perBlock.map((block) => block.maxAbsCriterion)),
         modalityMeanClean,
         latestMedianCorrectRtMs: latest?.medianCorrectRtMs ?? null,
+        lureSamplesOk: sampleFlags.lureSamplesOk,
+        targetSamplesOk: sampleFlags.targetSamplesOk,
     };
 }
 
@@ -156,6 +196,7 @@ function cleanMastery(stats: WindowAggregates): boolean {
 }
 
 function lurePoor(stats: WindowAggregates): boolean {
+    if (!stats.lureSamplesOk) return false;
     return (
         stats.meanMedianLure < ADAPTIVE_THRESHOLDS.lureDPrimeMin ||
         stats.minLure < ADAPTIVE_THRESHOLDS.lureDPrimeMin
@@ -163,6 +204,7 @@ function lurePoor(stats: WindowAggregates): boolean {
 }
 
 function lureStable(stats: WindowAggregates): boolean {
+    if (!stats.lureSamplesOk) return false;
     return (
         stats.meanMedianLure >= ADAPTIVE_THRESHOLDS.lureDPrimeMin &&
         stats.minLure >= ADAPTIVE_THRESHOLDS.lureDPrimeMin
@@ -178,9 +220,11 @@ function allMastery(stats: WindowAggregates): boolean {
 }
 
 function extremeCollapse(stats: WindowAggregates): boolean {
+    const lureFailed =
+        stats.lureSamplesOk &&
+        stats.minLure < ADAPTIVE_THRESHOLDS.lureDPrimeMin;
     return (
-        stats.minClean < ADAPTIVE_THRESHOLDS.modalityFloorClean &&
-        stats.minLure < ADAPTIVE_THRESHOLDS.lureDPrimeMin
+        stats.minClean < ADAPTIVE_THRESHOLDS.modalityFloorClean && lureFailed
     );
 }
 
@@ -229,6 +273,31 @@ export function decideAdaptive(
     const evidence = window.slice(-ADAPTIVE_THRESHOLDS.windowSize);
     const stats = aggregateWindow(evidence, modalities);
     const previousWindowPromoted = opts.previousWindowPromoted === true;
+
+    if (!stats.targetSamplesOk) {
+        return {
+            action: 'hold',
+            reason: 'insufficient samples',
+        };
+    }
+
+    const wouldPromoteLure =
+        previousWindowPromoted &&
+        cleanMastery(stats) &&
+        nextLureStage(ladder.lureStage) != null;
+
+    const wouldPromoteN =
+        previousWindowPromoted && ladder.lureStage === 'E' && allMastery(stats);
+
+    if (
+        (wouldPromoteLure || wouldPromoteN) &&
+        !stats.lureSamplesOk
+    ) {
+        return {
+            action: 'hold',
+            reason: 'insufficient lure samples',
+        };
+    }
 
     if (opts.postIsiTighten && stats.meanMedianAll < ADAPTIVE_THRESHOLDS.medianAllNUp) {
         return {

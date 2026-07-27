@@ -33,6 +33,7 @@ describe('gameStore', () => {
             lastBlockRole: null,
             lastControllerAction: null,
             blockModalities: null,
+            freePlaySettingsSnapshot: null,
             settings: {
                 level: 2,
                 trials: 1,
@@ -283,6 +284,59 @@ describe('gameStore', () => {
         expect(useGameStore.getState().adaptiveSession).not.toBeNull();
 
         useGameStore.getState().cancelGame();
+        expect(useGameStore.getState().adaptiveSession).not.toBeNull();
+        expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(true);
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('interstitial');
+    });
+
+    it('preserves adaptive session when canceling during countdown', async () => {
+        useGameStore.getState().setPlayMode('adaptive');
+        useGameStore.getState().startGame();
+        expect(useGameStore.getState().countdown).toBe(3);
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('anchor-open');
+
+        useGameStore.getState().cancelGame();
+
+        expect(useGameStore.getState().countdown).toBeNull();
+        expect(useGameStore.getState().game).toBeNull();
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('anchor-open');
+        expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(false);
+    });
+
+    it('restores free-play settings when leaving adaptive mode', () => {
+        useGameStore.setState((state) => ({
+            settings: {
+                ...state.settings,
+                level: 7,
+                isiMin: 4000,
+                isiMax: 6000,
+                variableN: true,
+                interferenceChance: 0.5,
+                playMode: 'free',
+            },
+        }));
+
+        useGameStore.getState().setPlayMode('adaptive');
+        expect(useGameStore.getState().settings.level).toBe(2);
+        expect(useGameStore.getState().freePlaySettingsSnapshot).toEqual({
+            level: 7,
+            isiMin: 4000,
+            isiMax: 6000,
+            variableN: true,
+            interferenceChance: 0.5,
+        });
+
+        useGameStore.getState().setPlayMode('free');
+
+        const { settings } = useGameStore.getState();
+        expect(settings.playMode).toBe('free');
+        expect(settings.level).toBe(7);
+        expect(settings.isiMin).toBe(4000);
+        expect(settings.isiMax).toBe(6000);
+        expect(settings.variableN).toBe(true);
+        expect(settings.interferenceChance).toBe(0.5);
+        expect(settings.lureStage).toBeUndefined();
+        expect(useGameStore.getState().freePlaySettingsSnapshot).toBeNull();
         expect(useGameStore.getState().adaptiveSession).toBeNull();
     });
 
