@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { ModeId } from '../../model/modalities';
 import { AudioPackId } from '../../model/audioPacks';
+import { isiMsFromTier } from '../../model/ladderPersistence';
+import { msToSecondsLabel } from '../../model/isi';
+import { lureStageSummary } from '../adaptiveDisplay';
 import IsiRangeSlider from './IsiRangeSlider';
 import './SettingsPanel.scss';
 
@@ -21,6 +24,11 @@ const PACK_OPTIONS: { id: AudioPackId; label: string }[] = [
     { id: 'piano', label: 'Piano' },
 ];
 
+const PLAY_MODE_OPTIONS: { id: 'free' | 'adaptive'; label: string }[] = [
+    { id: 'free', label: 'Free-play' },
+    { id: 'adaptive', label: 'Adaptive' },
+];
+
 function formatInterference(value: number): string {
     if (value === 0) return 'Off';
     if (value === 0.125) return 'Default (⅛)';
@@ -30,6 +38,7 @@ function formatInterference(value: number): string {
 
 const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
     const panelRef = useRef<HTMLDivElement>(null);
+    const playMode = useGameStore((state) => state.settings.playMode);
     const level = useGameStore((state) => state.settings.level);
     const trials = useGameStore((state) => state.settings.trials);
     const isiMin = useGameStore((state) => state.settings.isiMin);
@@ -39,6 +48,7 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
     const audioPack = useGameStore((state) => state.settings.audioPack);
     const interferenceChance = useGameStore((state) => state.settings.interferenceChance);
     const variableN = useGameStore((state) => state.settings.variableN);
+    const ladder = useGameStore((state) => state.ladder[mode]);
     const decreaseLevel = useGameStore((state) => state.decreaseLevel);
     const increaseLevel = useGameStore((state) => state.increaseLevel);
     const decreaseTrials = useGameStore((state) => state.decreaseTrials);
@@ -50,6 +60,10 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
     const setAudioPack = useGameStore((state) => state.setAudioPack);
     const cycleInterferenceChance = useGameStore((state) => state.cycleInterferenceChance);
     const setVariableN = useGameStore((state) => state.setVariableN);
+    const setPlayMode = useGameStore((state) => state.setPlayMode);
+
+    const isAdaptive = playMode === 'adaptive';
+    const ladderIsi = isiMsFromTier(ladder.isiTier);
 
     useEffect(() => {
         if (!open) return;
@@ -94,6 +108,25 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
                 <div className="settings-body">
                     <div className="settings-row">
                         <div className="settings-row-copy">
+                            <span className="settings-row-label">Training path</span>
+                            <span className="settings-row-hint">Free-play or ladder-driven Adaptive</span>
+                        </div>
+                        <div className="settings-segment">
+                            {PLAY_MODE_OPTIONS.map((option) => (
+                                <button
+                                    key={option.id}
+                                    type="button"
+                                    className={`segment-btn${playMode === option.id ? ' is-active' : ''}`}
+                                    onClick={() => setPlayMode(option.id)}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="settings-row">
+                        <div className="settings-row-copy">
                             <span className="settings-row-label">Mode</span>
                             <span className="settings-row-hint">Dual · Triple · Quad</span>
                         </div>
@@ -130,26 +163,40 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
                         </div>
                     </div>
 
-                    <div className="settings-row">
-                        <div className="settings-row-copy">
-                            <span className="settings-row-label">Level</span>
-                            <span className="settings-row-hint">N-back depth · ↑ / ↓</span>
+                    {isAdaptive ? (
+                        <div className="settings-row settings-row--readonly">
+                            <div className="settings-row-copy">
+                                <span className="settings-row-label">Ladder</span>
+                                <span className="settings-row-hint">Memory load and interference from your progress</span>
+                            </div>
+                            <div className="settings-readout" aria-live="polite">
+                                <span>n={ladder.n}</span>
+                                <span>{lureStageSummary(ladder.lureStage)}</span>
+                                <span>ISI tier {ladder.isiTier}</span>
+                            </div>
                         </div>
-                        <div className="settings-stepper">
-                            <button type="button" className="step-btn" onClick={decreaseLevel} aria-label="Decrease level">
-                                −
-                            </button>
-                            <span className="step-value">{level}</span>
-                            <button type="button" className="step-btn" onClick={increaseLevel} aria-label="Increase level">
-                                +
-                            </button>
+                    ) : (
+                        <div className="settings-row">
+                            <div className="settings-row-copy">
+                                <span className="settings-row-label">Level</span>
+                                <span className="settings-row-hint">N-back depth · ↑ / ↓</span>
+                            </div>
+                            <div className="settings-stepper">
+                                <button type="button" className="step-btn" onClick={decreaseLevel} aria-label="Decrease level">
+                                    −
+                                </button>
+                                <span className="step-value">{level}</span>
+                                <button type="button" className="step-btn" onClick={increaseLevel} aria-label="Increase level">
+                                    +
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="settings-row">
                         <div className="settings-row-copy">
                             <span className="settings-row-label">Trials</span>
-                            <span className="settings-row-hint">Session length · ← / →</span>
+                            <span className="settings-row-hint">Block length · ← / →</span>
                         </div>
                         <div className="settings-stepper">
                             <button type="button" className="step-btn" onClick={decreaseTrials} aria-label="Decrease trials">
@@ -162,48 +209,73 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
                         </div>
                     </div>
 
-                    <div className="settings-row settings-row--isi">
+                    <div className={`settings-row settings-row--isi${isAdaptive ? ' is-disabled' : ''}`}>
                         <div className="settings-row-copy">
                             <span className="settings-row-label">ISI</span>
-                            <span className="settings-row-hint">Inter-stimulus interval range</span>
+                            <span className="settings-row-hint">
+                                {isAdaptive ? 'Set by ladder tier in Adaptive' : 'Inter-stimulus interval range'}
+                            </span>
                         </div>
-                        <IsiRangeSlider
-                            minMs={isiMin}
-                            maxMs={isiMax}
-                            onMinChange={setIsiMin}
-                            onMaxChange={setIsiMax}
-                        />
+                        {isAdaptive ? (
+                            <div className="settings-readout settings-readout--isi" aria-live="polite">
+                                <span>{msToSecondsLabel(ladderIsi.isiMin)}s</span>
+                                <span className="settings-readout-sep">–</span>
+                                <span>{msToSecondsLabel(ladderIsi.isiMax)}s</span>
+                            </div>
+                        ) : (
+                            <IsiRangeSlider
+                                minMs={isiMin}
+                                maxMs={isiMax}
+                                onMinChange={setIsiMin}
+                                onMaxChange={setIsiMax}
+                            />
+                        )}
                     </div>
 
-                    <div className="settings-row">
-                        <div className="settings-row-copy">
-                            <span className="settings-row-label">Interference</span>
-                            <span className="settings-row-hint">Near-miss bias chance</span>
-                        </div>
-                        <button
-                            type="button"
-                            className="settings-cycle"
-                            onClick={cycleInterferenceChance}
-                        >
-                            {formatInterference(interferenceChance)}
-                        </button>
-                    </div>
+                    {!isAdaptive && (
+                        <>
+                            <div className="settings-row">
+                                <div className="settings-row-copy">
+                                    <span className="settings-row-label">Interference</span>
+                                    <span className="settings-row-hint">Near-miss bias chance</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="settings-cycle"
+                                    onClick={cycleInterferenceChance}
+                                >
+                                    {formatInterference(interferenceChance)}
+                                </button>
+                            </div>
 
-                    <div className="settings-row">
+                            <div className="settings-row">
+                                <div className="settings-row-copy">
+                                    <span className="settings-row-label">Variable N</span>
+                                    <span className="settings-row-hint">Per-trial lag from beta distribution</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    className={`settings-toggle${variableN ? ' is-on' : ''}`}
+                                    role="switch"
+                                    aria-checked={variableN}
+                                    onClick={() => setVariableN(!variableN)}
+                                >
+                                    <span className="settings-toggle-knob" />
+                                    <span className="settings-toggle-label">{variableN ? 'On' : 'Off'}</span>
+                                </button>
+                            </div>
+                        </>
+                    )}
+
+                    <div className="settings-row is-disabled">
                         <div className="settings-row-copy">
-                            <span className="settings-row-label">Variable N</span>
-                            <span className="settings-row-hint">Per-trial lag from beta distribution</span>
+                            <span className="settings-row-label">Cross-modal quotas</span>
+                            <span className="settings-row-hint">Coming in a future update</span>
                         </div>
-                        <button
-                            type="button"
-                            className={`settings-toggle${variableN ? ' is-on' : ''}`}
-                            role="switch"
-                            aria-checked={variableN}
-                            onClick={() => setVariableN(!variableN)}
-                        >
-                            <span className="settings-toggle-knob" />
-                            <span className="settings-toggle-label">{variableN ? 'On' : 'Off'}</span>
-                        </button>
+                        <label className="settings-checkbox">
+                            <input type="checkbox" disabled checked={false} />
+                            <span>Cross-modal quotas (coming)</span>
+                        </label>
                     </div>
 
                     <div className="settings-row">

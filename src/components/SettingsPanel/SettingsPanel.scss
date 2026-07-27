@@ -220,6 +220,58 @@
     gap: 14px;
 }
 
+.settings-row.is-disabled {
+    opacity: 0.55;
+
+    .settings-toggle,
+    .settings-cycle,
+    .step-btn,
+    .segment-btn {
+        pointer-events: none;
+    }
+}
+
+.settings-row--readonly {
+    align-items: flex-start;
+}
+
+.settings-readout {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--primary);
+    text-align: right;
+}
+
+.settings-readout--isi {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 1.05rem;
+}
+
+.settings-readout-sep {
+    color: var(--textBackground);
+    font-weight: 400;
+}
+
+.settings-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--textBackground);
+    cursor: not-allowed;
+
+    input {
+        margin: 0;
+    }
+}
+
 .settings-segment {
     display: inline-flex;
     gap: 4px;

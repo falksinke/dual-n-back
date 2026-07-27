@@ -19,6 +19,7 @@ export const useKeyboardControls = () => {
                 countdown,
                 activeModalities,
                 adaptiveSession,
+                settings,
                 startGame,
                 cancelGame,
                 selectModality,
@@ -32,6 +33,7 @@ export const useKeyboardControls = () => {
             const countingDown = countdown !== null;
             const interstitialContinue = adaptiveSession?.pendingContinue === true;
             const busy = inSession || countingDown;
+            const adaptiveIdle = settings.playMode === 'adaptive' && !busy && !interstitialContinue;
 
             const modality = modalityFromKey(e.key, activeModalities);
             if (modality && inSession) {
@@ -43,11 +45,11 @@ export const useKeyboardControls = () => {
             switch (e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
-                    if (!busy) decreaseLevel();
+                    if (!busy && !adaptiveIdle) decreaseLevel();
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
-                    if (!busy) increaseLevel();
+                    if (!busy && !adaptiveIdle) increaseLevel();
                     break;
                 case 'ArrowLeft':
                     e.preventDefault();

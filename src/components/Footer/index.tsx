@@ -1,5 +1,6 @@
 import pjson from '../../../package.json';
 import type { ThemeMode } from '../../themes/config';
+import { useGameStore } from '../../store/gameStore';
 import './Footer.scss';
 
 interface FooterProps {
@@ -8,19 +9,33 @@ interface FooterProps {
 }
 
 const Footer = ({ themeMode, onToggleTheme }: FooterProps) => {
+    const pendingContinue = useGameStore((state) => state.adaptiveSession?.pendingContinue === true);
+    const playMode = useGameStore((state) => state.settings.playMode);
+
     return (
         <footer className="footer">
             <div className="footer-hints" aria-label="Keyboard shortcuts">
-                <div className="hint-line">
-                    <span className="hint-label">Level</span>
-                    <kbd className="key">↓</kbd>
-                    <kbd className="key">↑</kbd>
-                </div>
-                <div className="hint-line">
-                    <span className="hint-label">Trials</span>
-                    <kbd className="key">←</kbd>
-                    <kbd className="key">→</kbd>
-                </div>
+                {pendingContinue ? (
+                    <div className="hint-line">
+                        <span className="hint-label">Continue</span>
+                        <kbd className="key">Space</kbd>
+                    </div>
+                ) : (
+                    <>
+                        {playMode === 'free' && (
+                            <div className="hint-line">
+                                <span className="hint-label">Level</span>
+                                <kbd className="key">↓</kbd>
+                                <kbd className="key">↑</kbd>
+                            </div>
+                        )}
+                        <div className="hint-line">
+                            <span className="hint-label">Trials</span>
+                            <kbd className="key">←</kbd>
+                            <kbd className="key">→</kbd>
+                        </div>
+                    </>
+                )}
             </div>
             <div className="footer-meta">
                 <button

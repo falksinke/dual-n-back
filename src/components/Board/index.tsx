@@ -8,6 +8,7 @@ const Board = () => {
     const game = useGameStore((state) => state.game);
     const lastResult = useGameStore((state) => state.results.last);
     const displayTarget = useGameStore((state) => state.settings.displayTarget);
+    const pendingContinue = useGameStore((state) => state.adaptiveSession?.pendingContinue === true);
 
     const showBoard = game !== null || lastResult === null;
 
@@ -35,7 +36,7 @@ const Board = () => {
             ) : (
                 <ResultPanel result={lastResult as GameResult} />
             )}
-            {game === null && (
+            {game === null && !pendingContinue && (
                 <p className="start-prompt keybindings-notice">
                     <span className="keybinding-line">
                         Press <kbd className="key-space">Space</kbd> to start
