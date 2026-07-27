@@ -501,4 +501,78 @@ describe('Game', () => {
         expect(result!.sdt?.byModality.position?.all.counts.misses ?? 0).toBeGreaterThan(0);
         expect(randomCall).toBeGreaterThan(0);
     });
+
+    it('uses quota planner when useBlockQuotas and lureStage are set', async () => {
+        const { planBlockStimuli } = await import('./blockQuotas');
+        let seed = 99;
+        const random = () => {
+            seed = (seed * 1664525 + 1013904223) >>> 0;
+            return seed / 0x100000000;
+        };
+        const expected = planBlockStimuli({
+            gameLength: 20,
+            sessionN: 3,
+            modalities: ['position', 'audio'],
+            lureStage: 'C',
+            random,
+        });
+
+        let result: import('./GameResult').GameResult | null = null;
+        seed = 99;
+        const game = new Game(
+            3,
+            20,
+            10,
+            10,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                lureStage: 'C',
+                useBlockQuotas: true,
+                guaranteedMatchChance: 0,
+                random,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 20; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(result).not.toBeNull();
+        expect(expected.ok).toBe(true);
+    });
+
+    it('ignores useBlockQuotas without lureStage (free-play path)', async () => {
+        let result: import('./GameResult').GameResult | null = null;
+        const game = new Game(
+            2,
+            6,
+            10,
+            10,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                useBlockQuotas: true,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                random: () => 0.5,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 6; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(result).not.toBeNull();
+    });
 });

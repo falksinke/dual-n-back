@@ -60,6 +60,8 @@ export class GameSession extends Game {
                 variableN: settings.variableN,
                 audioPack: settings.audioPack,
                 lureStage: settings.lureStage,
+                useBlockQuotas:
+                    settings.useBlockQuotas && settings.lureStage != null ? true : undefined,
             }
         );
         this.getStore = getStore;

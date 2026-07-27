@@ -5,6 +5,7 @@ import { AudioPackId, getRandomAudioToken } from './audioPacks';
 import { getRandomColorId } from './colorSet';
 import { getRandomImageId } from './imageSet';
 import { ModalityId, getModalitiesForMode, ModeId } from './modalities';
+import { ModalityPlan, planBlockStimuli, TrialPlanEntry } from './blockQuotas';
 import { getLureStagePolicy, lureOffsetsForStage, LureStageId } from './lureStages';
 import { buildBlockSdtReport, classifySdtCell } from './sdtMetrics';
 import { BoardState, GameDeps, getModalityValue } from './types';
@@ -46,6 +47,8 @@ export class Game {
     private readonly variableNList: number[];
     private readonly audioPack: AudioPackId;
     private readonly lureStage: LureStageId | null;
+    private readonly useBlockQuotas: boolean;
+    private readonly trialPlan: TrialPlanEntry[] | null;
 
     private _isGameInProgress: boolean;
     private _playerChoice: Match | null;
@@ -125,6 +128,17 @@ export class Game {
         this.variableN = deps.variableN ?? false;
         this.audioPack = deps.audioPack ?? 'letters';
         this.lureStage = deps.lureStage ?? null;
+        this.useBlockQuotas = deps.useBlockQuotas ?? false;
+        this.trialPlan =
+            this.useBlockQuotas && this.lureStage != null
+                ? planBlockStimuli({
+                      gameLength,
+                      sessionN: n,
+                      modalities: this.activeModalities,
+                      lureStage: this.lureStage,
+                      random: this.random,
+                  }).trials
+                : null;
         this.variableNList = this.variableN
             ? makeVariableNList(gameLength, n, this.random)
             : [];
@@ -336,12 +350,20 @@ export class Game {
             return this.getRandomModalityValue(modality);
         }
 
-        const r1 = this.random();
-        const r2 = this.random();
         const trueMatchValue = getModalityValue(
             this.gameHistory.boardStates[historyLen - effectiveN],
             modality
         );
+
+        if (this.trialPlan != null) {
+            const plan = this.trialPlan[historyLen]?.byModality[modality];
+            if (plan && plan.role !== 'random') {
+                return this.generateFromPlan(modality, effectiveN, trueMatchValue, plan);
+            }
+        }
+
+        const r1 = this.random();
+        const r2 = this.random();
 
         if (r1 < this.guaranteedMatchChance) {
             return trueMatchValue;
@@ -376,6 +398,47 @@ export class Game {
             }
         }
 
+        return this.getRandomModalityValue(modality);
+    }
+
+    private generateFromPlan(
+        modality: ModalityId,
+        effectiveN: number,
+        trueMatchValue: number | string,
+        plan: ModalityPlan
+    ): number | string {
+        switch (plan.role) {
+            case 'target':
+                return trueMatchValue;
+            case 'lure': {
+                const offsets =
+                    plan.lureOffset != null
+                        ? [plan.lureOffset]
+                        : lureOffsetsForStage(this.lureStage!, this.sessionLevel);
+                const lure = this.tryLure(modality, effectiveN, trueMatchValue, offsets);
+                if (lure !== null) {
+                    this._pendingStrata[modality] = 'lure';
+                    this._pendingLureLags[modality] = lure.lag;
+                    return lure.value;
+                }
+                return this.getRandomNonMatch(modality, trueMatchValue);
+            }
+            case 'clean':
+                return this.getRandomNonMatch(modality, trueMatchValue);
+            default:
+                return this.getRandomModalityValue(modality);
+        }
+    }
+
+    /** Pick a value that does not equal the n-back reference (repair accidental matches). */
+    private getRandomNonMatch(
+        modality: ModalityId,
+        trueMatchValue: number | string
+    ): number | string {
+        for (let attempt = 0; attempt < 24; attempt++) {
+            const value = this.getRandomModalityValue(modality);
+            if (value !== trueMatchValue) return value;
+        }
         return this.getRandomModalityValue(modality);
     }
 

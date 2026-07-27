@@ -33,6 +33,10 @@ export type GameDeps = {
      * Free-play leaves this undefined.
      */
     lureStage?: LureStageId;
+    /**
+     * When true with lureStage set, precompute cross-modal match/lure quotas (Adaptive only).
+     */
+    useBlockQuotas?: boolean;
 };
 
 export function getModalityValue(state: BoardState, modality: ModalityId): number | string {

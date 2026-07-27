@@ -61,6 +61,8 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
     const cycleInterferenceChance = useGameStore((state) => state.cycleInterferenceChance);
     const setVariableN = useGameStore((state) => state.setVariableN);
     const setPlayMode = useGameStore((state) => state.setPlayMode);
+    const useBlockQuotas = useGameStore((state) => state.settings.useBlockQuotas);
+    const setUseBlockQuotas = useGameStore((state) => state.setUseBlockQuotas);
 
     const isAdaptive = playMode === 'adaptive';
     const ladderIsi = isiMsFromTier(ladder.isiTier);
@@ -267,15 +269,25 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
                         </>
                     )}
 
-                    <div className="settings-row is-disabled">
+                    <div className="settings-row">
                         <div className="settings-row-copy">
                             <span className="settings-row-label">Cross-modal quotas</span>
-                            <span className="settings-row-hint">Coming in a future update</span>
+                            <span className="settings-row-hint">
+                                {isAdaptive
+                                    ? 'Balance match and lure counts across modalities'
+                                    : 'Applied in Adaptive training only'}
+                            </span>
                         </div>
-                        <label className="settings-checkbox">
-                            <input type="checkbox" disabled checked={false} />
-                            <span>Cross-modal quotas (coming)</span>
-                        </label>
+                        <button
+                            type="button"
+                            className={`settings-toggle${useBlockQuotas ? ' is-on' : ''}`}
+                            role="switch"
+                            aria-checked={useBlockQuotas}
+                            onClick={() => setUseBlockQuotas(!useBlockQuotas)}
+                        >
+                            <span className="settings-toggle-knob" />
+                            <span className="settings-toggle-label">{useBlockQuotas ? 'On' : 'Off'}</span>
+                        </button>
                     </div>
 
                     <div className="settings-row">

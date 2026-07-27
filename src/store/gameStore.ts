@@ -77,6 +77,8 @@ export interface GameStoreState {
         playMode: PlayMode;
         /** When set (Adaptive), Game uses lure-stage generation instead of interferenceChance. */
         lureStage?: LureStageId;
+        /** Cross-modal match/lure quotas (Adaptive only; default off). */
+        useBlockQuotas: boolean;
     };
     /** Multi-block Adaptive session FSM; null in free-play or when idle. */
     adaptiveSession: AdaptiveSessionState | null;
@@ -110,6 +112,7 @@ export interface GameStoreActions {
     cycleInterferenceChance: () => void;
     setVariableN: (enabled: boolean) => void;
     setPlayMode: (playMode: PlayMode) => void;
+    setUseBlockQuotas: (enabled: boolean) => void;
     saveLadder: () => void;
 }
 
@@ -336,6 +339,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         interferenceChance: 0.125,
         variableN: false,
         playMode: 'free',
+        useBlockQuotas: false,
     },
     adaptiveSession: null,
     lastBlockRole: null,
@@ -559,6 +563,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     setVariableN: (enabled) =>
         set((state) => ({
             settings: { ...state.settings, variableN: enabled },
+        })),
+    setUseBlockQuotas: (enabled) =>
+        set((state) => ({
+            settings: { ...state.settings, useBlockQuotas: enabled },
         })),
     setPlayMode: (playMode) => {
         const state = get();
