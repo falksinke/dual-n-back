@@ -31,15 +31,25 @@ React + Vite implementation of a Brain Workshop–aligned n-back trainer with Du
 
 ### Settings
 
-- **Audio pack** — `letters` (default) or `piano` (first-party generated C-scale WAV tones)
-- **Interference** — BW-style near-miss chance (default **⅛**, steps of 1/8 through 1)
-- **Variable N** — per-trial lag sampled from Beta(level/2, 1); current N shown in session status while playing
-- **ISI** — inter-stimulus interval between onsets; each trial samples uniformly in the range (default **0.5–3.0 s**). Stimulus flash duration is fixed (~1 s) and separate from ISI.
+- **Training path** — **Free-play** (manual level / interference / variable N) or **Adaptive** (ladder-driven)
+- **Audio pack** — `letters` (default) or `piano` (Brain Workshop C-scale samples)
+- **Interference** — BW-style near-miss chance (default **⅛**, steps of 1/8 through 1); Free-play only
+- **Variable N** — per-trial lag sampled from Beta(level/2, 1); current N shown in session status while playing; Free-play only
+- **ISI** — inter-stimulus interval between onsets; each trial samples uniformly in the range (default **0.5–3.0 s**). Stimulus flash duration is fixed (~1 s) and separate from ISI. Adaptive drives ISI from a discrete tier ladder.
+- **Cross-modal quotas** — optional Adaptive-only block composition (default off)
+
+### Adaptive training
+
+Adaptive sessions use stratified signal-detection metrics (per-modality d′ clean / lure / all and criterion) to progress **lure difficulty before n**, with rolling three-block evidence, median-plus-floor gating, opening/closing calibration anchors, weak-modality remediation, and optional ISI tightening.
+
+Ladder state (n, lure stage A–E, ISI tier) is persisted in `localStorage` under `nback-adaptive-ladder`.
+
+The system adapts memory load and interference control more precisely; it is **not** a claim of improved general intelligence.
 
 ### Assets
 
 - Letter sounds: `public/assets/sounds/letters/`
-- Piano tones: `public/assets/sounds/piano/` — procedurally generated sine tones (MIT project; not Brain Workshop GPL assets)
+- Piano samples: `public/assets/sounds/piano/` — from [Brain Workshop](https://github.com/brain-workshop/brainworkshop) (`res/sounds/piano/`, GPL-2; see `NOTICE.md` in that folder)
 - SVG glyphs: `public/assets/images/` — first-party simple shapes for the image channel
 
 ### Stack

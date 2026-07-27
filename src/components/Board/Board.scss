@@ -43,10 +43,10 @@ $thin-border: thin solid var(--boardBorder);
 .board-container {
     position: relative;
     margin: 0 auto;
+    // Board alone in flow — chrome/prompts overlay so the crosshair never reflows.
     display: flex;
     flex-direction: column;
     align-items: center;
-    row-gap: 28px;
 
     .board {
         transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -60,8 +60,13 @@ $thin-border: thin solid var(--boardBorder);
     }
 
     .start-prompt {
+        position: absolute;
+        top: calc(100% + 28px);
+        left: 50%;
+        transform: translateX(-50%);
         margin: 0;
         color: var(--textBackground);
+        white-space: nowrap;
     }
 
     .keybindings-notice {
@@ -73,6 +78,8 @@ $thin-border: thin solid var(--boardBorder);
         top: 50%;
         left: 50%;
         z-index: 10;
+        // Anchor the hairlines on the board center (crosshair itself is a 0×0 point).
+        transform: translate(-50%, -50%);
 
         &::before,
         &::after {
@@ -90,13 +97,6 @@ $thin-border: thin solid var(--boardBorder);
         &::after {
             transform: translateX(-50%) rotate(90deg);
         }
-    }
-}
-
-.playing {
-    .board {
-        max-width: 80vh;
-        max-height: 80vh;
     }
 }
 
