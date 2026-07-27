@@ -42,7 +42,8 @@ export class GameSession extends Game {
     private setStore: StoreSetter;
 
     constructor(getStore: StoreGetter, setStore: StoreSetter) {
-        const settings = getStore().settings;
+        const store = getStore();
+        const settings = store.settings;
         super(
             settings.level,
             settings.trials,
@@ -54,6 +55,7 @@ export class GameSession extends Game {
             {
                 allowCenterStimulus: settings.allowCenterStimulus,
                 mode: settings.mode,
+                modalities: store.blockModalities ?? undefined,
                 interferenceChance: settings.interferenceChance,
                 variableN: settings.variableN,
                 audioPack: settings.audioPack,
@@ -150,7 +152,7 @@ export class GameSession extends Game {
 
     private static onGameEnded = (
         getStore: StoreGetter,
-        setStore: StoreSetter,
+        _setStore: StoreSetter,
         gameResult: GameResult
     ) => {
         if (document.fullscreenElement) {
@@ -158,12 +160,6 @@ export class GameSession extends Game {
         }
         clearHighlightTimeout();
         clearButtonTimeout();
-        setStore((state) => ({
-            results: {
-                all: [...state.results.all, gameResult],
-                last: gameResult,
-            },
-            game: null,
-        }));
+        getStore().pushGameResult(gameResult);
     };
 }

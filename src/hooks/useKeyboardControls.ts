@@ -16,7 +16,9 @@ export const useKeyboardControls = () => {
 
             const {
                 game,
+                countdown,
                 activeModalities,
+                adaptiveSession,
                 startGame,
                 cancelGame,
                 selectModality,
@@ -26,8 +28,13 @@ export const useKeyboardControls = () => {
                 increaseTrials,
             } = useGameStore.getState();
 
+            const inSession = game !== null;
+            const countingDown = countdown !== null;
+            const interstitialContinue = adaptiveSession?.pendingContinue === true;
+            const busy = inSession || countingDown;
+
             const modality = modalityFromKey(e.key, activeModalities);
-            if (modality && game) {
+            if (modality && inSession) {
                 e.preventDefault();
                 selectModality(modality);
                 return;
@@ -36,29 +43,31 @@ export const useKeyboardControls = () => {
             switch (e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
-                    if (!game) decreaseLevel();
+                    if (!busy) decreaseLevel();
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
-                    if (!game) increaseLevel();
+                    if (!busy) increaseLevel();
                     break;
                 case 'ArrowLeft':
                     e.preventDefault();
-                    if (!game) decreaseTrials();
+                    if (!busy) decreaseTrials();
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
-                    if (!game) increaseTrials();
+                    if (!busy) increaseTrials();
                     break;
                 case 'Escape':
-                    if (game) {
+                    if (busy) {
                         e.preventDefault();
                         cancelGame();
                     }
                     break;
                 case ' ':
                     e.preventDefault();
-                    if (game) {
+                    if (interstitialContinue) {
+                        startGame();
+                    } else if (busy) {
                         cancelGame();
                     } else {
                         startGame();

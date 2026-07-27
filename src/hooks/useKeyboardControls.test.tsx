@@ -1,13 +1,21 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, cleanup } from '@testing-library/react';
 import { useKeyboardControls } from './useKeyboardControls';
-import { useGameStore } from '../store/gameStore';
+import { COUNTDOWN_START, COUNTDOWN_TICK_MS, useGameStore } from '../store/gameStore';
+import { createInitialAdaptiveSession } from '../store/adaptiveSession';
 import { ButtonState } from '../model/enums/buttonState';
+
+async function finishCountdown() {
+    await vi.advanceTimersByTimeAsync(COUNTDOWN_START * COUNTDOWN_TICK_MS);
+}
 
 describe('useKeyboardControls', () => {
     beforeEach(() => {
+        vi.useFakeTimers();
+        vi.spyOn(useGameStore.getState().speech, 'play').mockImplementation(() => undefined);
         useGameStore.setState({
             game: null,
+            countdown: null,
             activeModalities: ['position', 'audio'],
             settings: {
                 level: 5,
@@ -30,14 +38,16 @@ describe('useKeyboardControls', () => {
 
     afterEach(() => {
         cleanup();
-        useGameStore.getState().game?.cancel();
+        useGameStore.getState().cancelGame();
+        vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
-    it('starts a game on space when idle', () => {
+    it('starts a countdown on space when idle', () => {
         const { unmount } = renderHook(() => useKeyboardControls());
         document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
-        expect(useGameStore.getState().game).not.toBeNull();
+        expect(useGameStore.getState().countdown).toBe(3);
+        expect(useGameStore.getState().game).toBeNull();
         useGameStore.getState().cancelGame();
         unmount();
     });
@@ -49,12 +59,46 @@ describe('useKeyboardControls', () => {
         unmount();
     });
 
-    it('cancels an active game on Escape', () => {
+    it('cancels an active game on Escape', async () => {
         const { unmount } = renderHook(() => useKeyboardControls());
         useGameStore.getState().startGame();
+        await finishCountdown();
         expect(useGameStore.getState().game).not.toBeNull();
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         expect(useGameStore.getState().game).toBeNull();
+        unmount();
+    });
+
+    it('cancels countdown on Escape before the session starts', () => {
+        const { unmount } = renderHook(() => useKeyboardControls());
+        useGameStore.getState().startGame();
+        expect(useGameStore.getState().countdown).toBe(3);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        expect(useGameStore.getState().countdown).toBeNull();
+        expect(useGameStore.getState().game).toBeNull();
+        unmount();
+    });
+
+    it('continues adaptive interstitial on space', () => {
+        useGameStore.setState({
+            adaptiveSession: {
+                ...createInitialAdaptiveSession({ adaptiveTarget: 3 }),
+                phase: 'interstitial',
+                pendingContinue: true,
+                openAnchorsDone: 1,
+            },
+            settings: {
+                ...useGameStore.getState().settings,
+                playMode: 'adaptive',
+            },
+        });
+
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+        expect(useGameStore.getState().countdown).toBe(3);
+        expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(false);
+        useGameStore.getState().cancelGame();
         unmount();
     });
 
@@ -67,7 +111,7 @@ describe('useKeyboardControls', () => {
         expect(removeSpy).toHaveBeenCalledWith('keydown', handler);
     });
 
-    it('invokes color and image claims in quad mode', () => {
+    it('invokes color and image claims in quad mode', async () => {
         useGameStore.setState({
             activeModalities: ['position', 'color', 'image', 'audio'],
             settings: {
@@ -76,6 +120,7 @@ describe('useKeyboardControls', () => {
             },
         });
         useGameStore.getState().startGame();
+        await finishCountdown();
         const session = useGameStore.getState().game!;
         const addChoiceSpy = vi.spyOn(session, 'addChoice');
 
@@ -90,8 +135,9 @@ describe('useKeyboardControls', () => {
         unmount();
     });
 
-    it('ignores F and J in dual mode', () => {
+    it('ignores F and J in dual mode', async () => {
         useGameStore.getState().startGame();
+        await finishCountdown();
         const session = useGameStore.getState().game!;
         const addChoiceSpy = vi.spyOn(session, 'addChoice');
 

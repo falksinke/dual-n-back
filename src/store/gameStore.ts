@@ -15,6 +15,17 @@ import {
     type LadderStorageV1,
 } from '../model/ladderPersistence';
 import { LureStageId } from '../model/lureStages';
+import { ControllerAction } from '../model/adaptiveController';
+import {
+    AdaptiveSessionState,
+    BlockConfig,
+    BlockRole,
+    blockRoleFromPhase,
+    createInitialAdaptiveSession,
+    nextBlockConfig,
+    playingPhaseForBlockRole,
+    processAdaptiveBlockEnd,
+} from './adaptiveSession';
 import { GameSession } from './GameSession';
 
 export type PlayMode = 'free' | 'adaptive';
@@ -67,6 +78,12 @@ export interface GameStoreState {
         /** When set (Adaptive), Game uses lure-stage generation instead of interferenceChance. */
         lureStage?: LureStageId;
     };
+    /** Multi-block Adaptive session FSM; null in free-play or when idle. */
+    adaptiveSession: AdaptiveSessionState | null;
+    lastBlockRole: BlockRole | null;
+    lastControllerAction: ControllerAction | null;
+    /** Subset modalities for remediation blocks; null uses full mode preset. */
+    blockModalities: ModalityId[] | null;
 }
 
 export interface GameStoreActions {
@@ -130,8 +147,9 @@ type StoreSet = (
 ) => void;
 
 const launchSession = (get: StoreGet, set: StoreSet) => {
-    const settings = get().settings;
-    const modalities = getModalitiesForMode(settings.mode);
+    const state = get();
+    const settings = state.settings;
+    const modalities = state.blockModalities ?? getModalitiesForMode(settings.mode);
     const session = new GameSession(get, set);
     set({
         game: session,
@@ -147,6 +165,19 @@ const launchSession = (get: StoreGet, set: StoreSet) => {
     session.begin();
 };
 
+function applyBlockConfigToStore(
+    settings: GameStoreState['settings'],
+    block: BlockConfig
+): {
+    settings: GameStoreState['settings'];
+    blockModalities: ModalityId[] | null;
+} {
+    return {
+        settings: applyBlockConfigToSettings(settings, block),
+        blockModalities: block.modalities ?? null,
+    };
+}
+
 function applyAdaptiveLadderToSettings<
     T extends GameStoreState['settings'],
 >(settings: T, modeLadder: ModeLadderSnapshot): T {
@@ -159,6 +190,94 @@ function applyAdaptiveLadderToSettings<
         isiMin,
         isiMax,
     };
+}
+
+function applyBlockConfigToSettings<
+    T extends GameStoreState['settings'],
+>(settings: T, block: BlockConfig): T {
+    const { isiMin, isiMax } = isiMsFromTier(block.isiTier);
+    return {
+        ...settings,
+        level: block.n,
+        lureStage: block.lureStage,
+        trials: block.trials,
+        variableN: false,
+        isiMin,
+        isiMax,
+    };
+}
+
+function beginCountdown(get: StoreGet, set: StoreSet, clearLastResult: boolean) {
+    clearCountdownTimer();
+    set((state) => ({
+        countdown: COUNTDOWN_START,
+        results: clearLastResult
+            ? { ...state.results, last: null }
+            : state.results,
+    }));
+    scheduleCountdownTick(COUNTDOWN_START, get, set);
+}
+
+function finalizeGameEnd(
+    get: StoreGet,
+    set: StoreSet,
+    result: GameResult
+) {
+    const state = get();
+    const modalities = getModalitiesForMode(state.settings.mode);
+
+    if (state.settings.playMode !== 'adaptive' || state.adaptiveSession == null) {
+        set({
+            results: {
+                all: [...state.results.all, result],
+                last: result,
+            },
+            game: null,
+            activeModalities: modalities,
+            btns: createEmptyButtons(modalities),
+            boardState: { ...defaultBoardState },
+            lastBlockRole: state.settings.playMode === 'free' ? 'free' : null,
+            lastControllerAction: null,
+        });
+        return;
+    }
+
+    const blockRole = blockRoleFromPhase(state.adaptiveSession.phase);
+    if (blockRole == null) {
+        throw new Error('Adaptive block ended outside a playing phase');
+    }
+
+    const mode = state.settings.mode;
+    const modeLadder = state.ladder[mode];
+    const endResult = processAdaptiveBlockEnd(
+        state.adaptiveSession,
+        modeLadder,
+        mode,
+        blockRole,
+        result.sdt
+    );
+
+    const nextLadderByMode = {
+        ...state.ladder,
+        [mode]: endResult.ladder,
+    };
+
+    set({
+        results: {
+            all: [...state.results.all, result],
+            last: result,
+        },
+        game: null,
+        activeModalities: modalities,
+        btns: createEmptyButtons(modalities),
+        boardState: { ...defaultBoardState },
+        ladder: nextLadderByMode,
+        adaptiveSession: endResult.session,
+        lastBlockRole: endResult.blockRole,
+        lastControllerAction: endResult.action,
+        settings: applyAdaptiveLadderToSettings(state.settings, endResult.ladder),
+    });
+    get().saveLadder();
 }
 
 function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): LadderStorageV1 {
@@ -218,6 +337,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         variableN: false,
         playMode: 'free',
     },
+    adaptiveSession: null,
+    lastBlockRole: null,
+    lastControllerAction: null,
+    blockModalities: null,
     startGame: () => {
         if (get().game !== null) {
             throw new Error('Game is already defined');
@@ -226,19 +349,82 @@ export const useGameStore = create<GameStore>((set, get) => ({
             throw new Error('Countdown is already in progress');
         }
 
-        clearCountdownTimer();
-        set({
-            countdown: COUNTDOWN_START,
-            results: { ...get().results, last: null },
-        });
-        scheduleCountdownTick(COUNTDOWN_START, get, set);
+        const state = get();
+        const { playMode, mode } = state.settings;
+
+        if (state.adaptiveSession?.pendingContinue) {
+            const session = {
+                ...state.adaptiveSession,
+                pendingContinue: false,
+            };
+            const block = nextBlockConfig(
+                session,
+                state.ladder[mode],
+                mode,
+                state.settings.trials
+            );
+            const applied = applyBlockConfigToStore(state.settings, block);
+            set({
+                adaptiveSession: {
+                    ...session,
+                    phase: playingPhaseForBlockRole(block.blockRole),
+                },
+                settings: applied.settings,
+                blockModalities: applied.blockModalities,
+            });
+            beginCountdown(get, set, true);
+            return;
+        }
+
+        if (playMode === 'adaptive') {
+            const needsNewSession =
+                state.adaptiveSession == null ||
+                state.adaptiveSession.phase === 'summary';
+            if (needsNewSession) {
+                const session = createInitialAdaptiveSession();
+                const block = nextBlockConfig(
+                    session,
+                    state.ladder[mode],
+                    mode,
+                    state.settings.trials
+                );
+                const applied = applyBlockConfigToStore(
+                    applyAdaptiveLadderToSettings(state.settings, state.ladder[mode]),
+                    block
+                );
+                set({
+                    adaptiveSession: {
+                        ...session,
+                        phase: playingPhaseForBlockRole(block.blockRole),
+                    },
+                    lastBlockRole: null,
+                    lastControllerAction: null,
+                    settings: applied.settings,
+                    blockModalities: applied.blockModalities,
+                });
+            }
+        } else {
+            set({
+                adaptiveSession: null,
+                lastBlockRole: null,
+                lastControllerAction: null,
+                blockModalities: null,
+            });
+        }
+
+        beginCountdown(get, set, true);
     },
     cancelGame: () => {
         clearCountdownTimer();
         get().game?.cancel();
-        const modalities = getModalitiesForMode(get().settings.mode);
+        const state = get();
+        const modalities = getModalitiesForMode(state.settings.mode);
+        const clearAdaptive =
+            state.settings.playMode === 'adaptive' && state.adaptiveSession != null;
         set({
             countdown: null,
+            adaptiveSession: clearAdaptive ? null : state.adaptiveSession,
+            blockModalities: null,
             activeModalities: modalities,
             btns: createEmptyButtons(modalities),
             boardState: { ...defaultBoardState },
@@ -263,20 +449,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         set((state) => ({
             btns: createEmptyButtons(state.activeModalities),
         })),
-    pushGameResult: (result) =>
-        set((state) => {
-            const modalities = getModalitiesForMode(state.settings.mode);
-            return {
-                results: {
-                    all: [...state.results.all, result],
-                    last: result,
-                },
-                game: null,
-                activeModalities: modalities,
-                btns: createEmptyButtons(modalities),
-                boardState: { ...defaultBoardState },
-            };
-        }),
+    pushGameResult: (result) => {
+        finalizeGameEnd(get, set, result);
+    },
     clearLastResult: () =>
         set((state) => ({
             results: { ...state.results, last: null },

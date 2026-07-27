@@ -3,6 +3,8 @@ import { COUNTDOWN_START, COUNTDOWN_TICK_MS, useGameStore } from './gameStore';
 import { ButtonState } from '../model/enums/buttonState';
 import { DEFAULT_ISI_MAX_MS, DEFAULT_ISI_MIN_MS } from '../model/isi';
 import { createDefaultLadderByMode, LADDER_STORAGE_KEY } from '../model/ladderPersistence';
+import { GameResult } from '../model/GameResult';
+import { createInitialAdaptiveSession } from './adaptiveSession';
 
 async function finishCountdown() {
     await vi.advanceTimersByTimeAsync(COUNTDOWN_START * COUNTDOWN_TICK_MS);
@@ -27,6 +29,10 @@ describe('gameStore', () => {
             },
             btns: { audio: ButtonState.None, position: ButtonState.None },
             ladder: createDefaultLadderByMode(),
+            adaptiveSession: null,
+            lastBlockRole: null,
+            lastControllerAction: null,
+            blockModalities: null,
             settings: {
                 level: 2,
                 trials: 1,
@@ -254,5 +260,80 @@ describe('gameStore', () => {
         });
 
         vi.unstubAllGlobals();
+    });
+
+    it('starts adaptive session in anchor-open after countdown', async () => {
+        useGameStore.getState().setPlayMode('adaptive');
+        useGameStore.getState().startGame();
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('anchor-open');
+
+        await finishCountdown();
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('anchor-open');
+        expect(useGameStore.getState().game).not.toBeNull();
+        expect(useGameStore.getState().settings.variableN).toBe(false);
+        expect(useGameStore.getState().settings.lureStage).toBe('A');
+
+        useGameStore.getState().cancelGame();
+    });
+
+    it('clears adaptive session when canceling mid adaptive run', async () => {
+        useGameStore.getState().setPlayMode('adaptive');
+        useGameStore.getState().startGame();
+        await finishCountdown();
+        expect(useGameStore.getState().adaptiveSession).not.toBeNull();
+
+        useGameStore.getState().cancelGame();
+        expect(useGameStore.getState().adaptiveSession).toBeNull();
+    });
+
+    it('keeps free-play as a single block without adaptive session state', async () => {
+        expect(useGameStore.getState().settings.playMode).toBe('free');
+        useGameStore.getState().startGame();
+        await finishCountdown();
+
+        const result = new GameResult(
+            {
+                audio: { success: 1, failed: 0 },
+                position: { success: 1, failed: 0 },
+            },
+            ['position', 'audio']
+        );
+        useGameStore.getState().pushGameResult(result);
+
+        expect(useGameStore.getState().adaptiveSession).toBeNull();
+        expect(useGameStore.getState().lastBlockRole).toBe('free');
+        expect(useGameStore.getState().results.last).toBe(result);
+    });
+
+    it('enters interstitial after adaptive block ends and continues on next startGame', async () => {
+        useGameStore.getState().setPlayMode('adaptive');
+        useGameStore.getState().startGame();
+        await finishCountdown();
+
+        useGameStore.setState({
+            adaptiveSession: {
+                ...createInitialAdaptiveSession({ adaptiveTarget: 3 }),
+                phase: 'anchor-open',
+            },
+        });
+
+        const result = new GameResult(
+            {
+                audio: { success: 1, failed: 0 },
+                position: { success: 1, failed: 0 },
+            },
+            ['position', 'audio']
+        );
+        useGameStore.getState().pushGameResult(result);
+
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('interstitial');
+        expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(true);
+        expect(useGameStore.getState().adaptiveSession?.openAnchorsDone).toBe(1);
+        expect(useGameStore.getState().lastBlockRole).toBe('anchor-open');
+
+        useGameStore.getState().startGame();
+        expect(useGameStore.getState().countdown).toBe(3);
+        expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(false);
+        useGameStore.getState().cancelGame();
     });
 });
