@@ -57,6 +57,7 @@ export class GameSession extends Game {
                 interferenceChance: settings.interferenceChance,
                 variableN: settings.variableN,
                 audioPack: settings.audioPack,
+                lureStage: settings.lureStage,
             }
         );
         this.getStore = getStore;

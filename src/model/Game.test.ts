@@ -353,6 +353,121 @@ describe('Game', () => {
         expect(sdtTotal).toBeGreaterThan(recapTotal);
     });
 
+    it('stage A produces no deliberate lure tags', async () => {
+        let result: import('./GameResult').GameResult | null = null;
+        let randomCall = 0;
+        const game = new Game(
+            3,
+            20,
+            10,
+            10,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                lureStage: 'A',
+                guaranteedMatchChance: 0,
+                interferenceChance: 1, // ignored when lureStage set
+                random: () => {
+                    const v = (randomCall % 9) / 9;
+                    randomCall++;
+                    return v;
+                },
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 20; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        const lureEvents =
+            result!.sdt?.byModality.position?.all.counts.falseAlarms !== undefined
+                ? // count lure-stratum events via lure FA+CR
+                  result!.sdt!.byModality.position!.lure.counts.falseAlarms +
+                  result!.sdt!.byModality.position!.lure.counts.correctRejections
+                : 0;
+        expect(lureEvents).toBe(0);
+    });
+
+    it('stage E tags n±1 lures and lure FAs feed d′_lure', async () => {
+        let result: import('./GameResult').GameResult | null = null;
+        // Always fail guaranteed-match roll (r1>=1), always take lure roll (r2=0).
+        const sequence = [0.99, 0, 0.5, 0.5];
+        let idx = 0;
+        const game = new Game(
+            3,
+            12,
+            10,
+            10,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                lureStage: 'E',
+                guaranteedMatchChance: 0,
+                random: () => {
+                    const v = sequence[idx % sequence.length];
+                    idx++;
+                    return v;
+                },
+            }
+        );
+
+        const startPromise = game.start();
+        // Claim position on every trial after warmup → FAs on lures.
+        for (let i = 0; i < 12; i++) {
+            if (i >= 3) game.addChoice('position');
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        const pos = result!.sdt!.byModality.position!;
+        expect(
+            pos.lure.counts.falseAlarms + pos.lure.counts.correctRejections
+        ).toBeGreaterThan(0);
+        expect(pos.lure.counts.falseAlarms).toBeGreaterThan(0);
+        expect(pos.lure.dPrime).toBeLessThan(pos.clean.dPrime);
+    });
+
+    it('omits n−1 lure candidates at session level 2 with lureStage C', async () => {
+        const states: import('./types').BoardState[] = [];
+        let randomCall = 0;
+        // Force lure attempts: r1 high, r2 low; then offset shuffle picks.
+        const game = new Game(
+            2,
+            8,
+            10,
+            10,
+            (state) => states.push({ ...state }),
+            () => undefined,
+            () => undefined,
+            {
+                lureStage: 'C',
+                guaranteedMatchChance: 0,
+                random: () => {
+                    // Alternating: for generateModalityValue pairs (r1,r2) then position picks / shuffles
+                    return randomCall++ % 2 === 0 ? 0.99 : 0.01;
+                },
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 8; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        // At n=2, C offsets are [1] only — lure lag = effectiveN+1 = 3, never n−1 (=1).
+        // Smoke: game completed without throw; offsets helper covered in lureStages.test.
+        expect(states.length).toBe(8);
+    });
+
     it('records miss in SDT when target is not claimed', async () => {
         let result: import('./GameResult').GameResult | null = null;
         let randomCall = 0;

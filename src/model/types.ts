@@ -2,6 +2,7 @@ import { ColorId } from './colorSet';
 import { ImageId } from './imageSet';
 import { ModalityId, ModeId } from './modalities';
 import { AudioPackId } from './audioPacks';
+import { LureStageId } from './lureStages';
 
 export interface BoardState {
     positionIndex: number;
@@ -27,6 +28,11 @@ export type GameDeps = {
     variableN?: boolean;
     audioPack?: AudioPackId;
     mode?: ModeId;
+    /**
+     * When set, Adaptive lure-stage generation replaces free-play interferenceChance.
+     * Free-play leaves this undefined.
+     */
+    lureStage?: LureStageId;
 };
 
 export function getModalityValue(state: BoardState, modality: ModalityId): number | string {

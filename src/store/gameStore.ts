@@ -7,12 +7,17 @@ import { ModalityId, ModeId, getModalitiesForMode } from '../model/modalities';
 import { AudioPackId } from '../model/audioPacks';
 import { ColorId } from '../model/colorSet';
 import { ImageId } from '../model/imageSet';
+import { LureStageId } from '../model/lureStages';
 import { GameSession } from './GameSession';
 
 /** BW-style interference fractions: 0, 1/8 … 1, default 1/8. */
 export const INTERFERENCE_OPTIONS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1] as const;
 
 export type InterferenceChance = (typeof INTERFERENCE_OPTIONS)[number];
+
+/** Pre-round flash countdown (3 → 2 → 1). */
+export const COUNTDOWN_START = 3;
+export const COUNTDOWN_TICK_MS = 1000;
 
 export interface GameStoreState {
     results: {
@@ -22,6 +27,8 @@ export interface GameStoreState {
     speech: Speech;
     btns: Partial<Record<ModalityId, `${ButtonState}`>>;
     activeModalities: ModalityId[];
+    /** Seconds remaining in start countdown; null when idle or in-session. */
+    countdown: number | null;
     game: GameSession | null;
     boardState: {
         positionIndex: number;
@@ -45,6 +52,8 @@ export interface GameStoreState {
         audioPack: AudioPackId;
         interferenceChance: InterferenceChance;
         variableN: boolean;
+        /** When set (Adaptive), Game uses lure-stage generation instead of interferenceChance. */
+        lureStage?: LureStageId;
     };
 }
 
@@ -92,6 +101,54 @@ function createEmptyButtons(modalities: ModalityId[]): Partial<Record<ModalityId
     return btns;
 }
 
+let countdownTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearCountdownTimer = () => {
+    if (countdownTimer !== null) {
+        clearTimeout(countdownTimer);
+        countdownTimer = null;
+    }
+};
+
+type StoreGet = () => GameStore;
+type StoreSet = (
+    partial: Partial<GameStore> | ((state: GameStore) => Partial<GameStore>)
+) => void;
+
+const launchSession = (get: StoreGet, set: StoreSet) => {
+    const settings = get().settings;
+    const modalities = getModalitiesForMode(settings.mode);
+    const session = new GameSession(get, set);
+    set({
+        game: session,
+        countdown: null,
+        activeModalities: modalities,
+        btns: createEmptyButtons(modalities),
+        boardState: {
+            ...defaultBoardState,
+            currentTrials: settings.trials,
+            nForTrial: settings.level,
+        },
+    });
+    session.begin();
+};
+
+const scheduleCountdownTick = (current: number, get: StoreGet, set: StoreSet) => {
+    countdownTimer = setTimeout(() => {
+        countdownTimer = null;
+        if (get().countdown === null) return;
+
+        if (current <= 1) {
+            launchSession(get, set);
+            return;
+        }
+
+        const next = current - 1;
+        set({ countdown: next });
+        scheduleCountdownTick(next, get, set);
+    }, COUNTDOWN_TICK_MS);
+};
+
 export const useGameStore = create<GameStore>((set, get) => ({
     results: {
         all: [],
@@ -100,6 +157,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     speech: new Speech('letters'),
     btns: createEmptyButtons(getModalitiesForMode('dual')),
     activeModalities: getModalitiesForMode('dual'),
+    countdown: null,
     game: null,
     boardState: { ...defaultBoardState },
     settings: {
@@ -121,26 +179,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (get().game !== null) {
             throw new Error('Game is already defined');
         }
-        const settings = get().settings;
-        const modalities = getModalitiesForMode(settings.mode);
-        const session = new GameSession(get, set);
+        if (get().countdown !== null) {
+            throw new Error('Countdown is already in progress');
+        }
+
+        clearCountdownTimer();
         set({
-            game: session,
-            activeModalities: modalities,
-            btns: createEmptyButtons(modalities),
+            countdown: COUNTDOWN_START,
             results: { ...get().results, last: null },
-            boardState: {
-                ...defaultBoardState,
-                currentTrials: settings.trials,
-                nForTrial: settings.level,
-            },
         });
-        session.begin();
+        scheduleCountdownTick(COUNTDOWN_START, get, set);
     },
     cancelGame: () => {
+        clearCountdownTimer();
         get().game?.cancel();
         const modalities = getModalitiesForMode(get().settings.mode);
         set({
+            countdown: null,
             activeModalities: modalities,
             btns: createEmptyButtons(modalities),
             boardState: { ...defaultBoardState },

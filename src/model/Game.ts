@@ -5,6 +5,7 @@ import { AudioPackId, getRandomAudioToken } from './audioPacks';
 import { getRandomColorId } from './colorSet';
 import { getRandomImageId } from './imageSet';
 import { ModalityId, getModalitiesForMode, ModeId } from './modalities';
+import { getLureStagePolicy, lureOffsetsForStage, LureStageId } from './lureStages';
 import { buildBlockSdtReport, classifySdtCell } from './sdtMetrics';
 import { BoardState, GameDeps, getModalityValue } from './types';
 
@@ -44,6 +45,7 @@ export class Game {
     private readonly variableN: boolean;
     private readonly variableNList: number[];
     private readonly audioPack: AudioPackId;
+    private readonly lureStage: LureStageId | null;
 
     private _isGameInProgress: boolean;
     private _playerChoice: Match | null;
@@ -51,6 +53,7 @@ export class Game {
     private _currentMatch: ResultMatch | null;
     private _currentIteration: number;
     private _pendingStrata: ModalityStrata;
+    private _pendingLureLags: Partial<Record<ModalityId, number>>;
     private _trialOnsetMs: number | null;
     private _claimRtMs: Partial<Record<ModalityId, number>>;
 
@@ -66,8 +69,9 @@ export class Game {
         if (newState === null) return;
         this._currentState = newState;
         this.onStateChanged(newState);
-        this.gameHistory.addState(newState, this._pendingStrata);
+        this.gameHistory.addState(newState, this._pendingStrata, this._pendingLureLags);
         this._pendingStrata = {};
+        this._pendingLureLags = {};
         this._trialOnsetMs = Date.now();
         this._claimRtMs = {};
     }
@@ -120,6 +124,7 @@ export class Game {
         this.guaranteedMatchChance = deps.guaranteedMatchChance ?? DEFAULT_GUARANTEED_MATCH_CHANCE;
         this.variableN = deps.variableN ?? false;
         this.audioPack = deps.audioPack ?? 'letters';
+        this.lureStage = deps.lureStage ?? null;
         this.variableNList = this.variableN
             ? makeVariableNList(gameLength, n, this.random)
             : [];
@@ -133,6 +138,7 @@ export class Game {
         this._currentMatch = null;
         this._currentIteration = 0;
         this._pendingStrata = {};
+        this._pendingLureLags = {};
         this._trialOnsetMs = null;
         this._claimRtMs = {};
     }
@@ -237,6 +243,7 @@ export class Game {
         const trialIndex = this.gameHistory.boardStates.length - 1;
         const effectiveN = this.getEffectiveN(trialIndex);
         const strata = this.gameHistory.modalityStrata[trialIndex] ?? {};
+        const lureLags = this.gameHistory.modalityLureLags[trialIndex] ?? {};
 
         for (const modality of this.activeModalities) {
             const claimed = this._playerChoice.isClaimed(modality);
@@ -248,11 +255,12 @@ export class Game {
 
             const matched = this.isModalityMatch(modality, effectiveN);
             const cell = classifySdtCell(matched, claimed);
-            const stratum = strata[modality] ?? 'clean';
+            const stratum = matched ? 'clean' : (strata[modality] ?? 'clean');
             this.gameHistory.addSdtEvent({
                 modality,
                 cell,
-                stratum: matched ? 'clean' : stratum,
+                stratum,
+                lureLag: !matched && stratum === 'lure' ? lureLags[modality] : undefined,
                 responseTimeMs: claimed ? this._claimRtMs[modality] : undefined,
             });
 
@@ -287,6 +295,9 @@ export class Game {
             currentTrials: this.gameLength - this._currentIteration,
             nForTrial: effectiveN,
         };
+
+        this._pendingStrata = {};
+        this._pendingLureLags = {};
 
         for (const modality of this.activeModalities) {
             const value = this.generateModalityValue(modality, effectiveN);
@@ -336,25 +347,45 @@ export class Game {
             return trueMatchValue;
         }
 
+        if (this.lureStage != null) {
+            const policy = getLureStagePolicy(this.lureStage);
+            if (r2 < policy.lureRate && this.sessionLevel > 1) {
+                const lure = this.tryLure(
+                    modality,
+                    effectiveN,
+                    trueMatchValue,
+                    lureOffsetsForStage(this.lureStage, this.sessionLevel)
+                );
+                if (lure !== null) {
+                    this._pendingStrata[modality] = 'lure';
+                    this._pendingLureLags[modality] = lure.lag;
+                    return lure.value;
+                }
+            }
+            return this.getRandomModalityValue(modality);
+        }
+
         if (r2 < this.interferenceChance && this.sessionLevel > 1) {
-            const nearMiss = this.tryNearMiss(modality, effectiveN, trueMatchValue);
+            const offsets =
+                this.sessionLevel < 3 ? [1, this.sessionLevel] : [-1, 1, this.sessionLevel];
+            const nearMiss = this.tryLure(modality, effectiveN, trueMatchValue, offsets);
             if (nearMiss !== null) {
-                return nearMiss;
+                this._pendingStrata[modality] = 'lure';
+                this._pendingLureLags[modality] = nearMiss.lag;
+                return nearMiss.value;
             }
         }
 
         return this.getRandomModalityValue(modality);
     }
 
-    private tryNearMiss(
+    private tryLure(
         modality: ModalityId,
         effectiveN: number,
-        trueMatchValue: number | string | null
-    ): number | string | null {
+        trueMatchValue: number | string | null,
+        offsets: number[]
+    ): { value: number | string; lag: number } | null {
         const historyLen = this.gameHistory.boardStates.length;
-        const offsets =
-            this.sessionLevel < 3 ? [1, this.sessionLevel] : [-1, 1, this.sessionLevel];
-
         const shuffled = [...offsets].sort(() => this.random() - 0.5);
 
         for (const offset of shuffled) {
@@ -366,7 +397,7 @@ export class Game {
                 modality
             );
             if (candidate !== trueMatchValue) {
-                return candidate;
+                return { value: candidate, lag };
             }
         }
 

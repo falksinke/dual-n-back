@@ -27,6 +27,8 @@ export class GameHistory {
     public matches: Matches;
     /** Parallel to boardStates: intended non-target stratum per modality. */
     public modalityStrata: ModalityStrata[];
+    /** Parallel to boardStates: lure lag when stratum is lure. */
+    public modalityLureLags: Partial<Record<ModalityId, number>>[];
     public sdtEvents: SdtTrialEvent[];
     private readonly modalities: ModalityId[];
 
@@ -36,12 +38,18 @@ export class GameHistory {
         this.playerChoices = [];
         this.matches = createEmptyMatches(modalities);
         this.modalityStrata = [];
+        this.modalityLureLags = [];
         this.sdtEvents = [];
     }
 
-    public addState(boardState: BoardState, strata: ModalityStrata = {}) {
+    public addState(
+        boardState: BoardState,
+        strata: ModalityStrata = {},
+        lureLags: Partial<Record<ModalityId, number>> = {}
+    ) {
         this.boardStates.push(boardState);
         this.modalityStrata.push(strata);
+        this.modalityLureLags.push(lureLags);
     }
 
     public addChoice(playerChoice: Match) {
@@ -64,6 +72,7 @@ export class GameHistory {
         this.playerChoices = [];
         this.matches = createEmptyMatches(this.modalities);
         this.modalityStrata = [];
+        this.modalityLureLags = [];
         this.sdtEvents = [];
     }
 
