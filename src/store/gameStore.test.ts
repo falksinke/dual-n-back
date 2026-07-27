@@ -1,6 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { useGameStore } from './gameStore';
+import { COUNTDOWN_START, COUNTDOWN_TICK_MS, useGameStore } from './gameStore';
 import { ButtonState } from '../model/enums/buttonState';
+import { DEFAULT_ISI_MAX_MS, DEFAULT_ISI_MIN_MS } from '../model/isi';
+import { createDefaultLadderByMode, LADDER_STORAGE_KEY } from '../model/ladderPersistence';
+
+async function finishCountdown() {
+    await vi.advanceTimersByTimeAsync(COUNTDOWN_START * COUNTDOWN_TICK_MS);
+}
 
 describe('gameStore', () => {
     beforeEach(() => {
@@ -8,6 +14,7 @@ describe('gameStore', () => {
         vi.spyOn(useGameStore.getState().speech, 'play').mockImplementation(() => undefined);
         useGameStore.setState({
             game: null,
+            countdown: null,
             activeModalities: ['position', 'audio'],
             results: { all: [], last: null },
             boardState: {
@@ -19,6 +26,7 @@ describe('gameStore', () => {
                 nForTrial: -1,
             },
             btns: { audio: ButtonState.None, position: ButtonState.None },
+            ladder: createDefaultLadderByMode(),
             settings: {
                 level: 2,
                 trials: 1,
@@ -33,24 +41,44 @@ describe('gameStore', () => {
                 audioPack: 'letters',
                 interferenceChance: 0.125,
                 variableN: false,
+                playMode: 'free',
             },
         });
     });
 
     afterEach(() => {
-        useGameStore.getState().game?.cancel();
+        useGameStore.getState().cancelGame();
         vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
+    it('runs a 3-2-1 countdown before launching the session', async () => {
+        useGameStore.getState().startGame();
+        expect(useGameStore.getState().countdown).toBe(3);
+        expect(useGameStore.getState().game).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(COUNTDOWN_TICK_MS);
+        expect(useGameStore.getState().countdown).toBe(2);
+
+        await vi.advanceTimersByTimeAsync(COUNTDOWN_TICK_MS);
+        expect(useGameStore.getState().countdown).toBe(1);
+
+        await vi.advanceTimersByTimeAsync(COUNTDOWN_TICK_MS);
+        expect(useGameStore.getState().countdown).toBeNull();
+        expect(useGameStore.getState().game).not.toBeNull();
+        expect(useGameStore.getState().boardState.positionIndex).toBeGreaterThanOrEqual(0);
+    });
+
     it('starts a game and updates board state from callbacks', async () => {
         useGameStore.getState().startGame();
+        await finishCountdown();
         expect(useGameStore.getState().game).not.toBeNull();
         expect(useGameStore.getState().boardState.positionIndex).toBeGreaterThanOrEqual(0);
     });
 
     it('clears highlight after stimulus duration', async () => {
         useGameStore.getState().startGame();
+        await finishCountdown();
         expect(useGameStore.getState().boardState.positionIndex).toBeGreaterThanOrEqual(0);
 
         await vi.advanceTimersByTimeAsync(1000);
@@ -59,15 +87,32 @@ describe('gameStore', () => {
 
     it('cancel clears game without pushing results', async () => {
         useGameStore.getState().startGame();
+        await finishCountdown();
         useGameStore.getState().cancelGame();
 
         expect(useGameStore.getState().game).toBeNull();
         expect(useGameStore.getState().results.last).toBeNull();
     });
 
-    it('throws when starting while a game is active', () => {
+    it('cancel during countdown aborts before session launch', async () => {
         useGameStore.getState().startGame();
+        expect(useGameStore.getState().countdown).toBe(3);
+        useGameStore.getState().cancelGame();
+
+        await finishCountdown();
+        expect(useGameStore.getState().countdown).toBeNull();
+        expect(useGameStore.getState().game).toBeNull();
+    });
+
+    it('throws when starting while a game is active', async () => {
+        useGameStore.getState().startGame();
+        await finishCountdown();
         expect(() => useGameStore.getState().startGame()).toThrow('Game is already defined');
+    });
+
+    it('throws when starting while countdown is in progress', () => {
+        useGameStore.getState().startGame();
+        expect(() => useGameStore.getState().startGame()).toThrow('Countdown is already in progress');
     });
 
     it('starts triple mode with piano without throw and carries color id', async () => {
@@ -85,6 +130,7 @@ describe('gameStore', () => {
         useGameStore.getState().setAudioPack('piano');
 
         expect(() => useGameStore.getState().startGame()).not.toThrow();
+        await finishCountdown();
         expect(useGameStore.getState().activeModalities).toEqual(['position', 'color', 'audio']);
         expect(useGameStore.getState().boardState.colorId).not.toBeNull();
 
@@ -93,6 +139,7 @@ describe('gameStore', () => {
 
     it('snapshots mode and interference at session start', async () => {
         useGameStore.getState().startGame();
+        await finishCountdown();
         const session = useGameStore.getState().game!;
 
         useGameStore.getState().setMode('quad');
@@ -104,5 +151,108 @@ describe('gameStore', () => {
         ]);
 
         useGameStore.getState().cancelGame();
+    });
+
+    it('defaults playMode to free and keeps ladder separate from manual settings', () => {
+        expect(useGameStore.getState().settings.playMode).toBe('free');
+        expect(useGameStore.getState().ladder.dual).toEqual({
+            n: 2,
+            lureStage: 'A',
+            isiTier: 0,
+        });
+        expect(useGameStore.getState().settings.level).toBe(2);
+    });
+
+    it('applies adaptive ladder to settings when switching playMode while idle', () => {
+        useGameStore.setState((state) => ({
+            ladder: {
+                ...state.ladder,
+                dual: { n: 4, lureStage: 'D', isiTier: 0 },
+            },
+            settings: {
+                ...state.settings,
+                level: 5,
+                variableN: true,
+                interferenceChance: 0.5,
+            },
+        }));
+
+        useGameStore.getState().setPlayMode('adaptive');
+
+        const { settings } = useGameStore.getState();
+        expect(settings.playMode).toBe('adaptive');
+        expect(settings.level).toBe(4);
+        expect(settings.lureStage).toBe('D');
+        expect(settings.variableN).toBe(false);
+        expect(settings.isiMin).toBe(DEFAULT_ISI_MIN_MS);
+        expect(settings.isiMax).toBe(DEFAULT_ISI_MAX_MS);
+        // Free-play knobs remain in store but adaptive session uses ladder-driven fields.
+        expect(settings.interferenceChance).toBe(0.5);
+    });
+
+    it('rejects playMode changes during countdown or active session', async () => {
+        useGameStore.getState().startGame();
+        expect(useGameStore.getState().countdown).toBe(3);
+        useGameStore.getState().setPlayMode('adaptive');
+        expect(useGameStore.getState().settings.playMode).toBe('free');
+
+        await finishCountdown();
+        useGameStore.getState().setPlayMode('adaptive');
+        expect(useGameStore.getState().settings.playMode).toBe('free');
+
+        useGameStore.getState().cancelGame();
+    });
+
+    it('applies mode ladder when switching mode in adaptive playMode while idle', () => {
+        useGameStore.setState((state) => ({
+            ladder: {
+                ...state.ladder,
+                dual: { n: 3, lureStage: 'B', isiTier: 0 },
+                triple: { n: 5, lureStage: 'E', isiTier: 0 },
+            },
+            settings: { ...state.settings, playMode: 'adaptive', mode: 'dual', level: 3 },
+        }));
+
+        useGameStore.getState().setMode('triple');
+
+        const { settings } = useGameStore.getState();
+        expect(settings.mode).toBe('triple');
+        expect(settings.level).toBe(5);
+        expect(settings.lureStage).toBe('E');
+    });
+
+    it('persists ladder state via saveLadder', () => {
+        const storage = {
+            data: {} as Record<string, string>,
+            getItem(key: string) {
+                return this.data[key] ?? null;
+            },
+            setItem(key: string, value: string) {
+                this.data[key] = value;
+            },
+        };
+        vi.stubGlobal('localStorage', storage);
+
+        useGameStore.setState((state) => ({
+            ladder: {
+                ...state.ladder,
+                quad: { n: 6, lureStage: 'C', isiTier: 1 },
+            },
+        }));
+
+        useGameStore.getState().saveLadder();
+
+        const raw = storage.getItem(LADDER_STORAGE_KEY);
+        expect(raw).not.toBeNull();
+        expect(JSON.parse(raw!)).toEqual({
+            version: 1,
+            byMode: {
+                dual: { n: 2, lureStage: 'A', isiTier: 0 },
+                triple: { n: 2, lureStage: 'A', isiTier: 0 },
+                quad: { n: 6, lureStage: 'C', isiTier: 1 },
+            },
+        });
+
+        vi.unstubAllGlobals();
     });
 });

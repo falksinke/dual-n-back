@@ -7,8 +7,17 @@ import { ModalityId, ModeId, getModalitiesForMode } from '../model/modalities';
 import { AudioPackId } from '../model/audioPacks';
 import { ColorId } from '../model/colorSet';
 import { ImageId } from '../model/imageSet';
+import {
+    isiMsFromTier,
+    loadLadder,
+    ModeLadderSnapshot,
+    saveLadder as persistLadder,
+    type LadderStorageV1,
+} from '../model/ladderPersistence';
 import { LureStageId } from '../model/lureStages';
 import { GameSession } from './GameSession';
+
+export type PlayMode = 'free' | 'adaptive';
 
 /** BW-style interference fractions: 0, 1/8 … 1, default 1/8. */
 export const INTERFERENCE_OPTIONS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1] as const;
@@ -30,6 +39,8 @@ export interface GameStoreState {
     /** Seconds remaining in start countdown; null when idle or in-session. */
     countdown: number | null;
     game: GameSession | null;
+    /** Adaptive ladder snapshot per mode (persisted separately from free-play settings). */
+    ladder: Record<ModeId, ModeLadderSnapshot>;
     boardState: {
         positionIndex: number;
         audioToken: string | null;
@@ -52,6 +63,7 @@ export interface GameStoreState {
         audioPack: AudioPackId;
         interferenceChance: InterferenceChance;
         variableN: boolean;
+        playMode: PlayMode;
         /** When set (Adaptive), Game uses lure-stage generation instead of interferenceChance. */
         lureStage?: LureStageId;
     };
@@ -80,6 +92,8 @@ export interface GameStoreActions {
     setAudioPack: (pack: AudioPackId) => void;
     cycleInterferenceChance: () => void;
     setVariableN: (enabled: boolean) => void;
+    setPlayMode: (playMode: PlayMode) => void;
+    saveLadder: () => void;
 }
 
 export type GameStore = GameStoreState & GameStoreActions;
@@ -133,6 +147,33 @@ const launchSession = (get: StoreGet, set: StoreSet) => {
     session.begin();
 };
 
+function applyAdaptiveLadderToSettings<
+    T extends GameStoreState['settings'],
+>(settings: T, modeLadder: ModeLadderSnapshot): T {
+    const { isiMin, isiMax } = isiMsFromTier(modeLadder.isiTier);
+    return {
+        ...settings,
+        level: modeLadder.n,
+        lureStage: modeLadder.lureStage,
+        variableN: false,
+        isiMin,
+        isiMax,
+    };
+}
+
+function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): LadderStorageV1 {
+    return {
+        version: 1,
+        byMode: {
+            dual: { ...ladder.dual },
+            triple: { ...ladder.triple },
+            quad: { ...ladder.quad },
+        },
+    };
+}
+
+const initialLadderStorage = loadLadder();
+
 const scheduleCountdownTick = (current: number, get: StoreGet, set: StoreSet) => {
     countdownTimer = setTimeout(() => {
         countdownTimer = null;
@@ -159,6 +200,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     activeModalities: getModalitiesForMode('dual'),
     countdown: null,
     game: null,
+    ladder: initialLadderStorage.byMode,
     boardState: { ...defaultBoardState },
     settings: {
         level: 5,
@@ -174,6 +216,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         audioPack: 'letters',
         interferenceChance: 0.125,
         variableN: false,
+        playMode: 'free',
     },
     startGame: () => {
         if (get().game !== null) {
@@ -311,8 +354,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 return { settings: { ...state.settings, mode } };
             }
             const modalities = getModalitiesForMode(mode);
+            let settings = { ...state.settings, mode };
+            if (
+                settings.playMode === 'adaptive' &&
+                state.countdown === null
+            ) {
+                settings = applyAdaptiveLadderToSettings(settings, state.ladder[mode]);
+            }
             return {
-                settings: { ...state.settings, mode },
+                settings,
                 activeModalities: modalities,
                 btns: createEmptyButtons(modalities),
             };
@@ -335,4 +385,28 @@ export const useGameStore = create<GameStore>((set, get) => ({
         set((state) => ({
             settings: { ...state.settings, variableN: enabled },
         })),
+    setPlayMode: (playMode) => {
+        const state = get();
+        if (state.game !== null || state.countdown !== null) {
+            return;
+        }
+        set((current) => {
+            if (playMode === 'adaptive') {
+                const modeLadder = current.ladder[current.settings.mode];
+                return {
+                    settings: applyAdaptiveLadderToSettings(
+                        { ...current.settings, playMode },
+                        modeLadder
+                    ),
+                };
+            }
+            const { lureStage: _removed, ...rest } = current.settings;
+            return {
+                settings: { ...rest, playMode },
+            };
+        });
+    },
+    saveLadder: () => {
+        persistLadder(ladderStorageFromState(get().ladder));
+    },
 }));
