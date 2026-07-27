@@ -1,19 +1,39 @@
-import { Component, ComponentProps } from 'solid-js';
-import store from '../../store';
+import { useGameStore } from '../../store/gameStore';
+import { getColorHex } from '../../model/colorSet';
+import { getImageSrc } from '../../model/imageSet';
 
-interface BoardSquareProps extends ComponentProps<any> {
+interface BoardSquareProps {
     index: number;
 }
 
-const BoardSquare: Component<BoardSquareProps> = (props: BoardSquareProps) => {
+const BoardSquare = ({ index }: BoardSquareProps) => {
+    const highlighted = useGameStore((state) => state.boardState.positionIndex === index);
+    const colorId = useGameStore((state) => state.boardState.colorId);
+    const imageId = useGameStore((state) => state.boardState.imageId);
+    const activeModalities = useGameStore((state) => state.activeModalities);
+
+    const showColor = highlighted && activeModalities.includes('color') && colorId !== null;
+    const showImage = highlighted && activeModalities.includes('image') && imageId !== null;
+
+    const fillColor = showColor ? getColorHex(colorId) : undefined;
+
     return (
-        <div
-            class={`square square-${props.index}`}
-            classList={{
-                highlighted: props.index === store.state.boardState.positionIndex,
-            }}
-        >
-            <div class={'inner-square'} style="color:white"></div>
+        <div className={`square square-${index}${highlighted ? ' highlighted' : ''}`}>
+            <div
+                className="inner-square"
+                style={{
+                    backgroundColor: fillColor ?? undefined,
+                }}
+            >
+                {showImage && (
+                    <img
+                        className="stimulus-image"
+                        src={getImageSrc(imageId)}
+                        alt=""
+                        aria-hidden="true"
+                    />
+                )}
+            </div>
         </div>
     );
 };

@@ -1,32 +1,18 @@
-import { Component, ComponentProps, createMemo } from 'solid-js';
-import { ButtonState } from '../../model/enums/buttonState';
-import store from '../../store';
+import { useGameStore } from '../../store/gameStore';
+import { ModalityId, DEFAULT_KEYS, MODALITY_LABELS } from '../../model/modalities';
 
-interface ActionButtonProps extends ComponentProps<'div'> {
-    type: 'position' | 'audio';
+interface ActionButtonProps {
+    modality: ModalityId;
 }
 
-const keys = {
-    position: 'A',
-    audio: 'L',
-};
-
-const ActionButton: Component<ActionButtonProps> = (props: ActionButtonProps) => {
-    let stateClass = createMemo(() => {
-        return store.state.btns[props.type];
-    });
-
-    // if (
-    //     !store.state.settings.activeFeedback &&
-    //     (stateClass === ButtonState.Error || stateClass === ButtonState.Success)
-    // ) {
-    //     stateClass = ButtonState.None;
-    // }
+const ActionButton = ({ modality }: ActionButtonProps) => {
+    const stateClass = useGameStore((state) => state.btns[modality] ?? 'None');
 
     return (
-        <div class="keybindings-notice">
-            <div class={`keybinding-line user-match-notice ${stateClass()}`}>
-                <strong>{keys[props.type]}</strong> - match {props.type}
+        <div className="keybindings-notice">
+            <div className={`keybinding-line user-match-notice ${stateClass}`}>
+                <strong>{DEFAULT_KEYS[modality].toUpperCase()}</strong> — match{' '}
+                {MODALITY_LABELS[modality].toLowerCase()}
             </div>
         </div>
     );

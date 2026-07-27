@@ -1,3 +1,5 @@
+export type ThemeMode = 'dark' | 'light';
+
 export interface Theme {
     background: string;
     border: string;

@@ -1,12 +1,15 @@
-import { Component } from 'solid-js';
 import ActionButton from './ActionButton';
+import { useGameStore } from '../../store/gameStore';
 import './UserMatchNotice.scss';
 
-const UserMatchNotice: Component = () => {
+const UserMatchNotice = () => {
+    const activeModalities = useGameStore((state) => state.activeModalities);
+
     return (
-        <div class="match-notice">
-            <ActionButton type="position" />
-            <ActionButton type="audio" />
+        <div className="match-notice">
+            {activeModalities.map((modality) => (
+                <ActionButton key={modality} modality={modality} />
+            ))}
         </div>
     );
 };

@@ -1,28 +1,48 @@
-import { GameHistory, Matches, MatchRecap } from './GameHistory';
+import { GameHistory } from './GameHistory';
 import { Match } from './Match';
-import { UserInput } from './enums/userInput';
-import { GameResult } from '../store/GameResult';
-import { BoardState } from '../store';
-import { Letter, LETTERS } from './constants';
+import { GameResult } from './GameResult';
+import { AudioPackId, getRandomAudioToken } from './audioPacks';
+import { getRandomColorId } from './colorSet';
+import { getRandomImageId } from './imageSet';
+import { ModalityId, getModalitiesForMode, ModeId } from './modalities';
+import { BoardState, GameDeps, getModalityValue } from './types';
 
-/**
- * Indicate if match failed or is a success.
- * Empty means nothing happened.
- */
-export type ResultMatch = {
-    [type in keyof Matches]?: keyof MatchRecap;
-};
+export type ResultMatch = Partial<Record<ModalityId, 'success' | 'failed'>>;
+
+const DEFAULT_GUARANTEED_MATCH_CHANCE = 0.125;
+const DEFAULT_INTERFERENCE_CHANCE = 0.125;
+
+/** BW-shaped variable N list: length trials - level, Beta(level/2, 1) samples. */
+export function makeVariableNList(
+    trials: number,
+    level: number,
+    random: () => number
+): number[] {
+    const length = Math.max(0, trials - level);
+    const beta = level / 2;
+    const list: number[] = [];
+    for (let i = 0; i < length; i++) {
+        const sample = Math.pow(random(), 1 / beta);
+        const n = Math.max(1, Math.min(level, Math.round(sample * level)));
+        list.push(n);
+    }
+    return list;
+}
 
 export class Game {
-    private readonly randomnessPercentageTreshold: number = 35;
-    private readonly positionRandomTreshold: number = 0.4;
-    private readonly audioRandomTreshold: number = 0.8;
-
-    private n: number;
-    private gameHistory: GameHistory;
-    private gameLength: number;
-    private intervalTime: number;
-    private restDelay: number;
+    private readonly sessionLevel: number;
+    private readonly gameHistory: GameHistory;
+    private readonly gameLength: number;
+    private readonly isiMin: number;
+    private readonly isiMax: number;
+    private readonly random: () => number;
+    private readonly allowCenterStimulus: boolean;
+    private readonly activeModalities: ModalityId[];
+    private readonly interferenceChance: number;
+    private readonly guaranteedMatchChance: number;
+    private readonly variableN: boolean;
+    private readonly variableNList: number[];
+    private readonly audioPack: AudioPackId;
 
     private _isGameInProgress: boolean;
     private _playerChoice: Match | null;
@@ -54,28 +74,48 @@ export class Game {
         this._currentMatch = match;
         this.onPlayerChoiceValidated(match);
 
-        if (match.position) this.gameHistory.addMatch('position', match.position);
-        if (match.sound) this.gameHistory.addMatch('sound', match.sound);
+        for (const modality of this.activeModalities) {
+            const result = match[modality];
+            if (result) {
+                this.gameHistory.addMatch(modality, result);
+            }
+        }
     }
 
     get isGameInProgress(): boolean {
         return this._isGameInProgress;
     }
 
+    get modalities(): ModalityId[] {
+        return this.activeModalities;
+    }
+
     constructor(
         n: number,
         gameLength: number,
-        intervalTime: number,
-        restDelay: number,
+        isiMin: number,
+        isiMax: number,
         onStateChanged: (boardState: BoardState) => void = () => undefined,
         onPlayerChoiceValidated: (match: ResultMatch) => void = () => undefined,
-        onGameEnded: (gameResult: GameResult) => void = () => undefined
+        onGameEnded: (gameResult: GameResult) => void = () => undefined,
+        deps: GameDeps = {}
     ) {
-        this.n = n;
-        this.gameHistory = new GameHistory();
+        this.sessionLevel = n;
+        const mode: ModeId = deps.mode ?? 'dual';
+        this.activeModalities = deps.modalities ?? getModalitiesForMode(mode);
+        this.gameHistory = new GameHistory(this.activeModalities);
         this.gameLength = gameLength;
-        this.intervalTime = intervalTime;
-        this.restDelay = restDelay;
+        this.isiMin = Math.min(isiMin, isiMax);
+        this.isiMax = Math.max(isiMin, isiMax);
+        this.random = deps.random ?? Math.random;
+        this.allowCenterStimulus = deps.allowCenterStimulus ?? true;
+        this.interferenceChance = deps.interferenceChance ?? DEFAULT_INTERFERENCE_CHANCE;
+        this.guaranteedMatchChance = deps.guaranteedMatchChance ?? DEFAULT_GUARANTEED_MATCH_CHANCE;
+        this.variableN = deps.variableN ?? false;
+        this.audioPack = deps.audioPack ?? 'letters';
+        this.variableNList = this.variableN
+            ? makeVariableNList(gameLength, n, this.random)
+            : [];
         this.onStateChanged = onStateChanged;
         this.onPlayerChoiceValidated = onPlayerChoiceValidated;
         this.onGameEnded = onGameEnded;
@@ -94,8 +134,8 @@ export class Game {
 
         this._currentIteration = 0;
         while (this._currentIteration < this.gameLength && this._isGameInProgress) {
-            await this.executeDelayed(this.restDelay, this.generateState.bind(this));
-            await this.executeDelayed(this.intervalTime, this.processChoice.bind(this));
+            this.generateState();
+            await this.executeDelayed(this.sampleIsi(), this.processChoice.bind(this));
             this._currentIteration++;
         }
 
@@ -109,23 +149,29 @@ export class Game {
         this._isGameInProgress = false;
     }
 
-    public addChoice(input: UserInput) {
+    public addChoice(modality: ModalityId) {
         if (
             !this._isGameInProgress ||
+            !this.activeModalities.includes(modality) ||
             this.gameHistory.boardStates.length < 1 ||
             this.gameHistory.boardStates.length > this.gameLength
         ) {
             return;
         }
 
-        if (this._playerChoice == null) this._playerChoice = new Match(false, false);
+        if (this._playerChoice == null) {
+            this._playerChoice = new Match(this.activeModalities);
+        }
 
-        if (input === UserInput.Audio && !this._playerChoice.soundMatch) {
-            this._playerChoice.soundMatch = true;
+        this._playerChoice.claim(modality);
+    }
+
+    /** Uniform sample of inter-stimulus interval (stimulus onset → next onset). */
+    private sampleIsi(): number {
+        if (this.isiMax <= this.isiMin) {
+            return this.isiMin;
         }
-        if (input === UserInput.Position && !this._playerChoice.positionMatch) {
-            this._playerChoice.positionMatch = true;
-        }
+        return Math.round(this.isiMin + this.random() * (this.isiMax - this.isiMin));
     }
 
     private async executeDelayed(delayMs: number, fn: () => void) {
@@ -141,45 +187,53 @@ export class Game {
     }
 
     private processChoice(): void {
-        if (this._playerChoice == null) this._playerChoice = new Match(false, false);
+        if (this._playerChoice == null) {
+            this._playerChoice = new Match(this.activeModalities);
+        }
         this.gameHistory.addChoice(this._playerChoice);
         this.validateChoice();
         this.resetChoice();
     }
 
-    private isPositionBoardMatch(): boolean {
-        const currentIndex = this.gameHistory.boardStates.length - 1;
-        return (
-            this.gameHistory.boardStates[currentIndex].positionIndex ===
-            this.gameHistory.boardStates[currentIndex - this.n].positionIndex
-        );
+    private getEffectiveN(trialIndex: number): number {
+        if (!this.variableN) {
+            return this.sessionLevel;
+        }
+        if (trialIndex < this.sessionLevel) {
+            return this.sessionLevel;
+        }
+        const listIndex = trialIndex - this.sessionLevel;
+        return this.variableNList[listIndex] ?? this.sessionLevel;
     }
 
-    private isSoundBoardMatch(): boolean {
+    private isModalityMatch(modality: ModalityId, effectiveN: number): boolean {
         const currentIndex = this.gameHistory.boardStates.length - 1;
-        return (
-            this.gameHistory.boardStates[currentIndex].letter ===
-            this.gameHistory.boardStates[currentIndex - this.n].letter
+        const current = getModalityValue(this.gameHistory.boardStates[currentIndex], modality);
+        const previous = getModalityValue(
+            this.gameHistory.boardStates[currentIndex - effectiveN],
+            modality
         );
+        return current === previous;
     }
 
     private validateChoice(): void {
         if (this._playerChoice === null) return;
 
         const match: ResultMatch = {};
-        const { positionMatch: positionChoiced, soundMatch: soundChoiced } = this._playerChoice;
+        const trialIndex = this.gameHistory.boardStates.length - 1;
+        const effectiveN = this.getEffectiveN(trialIndex);
 
-        if (this.gameHistory.boardStates.length <= this.n) {
-            if (positionChoiced) match.position = 'failed';
-            if (soundChoiced) match.sound = 'failed';
-        } else {
-            const positionMatched = this.isPositionBoardMatch();
-            const soundMatched = this.isSoundBoardMatch();
-            if (positionMatched || positionChoiced) {
-                match.position = positionMatched === positionChoiced ? 'success' : 'failed';
+        for (const modality of this.activeModalities) {
+            const claimed = this._playerChoice.isClaimed(modality);
+
+            if (trialIndex < effectiveN) {
+                if (claimed) match[modality] = 'failed';
+                continue;
             }
-            if (soundMatched || soundChoiced) {
-                match.sound = soundMatched === soundChoiced ? 'success' : 'failed';
+
+            const matched = this.isModalityMatch(modality, effectiveN);
+            if (matched || claimed) {
+                match[modality] = matched === claimed ? 'success' : 'failed';
             }
         }
 
@@ -187,83 +241,130 @@ export class Game {
     }
 
     private getGameResult(): GameResult {
-        return new GameResult(this.gameHistory.matches.sound, this.gameHistory.matches.position);
+        const recaps = {} as Record<ModalityId, { success: number; failed: number }>;
+        for (const modality of this.activeModalities) {
+            recaps[modality] = this.gameHistory.matches[modality] ?? { success: 0, failed: 0 };
+        }
+        return new GameResult(recaps, this.activeModalities);
     }
 
     private resetChoice() {
         this._playerChoice = null;
     }
 
-    /**
-     * By default, randomly generated states are matching only rarely, which makes it easy to get over 80%
-     * without user interaction.
-     * To increase the match percentage, we are checking previous states and if the percentage of matches of previous states
-     * is below the specified treshold, the newly generated state will be only partly random, or not random at all.
-     * It will have the same position, audio or both of a 'n-previous' state.
-     **/
-    private getMatchPercentage(): number {
-        let boardStates = this.gameHistory.boardStates;
-        if (boardStates.length < this.n) return 100;
-
-        let matches = 0;
-        for (let i = this.n; i < boardStates.length; i++) {
-            if (boardStates[i].positionIndex === boardStates[i - this.n].positionIndex) matches++;
-            if (boardStates[i].letter === boardStates[i - this.n].letter) matches++;
-        }
-        return (matches / boardStates.length / 2) * 100;
-    }
-
-    private generatePseudoRandomState(): BoardState {
-        let randomValue = Math.random();
-        let nPreviousBoardState = this.gameHistory.boardStates[this.gameHistory.boardStates.length - this.n];
-        // previous position
-        if (randomValue < this.positionRandomTreshold) {
-            return {
-                positionIndex: nPreviousBoardState.positionIndex,
-                letter: this.getRandomLetter(),
-                currentTrials: this.gameLength - this._currentIteration,
-            };
-
-            // previous letter
-        } else if (randomValue < this.audioRandomTreshold) {
-            return {
-                positionIndex: this.getRandomPosition(),
-                letter: nPreviousBoardState.letter,
-                currentTrials: this.gameLength - this._currentIteration,
-            };
-            // previous position and letter
-        } else {
-            return {
-                positionIndex: nPreviousBoardState.positionIndex,
-                letter: nPreviousBoardState.letter,
-                currentTrials: this.gameLength - this._currentIteration,
-            };
-        }
-    }
-
-    /**
-     * Generate a new state according the **randomnessPercentageTreshold** variable.
-     */
     private generateState(): void {
-        if (
-            this.gameHistory.boardStates.length >= this.n &&
-            this.getMatchPercentage() < this.randomnessPercentageTreshold
-        ) {
-            this.currentState = this.generatePseudoRandomState();
-        } else {
-            this.currentState = {
-                positionIndex: this.getRandomPosition(),
-                letter: this.getRandomLetter(),
-                currentTrials: this.gameLength - this._currentIteration,
-            };
+        const trialIndex = this._currentIteration;
+        const effectiveN = this.getEffectiveN(trialIndex);
+        const state: BoardState = {
+            positionIndex: 0,
+            audioToken: '',
+            currentTrials: this.gameLength - this._currentIteration,
+            nForTrial: effectiveN,
+        };
+
+        for (const modality of this.activeModalities) {
+            const value = this.generateModalityValue(modality, effectiveN);
+            this.applyModalityValue(state, modality, value);
+        }
+
+        this.currentState = state;
+    }
+
+    private applyModalityValue(
+        state: BoardState,
+        modality: ModalityId,
+        value: number | string
+    ): void {
+        switch (modality) {
+            case 'position':
+                state.positionIndex = value as number;
+                break;
+            case 'color':
+                state.colorId = value as BoardState['colorId'];
+                break;
+            case 'image':
+                state.imageId = value as BoardState['imageId'];
+                break;
+            case 'audio':
+                state.audioToken = value as string;
+                break;
+        }
+    }
+
+    private generateModalityValue(modality: ModalityId, effectiveN: number): number | string {
+        const historyLen = this.gameHistory.boardStates.length;
+        const canUseHistory = historyLen >= effectiveN;
+
+        if (!canUseHistory) {
+            return this.getRandomModalityValue(modality);
+        }
+
+        const r1 = this.random();
+        const r2 = this.random();
+        const trueMatchValue = getModalityValue(
+            this.gameHistory.boardStates[historyLen - effectiveN],
+            modality
+        );
+
+        if (r1 < this.guaranteedMatchChance) {
+            return trueMatchValue;
+        }
+
+        if (r2 < this.interferenceChance && this.sessionLevel > 1) {
+            const nearMiss = this.tryNearMiss(modality, effectiveN, trueMatchValue);
+            if (nearMiss !== null) {
+                return nearMiss;
+            }
+        }
+
+        return this.getRandomModalityValue(modality);
+    }
+
+    private tryNearMiss(
+        modality: ModalityId,
+        effectiveN: number,
+        trueMatchValue: number | string | null
+    ): number | string | null {
+        const historyLen = this.gameHistory.boardStates.length;
+        const offsets =
+            this.sessionLevel < 3 ? [1, this.sessionLevel] : [-1, 1, this.sessionLevel];
+
+        const shuffled = [...offsets].sort(() => this.random() - 0.5);
+
+        for (const offset of shuffled) {
+            const lag = effectiveN + offset;
+            if (lag < 1 || lag >= historyLen) continue;
+
+            const candidate = getModalityValue(
+                this.gameHistory.boardStates[historyLen - lag],
+                modality
+            );
+            if (candidate !== trueMatchValue) {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private getRandomModalityValue(modality: ModalityId): number | string {
+        switch (modality) {
+            case 'position':
+                return this.getRandomPosition();
+            case 'color':
+                return getRandomColorId(this.random);
+            case 'image':
+                return getRandomImageId(this.random);
+            case 'audio':
+                return getRandomAudioToken(this.audioPack, this.random);
         }
     }
 
     private getRandomPosition(): number {
-        return Math.floor(Math.random() * 9);
-    }
-
-    private getRandomLetter(): Letter {
-        return LETTERS[Math.floor(Math.random() * LETTERS.length)];
+        if (this.allowCenterStimulus) {
+            return Math.floor(this.random() * 9);
+        }
+        const slot = Math.floor(this.random() * 8);
+        return slot < 4 ? slot : slot + 1;
     }
 }

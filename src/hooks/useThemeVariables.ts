@@ -1,14 +1,15 @@
-import { applyInlineStyntax, toCSSVariableCase } from './../themes/config';
-import { createEffect } from 'solid-js';
-import { completeTheme, Theme } from '../themes/config';
+import { useEffect } from 'react';
+import { applyInlineStyntax, completeTheme, toCSSVariableCase, Theme } from '../themes/config';
 
-export const createTheme = (styleContainerID: string, theme: Theme): void => {
-    createEffect(() => {
-        let cssVariableDefinition = document.getElementById(styleContainerID);
+const VARIABLE_CONTAINER_DEFINITION_ID = 'app-css-variable-definition';
+
+export const useThemeVariables = (theme: Theme, mode?: 'dark' | 'light') => {
+    useEffect(() => {
+        let cssVariableDefinition = document.getElementById(VARIABLE_CONTAINER_DEFINITION_ID);
 
         if (cssVariableDefinition === null) {
             cssVariableDefinition = document.createElement('style');
-            cssVariableDefinition.id = styleContainerID;
+            cssVariableDefinition.id = VARIABLE_CONTAINER_DEFINITION_ID;
             document.head.insertBefore(cssVariableDefinition, document.head.querySelector('style'));
         }
 
@@ -28,5 +29,9 @@ export const createTheme = (styleContainerID: string, theme: Theme): void => {
             ${themeColors}
         }
         `;
-    });
+
+        if (mode) {
+            document.documentElement.dataset.theme = mode;
+        }
+    }, [theme, mode]);
 };

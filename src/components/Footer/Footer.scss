@@ -3,46 +3,109 @@
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
+    gap: 16px;
+    padding: 0 4px 4px;
     color: var(--textBackground);
 
-    .notice {
+    .footer-hints {
         display: flex;
-        align-items: center;
-        column-gap: 4px;
-        font-size: 12px;
-        letter-spacing: 1px;
+        flex-wrap: wrap;
+        gap: 14px 22px;
     }
 
-    .theme-notice {
-        text-transform: capitalize;
+    .hint-line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.75rem;
+        letter-spacing: 0.02em;
+    }
+
+    .hint-label {
+        margin-right: 2px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.65rem;
+        font-weight: 500;
+    }
+
+    .key {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1.4rem;
+        height: 1.4rem;
+        padding: 0 5px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--background) 80%, #000 20%);
+        color: var(--textForeground);
+        font: inherit;
+        font-size: 0.7rem;
+        line-height: 1;
+    }
+
+    .footer-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.7rem;
+        letter-spacing: 0.06em;
+        text-transform: lowercase;
+        opacity: 0.85;
+    }
+
+    .meta-theme {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        letter-spacing: inherit;
+        text-transform: inherit;
+        cursor: pointer;
+
+        &:hover,
+        &:focus-visible {
+            color: var(--textForeground);
+            outline: none;
+        }
+    }
+
+    .meta-theme + .meta-item::before {
+        content: '·';
+        margin-right: 8px;
+        opacity: 0.45;
     }
 }
 
 .keybindings-notice {
-    font-size: 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    row-gap: 6px;
+    font-size: 0.9rem;
+    color: var(--textBackground);
 
     .keybinding-line {
         display: flex;
         align-items: center;
-        column-gap: 6px;
+        justify-content: center;
+        gap: 8px;
+        letter-spacing: 0.01em;
 
-        strong {
-            font-weight: 400;
-            background-color: var(--textBackground);
-            color: var(--background);
-            padding: 1px 4px;
-            border-radius: 3px;
-            display: flex;
+        strong,
+        .key-space {
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-
-            svg {
-                transform: scale(1.3);
-            }
+            gap: 4px;
+            min-height: 1.6rem;
+            padding: 2px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: color-mix(in srgb, var(--background) 75%, #000 25%);
+            color: var(--textForeground);
+            font-weight: 500;
+            font-size: 0.8rem;
+            letter-spacing: 0.04em;
         }
     }
 }

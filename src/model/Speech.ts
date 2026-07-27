@@ -1,28 +1,34 @@
 import { Howl } from 'howler';
-import { Letter } from './constants';
+import { AudioPackId, getSoundSrc, getTokensForPack } from './audioPacks';
 
 export class Speech {
-    private readonly pathToLetterSounds = './assets/sounds/letters/';
+    private readonly pack: AudioPackId;
     private sounds: Map<string, Howl>;
 
-    constructor(letters: Letter[]) {
-        this.sounds = new Map<Letter, Howl>();
-        this.initializeSounds(letters);
+    constructor(pack: AudioPackId = 'letters') {
+        this.pack = pack;
+        this.sounds = new Map<string, Howl>();
+        this.initializeSounds(getTokensForPack(pack));
     }
 
-    public play(letter: Letter) {
-        this.sounds.get(letter)?.play();
+    public play(token: string) {
+        this.sounds.get(token)?.play();
     }
 
-    private initializeSounds(letters: Letter[]) {
-        for (const letter of letters) {
+    public getSoundSrc(token: string): string[] {
+        return getSoundSrc(this.pack, token);
+    }
+
+    public get audioPack(): AudioPackId {
+        return this.pack;
+    }
+
+    private initializeSounds(tokens: readonly string[]) {
+        for (const token of tokens) {
             this.sounds.set(
-                letter,
+                token,
                 new Howl({
-                    src: [
-                        this.pathToLetterSounds + letter + '.wav',
-                        this.pathToLetterSounds + letter + '.mp3',
-                    ],
+                    src: this.getSoundSrc(token),
                 })
             );
         }

@@ -1,24 +1,13 @@
 import { defineConfig } from 'vite';
-import solidPlugin from 'vite-plugin-solid';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-    plugins: [
-        solidPlugin(),
-        viteStaticCopy({
-            targets: [
-                {
-                    src: './src/sounds',
-                    dest: 'assets',
-                },
-            ],
-        }),
-    ],
+    plugins: [react()],
     server: {
         port: 3000,
     },
     build: {
         target: 'esnext',
     },
-    base: 'https://arnaudpfu.github.io/dual-n-back/',
+    base: '/',
 });
