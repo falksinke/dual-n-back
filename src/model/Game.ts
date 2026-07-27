@@ -1,10 +1,11 @@
-import { GameHistory } from './GameHistory';
+import { GameHistory, ModalityStrata } from './GameHistory';
 import { Match } from './Match';
 import { GameResult } from './GameResult';
 import { AudioPackId, getRandomAudioToken } from './audioPacks';
 import { getRandomColorId } from './colorSet';
 import { getRandomImageId } from './imageSet';
 import { ModalityId, getModalitiesForMode, ModeId } from './modalities';
+import { buildBlockSdtReport, classifySdtCell } from './sdtMetrics';
 import { BoardState, GameDeps, getModalityValue } from './types';
 
 export type ResultMatch = Partial<Record<ModalityId, 'success' | 'failed'>>;
@@ -49,6 +50,9 @@ export class Game {
     private _currentState: BoardState | null;
     private _currentMatch: ResultMatch | null;
     private _currentIteration: number;
+    private _pendingStrata: ModalityStrata;
+    private _trialOnsetMs: number | null;
+    private _claimRtMs: Partial<Record<ModalityId, number>>;
 
     private onStateChanged: (boardState: BoardState) => void;
     private onPlayerChoiceValidated: (match: ResultMatch) => void;
@@ -62,7 +66,10 @@ export class Game {
         if (newState === null) return;
         this._currentState = newState;
         this.onStateChanged(newState);
-        this.gameHistory.addState(newState);
+        this.gameHistory.addState(newState, this._pendingStrata);
+        this._pendingStrata = {};
+        this._trialOnsetMs = Date.now();
+        this._claimRtMs = {};
     }
 
     get currentMatch(): ResultMatch | null {
@@ -125,6 +132,9 @@ export class Game {
         this._currentState = null;
         this._currentMatch = null;
         this._currentIteration = 0;
+        this._pendingStrata = {};
+        this._trialOnsetMs = null;
+        this._claimRtMs = {};
     }
 
     public async start(): Promise<void> {
@@ -161,6 +171,10 @@ export class Game {
 
         if (this._playerChoice == null) {
             this._playerChoice = new Match(this.activeModalities);
+        }
+
+        if (this._claimRtMs[modality] == null && this._trialOnsetMs != null) {
+            this._claimRtMs[modality] = Date.now() - this._trialOnsetMs;
         }
 
         this._playerChoice.claim(modality);
@@ -222,6 +236,7 @@ export class Game {
         const match: ResultMatch = {};
         const trialIndex = this.gameHistory.boardStates.length - 1;
         const effectiveN = this.getEffectiveN(trialIndex);
+        const strata = this.gameHistory.modalityStrata[trialIndex] ?? {};
 
         for (const modality of this.activeModalities) {
             const claimed = this._playerChoice.isClaimed(modality);
@@ -232,6 +247,16 @@ export class Game {
             }
 
             const matched = this.isModalityMatch(modality, effectiveN);
+            const cell = classifySdtCell(matched, claimed);
+            const stratum = strata[modality] ?? 'clean';
+            this.gameHistory.addSdtEvent({
+                modality,
+                cell,
+                stratum: matched ? 'clean' : stratum,
+                responseTimeMs: claimed ? this._claimRtMs[modality] : undefined,
+            });
+
+            // Match-% recap stays attempt-on-decision only (matched || claimed); SDT is additive.
             if (matched || claimed) {
                 match[modality] = matched === claimed ? 'success' : 'failed';
             }
@@ -245,7 +270,8 @@ export class Game {
         for (const modality of this.activeModalities) {
             recaps[modality] = this.gameHistory.matches[modality] ?? { success: 0, failed: 0 };
         }
-        return new GameResult(recaps, this.activeModalities);
+        const sdt = buildBlockSdtReport(this.gameHistory.sdtEvents, this.activeModalities);
+        return new GameResult(recaps, this.activeModalities, sdt);
     }
 
     private resetChoice() {

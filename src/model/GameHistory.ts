@@ -1,6 +1,7 @@
 import { BoardState } from './types';
 import { Match } from './Match';
 import { ModalityId } from './modalities';
+import { SdtTrialEvent, TrialStratum } from './sdtMetrics';
 
 export interface MatchRecap {
     success: number;
@@ -8,6 +9,9 @@ export interface MatchRecap {
 }
 
 export type Matches = Partial<Record<ModalityId, MatchRecap>>;
+
+/** Per-trial non-target stratum tags (targets ignore this; default clean). */
+export type ModalityStrata = Partial<Record<ModalityId, TrialStratum>>;
 
 export function createEmptyMatches(modalities: ModalityId[]): Matches {
     const matches: Matches = {};
@@ -21,6 +25,9 @@ export class GameHistory {
     public boardStates: BoardState[];
     public playerChoices: Match[];
     public matches: Matches;
+    /** Parallel to boardStates: intended non-target stratum per modality. */
+    public modalityStrata: ModalityStrata[];
+    public sdtEvents: SdtTrialEvent[];
     private readonly modalities: ModalityId[];
 
     constructor(modalities: ModalityId[]) {
@@ -28,10 +35,13 @@ export class GameHistory {
         this.boardStates = [];
         this.playerChoices = [];
         this.matches = createEmptyMatches(modalities);
+        this.modalityStrata = [];
+        this.sdtEvents = [];
     }
 
-    public addState(boardState: BoardState) {
+    public addState(boardState: BoardState, strata: ModalityStrata = {}) {
         this.boardStates.push(boardState);
+        this.modalityStrata.push(strata);
     }
 
     public addChoice(playerChoice: Match) {
@@ -45,10 +55,16 @@ export class GameHistory {
         }
     }
 
+    public addSdtEvent(event: SdtTrialEvent) {
+        this.sdtEvents.push(event);
+    }
+
     public reset() {
         this.boardStates = [];
         this.playerChoices = [];
         this.matches = createEmptyMatches(this.modalities);
+        this.modalityStrata = [];
+        this.sdtEvents = [];
     }
 
     public get activeModalities(): ModalityId[] {

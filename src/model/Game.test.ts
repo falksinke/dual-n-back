@@ -306,4 +306,84 @@ describe('Game', () => {
         expect(states[0].imageId).toBeDefined();
         expect(states[0].audioToken).toBeTruthy();
     });
+
+    it('records CR in SDT when non-target goes unclaimed; match-% ignores CR', async () => {
+        let result: import('./GameResult').GameResult | null = null;
+        // Cycle RNG so positions/audio differ — constant RNG would create accidental n-back matches.
+        let randomCall = 0;
+        const game = new Game(
+            2,
+            4,
+            50,
+            50,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                random: () => {
+                    const v = (randomCall % 9) / 9;
+                    randomCall++;
+                    return v;
+                },
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 4; i++) {
+            await vi.advanceTimersByTimeAsync(50);
+        }
+        await startPromise;
+
+        expect(result).not.toBeNull();
+        const positionSdt = result!.sdt?.byModality.position;
+        expect(positionSdt).toBeDefined();
+        expect(positionSdt!.all.counts.correctRejections).toBeGreaterThan(0);
+        // Match-% recap stays attempt-on-decision: CRs do not inflate success/failed.
+        const recapTotal =
+            (result!.recaps.position?.success ?? 0) + (result!.recaps.position?.failed ?? 0);
+        const sdtTotal =
+            positionSdt!.all.counts.hits +
+            positionSdt!.all.counts.misses +
+            positionSdt!.all.counts.falseAlarms +
+            positionSdt!.all.counts.correctRejections;
+        expect(sdtTotal).toBeGreaterThan(recapTotal);
+    });
+
+    it('records miss in SDT when target is not claimed', async () => {
+        let result: import('./GameResult').GameResult | null = null;
+        let randomCall = 0;
+        const game = new Game(
+            2,
+            4,
+            50,
+            50,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                // Guaranteed matches after history exists; never claim.
+                random: () => {
+                    randomCall++;
+                    return 0.01;
+                },
+                interferenceChance: 0,
+                guaranteedMatchChance: 1,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 4; i++) {
+            await vi.advanceTimersByTimeAsync(50);
+        }
+        await startPromise;
+
+        expect(result!.sdt?.byModality.position?.all.counts.misses ?? 0).toBeGreaterThan(0);
+        expect(randomCall).toBeGreaterThan(0);
+    });
 });

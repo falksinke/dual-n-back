@@ -57,4 +57,23 @@ describe('GameResult', () => {
         expect(result.audioRecap.success).toBe(2);
         expect(result.positionRecap.success).toBe(1);
     });
+
+    it('exposes optional SDT report without changing match percentages', () => {
+        const sdt = {
+            modalities: ['position', 'audio'] as const,
+            byModality: {},
+            medianCorrectRtMs: null,
+        };
+        const result = new GameResult(
+            {
+                audio: { success: 7, failed: 3 },
+                position: { success: 5, failed: 5 },
+            },
+            ['position', 'audio'],
+            sdt
+        );
+
+        expect(result.sdt).toBe(sdt);
+        expect(result.generalMatchPercentage).toBe(60);
+    });
 });

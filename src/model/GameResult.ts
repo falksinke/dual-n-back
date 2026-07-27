@@ -1,13 +1,20 @@
 import { MatchRecap } from './GameHistory';
 import { ModalityId, MODALITY_LABELS } from './modalities';
+import { BlockSdtReport } from './sdtMetrics';
 
 export class GameResult {
     public readonly recaps: Record<ModalityId, MatchRecap>;
     public readonly modalities: ModalityId[];
+    public readonly sdt: BlockSdtReport | null;
 
-    constructor(recaps: Record<ModalityId, MatchRecap>, modalities: ModalityId[]) {
+    constructor(
+        recaps: Record<ModalityId, MatchRecap>,
+        modalities: ModalityId[],
+        sdt: BlockSdtReport | null = null
+    ) {
         this.recaps = recaps;
         this.modalities = modalities;
+        this.sdt = sdt;
     }
 
     /** @deprecated Use recaps.audio — kept for dual-mode compatibility. */
