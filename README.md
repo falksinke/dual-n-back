@@ -32,10 +32,11 @@ React + Vite implementation of a Brain Workshop–aligned n-back trainer with Du
 ### Settings
 
 - **Training path** — **Free-play** (manual level / interference / variable N) or **Adaptive** (ladder-driven)
+- **First-run free-play** — level **2**, center cell **off**, ISI **1.0–1.5 s**
 - **Audio pack** — `letters` (default) or `piano` (Brain Workshop C-scale samples)
 - **Interference** — BW-style near-miss chance (default **⅛**, steps of 1/8 through 1); Free-play only
 - **Variable N** — per-trial lag sampled from Beta(level/2, 1); current N shown in session status while playing; Free-play only
-- **ISI** — inter-stimulus interval between onsets; each trial samples uniformly in the range (default **0.5–3.0 s**). Stimulus flash duration is fixed (~1 s) and separate from ISI. Adaptive drives ISI from a discrete tier ladder.
+- **ISI** — inter-stimulus interval between onsets; each trial samples uniformly in the range (free-play default **1.0–1.5 s**). Stimulus flash duration is fixed (~1 s) and separate from ISI. Adaptive drives ISI from a discrete tier ladder.
 - **Cross-modal quotas** — optional Adaptive-only block composition (default off)
 
 ### Adaptive training

@@ -2,7 +2,11 @@ import { create } from 'zustand';
 import { ButtonState } from '../model/enums/buttonState';
 import { Speech } from '../model/Speech';
 import { GameResult } from '../model/GameResult';
-import { clampIsiMs, DEFAULT_ISI_MAX_MS, DEFAULT_ISI_MIN_MS } from '../model/isi';
+import {
+    clampIsiMs,
+    FREE_PLAY_DEFAULT_ISI_MAX_MS,
+    FREE_PLAY_DEFAULT_ISI_MIN_MS,
+} from '../model/isi';
 import { ModalityId, ModeId, getModalitiesForMode } from '../model/modalities';
 import { AudioPackId } from '../model/audioPacks';
 import { ColorId } from '../model/colorSet';
@@ -67,6 +71,8 @@ export interface GameStoreState {
         imageId: ImageId | null;
         currentTrials: number;
         nForTrial: number;
+        /** Increments on each stimulus onset so same-cell trials remount/animate. */
+        stimulusEpoch: number;
     };
     settings: {
         level: number;
@@ -135,6 +141,7 @@ const defaultBoardState = {
     imageId: null as ImageId | null,
     currentTrials: -1,
     nForTrial: -1,
+    stimulusEpoch: 0,
 };
 
 function createEmptyButtons(modalities: ModalityId[]): Partial<Record<ModalityId, `${ButtonState}`>> {
@@ -306,6 +313,25 @@ function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): Lad
 
 const initialLadderStorage = loadLadder();
 
+/** First-run free-play settings (also used when resetting fixture expectations in tests). */
+export const createDefaultFreePlaySettings = (): GameStoreState['settings'] => ({
+    level: 2,
+    trials: 30,
+    isiMin: FREE_PLAY_DEFAULT_ISI_MIN_MS,
+    isiMax: FREE_PLAY_DEFAULT_ISI_MAX_MS,
+    activeFeedback: false,
+    displayTrials: true,
+    displayTarget: true,
+    allowCenterStimulus: false,
+    useFullScreen: false,
+    mode: 'dual',
+    audioPack: 'letters',
+    interferenceChance: 0.125,
+    variableN: false,
+    playMode: 'free',
+    useBlockQuotas: false,
+});
+
 const scheduleCountdownTick = (current: number, get: StoreGet, set: StoreSet) => {
     countdownTimer = setTimeout(() => {
         countdownTimer = null;
@@ -334,23 +360,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     game: null,
     ladder: initialLadderStorage.byMode,
     boardState: { ...defaultBoardState },
-    settings: {
-        level: 5,
-        trials: 30,
-        isiMin: DEFAULT_ISI_MIN_MS,
-        isiMax: DEFAULT_ISI_MAX_MS,
-        activeFeedback: false,
-        displayTrials: true,
-        displayTarget: true,
-        allowCenterStimulus: true,
-        useFullScreen: false,
-        mode: 'dual',
-        audioPack: 'letters',
-        interferenceChance: 0.125,
-        variableN: false,
-        playMode: 'free',
-        useBlockQuotas: false,
-    },
+    settings: createDefaultFreePlaySettings(),
     adaptiveSession: null,
     lastBlockRole: null,
     lastControllerAction: null,
@@ -431,60 +441,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     },
     cancelGame: () => {
         clearCountdownTimer();
-        const stateBeforeCancel = get();
-        stateBeforeCancel.game?.cancel();
-        const state = get();
-        const modalities = getModalitiesForMode(state.settings.mode);
+        get().game?.cancel();
+        const modalities = getModalitiesForMode(get().settings.mode);
 
-        if (state.settings.playMode === 'adaptive' && state.adaptiveSession != null) {
-            const session = state.adaptiveSession;
-            const hadProgress =
-                session.openAnchorsDone > 0 ||
-                session.adaptiveBlocksDone > 0 ||
-                session.closeAnchorDone ||
-                session.remediatedThisSession.length > 0;
-
-            if (stateBeforeCancel.countdown !== null && state.game === null) {
-                set({
-                    countdown: null,
-                    blockModalities: null,
-                    activeModalities: modalities,
-                    btns: createEmptyButtons(modalities),
-                    boardState: { ...defaultBoardState },
-                    adaptiveSession: hadProgress
-                        ? {
-                              ...session,
-                              phase: 'interstitial',
-                              pendingContinue: true,
-                          }
-                        : session,
-                });
-                return;
-            }
-
-            if (stateBeforeCancel.game !== null) {
-                set({
-                    countdown: null,
-                    blockModalities: null,
-                    activeModalities: modalities,
-                    btns: createEmptyButtons(modalities),
-                    boardState: { ...defaultBoardState },
-                    adaptiveSession: {
-                        ...session,
-                        phase: 'interstitial',
-                        pendingContinue: true,
-                    },
-                });
-                return;
-            }
-        }
-
+        // Adaptive: Esc/Space abort the whole session (ladder deltas already saved stay).
+        // Natural block ends use pendingContinue via finalizeGameEnd — not cancel.
         set({
             countdown: null,
             blockModalities: null,
             activeModalities: modalities,
             btns: createEmptyButtons(modalities),
             boardState: { ...defaultBoardState },
+            adaptiveSession: null,
+            lastBlockRole: null,
+            lastControllerAction: null,
         });
     },
     selectModality: (modality) => {
@@ -519,7 +489,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         set((state) => ({
             settings: {
                 ...state.settings,
-                level: state.settings.level > 2 ? state.settings.level - 1 : state.settings.level,
+                level: state.settings.level > 1 ? state.settings.level - 1 : state.settings.level,
             },
         })),
     increaseLevel: () =>

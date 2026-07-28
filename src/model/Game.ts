@@ -122,7 +122,7 @@ export class Game {
         this.isiMin = Math.min(isiMin, isiMax);
         this.isiMax = Math.max(isiMin, isiMax);
         this.random = deps.random ?? Math.random;
-        this.allowCenterStimulus = deps.allowCenterStimulus ?? true;
+        this.allowCenterStimulus = deps.allowCenterStimulus ?? false;
         this.interferenceChance = deps.interferenceChance ?? DEFAULT_INTERFERENCE_CHANCE;
         this.guaranteedMatchChance = deps.guaranteedMatchChance ?? DEFAULT_GUARANTEED_MATCH_CHANCE;
         this.variableN = deps.variableN ?? false;

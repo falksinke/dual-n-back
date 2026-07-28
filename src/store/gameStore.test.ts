@@ -1,7 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { COUNTDOWN_START, COUNTDOWN_TICK_MS, useGameStore } from './gameStore';
+import {
+    COUNTDOWN_START,
+    COUNTDOWN_TICK_MS,
+    createDefaultFreePlaySettings,
+    useGameStore,
+} from './gameStore';
 import { ButtonState } from '../model/enums/buttonState';
-import { DEFAULT_ISI_MAX_MS, DEFAULT_ISI_MIN_MS } from '../model/isi';
+import {
+    DEFAULT_ISI_MAX_MS,
+    DEFAULT_ISI_MIN_MS,
+    FREE_PLAY_DEFAULT_ISI_MAX_MS,
+    FREE_PLAY_DEFAULT_ISI_MIN_MS,
+} from '../model/isi';
 import { createDefaultLadderByMode, LADDER_STORAGE_KEY } from '../model/ladderPersistence';
 import { GameResult } from '../model/GameResult';
 import { createInitialAdaptiveSession } from './adaptiveSession';
@@ -26,6 +36,7 @@ describe('gameStore', () => {
                 imageId: null,
                 currentTrials: -1,
                 nForTrial: -1,
+                stimulusEpoch: 0,
             },
             btns: { audio: ButtonState.None, position: ButtonState.None },
             ladder: createDefaultLadderByMode(),
@@ -167,7 +178,22 @@ describe('gameStore', () => {
             lureStage: 'A',
             isiTier: 0,
         });
-        expect(useGameStore.getState().settings.level).toBe(2);
+    });
+
+    it('uses first-user free-play defaults for level, center cell, and ISI', () => {
+        const defaults = createDefaultFreePlaySettings();
+        expect(defaults.level).toBe(2);
+        expect(defaults.allowCenterStimulus).toBe(false);
+        expect(defaults.isiMin).toBe(FREE_PLAY_DEFAULT_ISI_MIN_MS);
+        expect(defaults.isiMax).toBe(FREE_PLAY_DEFAULT_ISI_MAX_MS);
+        expect(FREE_PLAY_DEFAULT_ISI_MIN_MS).toBe(1000);
+        expect(FREE_PLAY_DEFAULT_ISI_MAX_MS).toBe(1500);
+
+        useGameStore.setState({ settings: defaults });
+        useGameStore.getState().decreaseLevel();
+        expect(useGameStore.getState().settings.level).toBe(1);
+        useGameStore.getState().decreaseLevel();
+        expect(useGameStore.getState().settings.level).toBe(1);
     });
 
     it('applies adaptive ladder to settings when switching playMode while idle', () => {
@@ -284,12 +310,12 @@ describe('gameStore', () => {
         expect(useGameStore.getState().adaptiveSession).not.toBeNull();
 
         useGameStore.getState().cancelGame();
-        expect(useGameStore.getState().adaptiveSession).not.toBeNull();
-        expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(true);
-        expect(useGameStore.getState().adaptiveSession?.phase).toBe('interstitial');
+        expect(useGameStore.getState().adaptiveSession).toBeNull();
+        expect(useGameStore.getState().game).toBeNull();
+        expect(useGameStore.getState().countdown).toBeNull();
     });
 
-    it('preserves adaptive session when canceling during countdown', async () => {
+    it('aborts adaptive session when canceling during countdown', async () => {
         useGameStore.getState().setPlayMode('adaptive');
         useGameStore.getState().startGame();
         expect(useGameStore.getState().countdown).toBe(3);
@@ -299,8 +325,7 @@ describe('gameStore', () => {
 
         expect(useGameStore.getState().countdown).toBeNull();
         expect(useGameStore.getState().game).toBeNull();
-        expect(useGameStore.getState().adaptiveSession?.phase).toBe('anchor-open');
-        expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(false);
+        expect(useGameStore.getState().adaptiveSession).toBeNull();
     });
 
     it('restores free-play settings when leaving adaptive mode', () => {

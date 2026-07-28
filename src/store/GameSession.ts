@@ -2,24 +2,16 @@ import { Game, ResultMatch } from '../model/Game';
 import { BoardState } from '../model/types';
 import { GameResult } from '../model/GameResult';
 import { ButtonState } from '../model/enums/buttonState';
-import { STIMULUS_DURATION_MS } from '../model/isi';
 import { ModalityId } from '../model/modalities';
 import { GameStore } from './gameStore';
+import { clearStimulusTimers, presentBoardStimulus } from './stimulusPresentation';
 
 type StoreGetter = () => GameStore;
 type StoreSetter = (
     partial: Partial<GameStore> | ((state: GameStore) => Partial<GameStore>)
 ) => void;
 
-let highlightTimeout: ReturnType<typeof setTimeout> | null = null;
 let buttonTimeout: ReturnType<typeof setTimeout> | null = null;
-
-const clearHighlightTimeout = () => {
-    if (highlightTimeout !== null) {
-        clearTimeout(highlightTimeout);
-        highlightTimeout = null;
-    }
-};
 
 const clearButtonTimeout = () => {
     if (buttonTimeout !== null) {
@@ -35,6 +27,7 @@ const defaultBoardReset = {
     imageId: null,
     currentTrials: -1,
     nForTrial: -1,
+    stimulusEpoch: 0,
 };
 
 export class GameSession extends Game {
@@ -79,7 +72,7 @@ export class GameSession extends Game {
         if (this.getStore().settings.useFullScreen && document.fullscreenElement) {
             document.exitFullscreen?.().catch(() => undefined);
         }
-        clearHighlightTimeout();
+        clearStimulusTimers();
         clearButtonTimeout();
         this.stop();
         this.setStore({
@@ -99,30 +92,7 @@ export class GameSession extends Game {
         setStore: StoreSetter,
         boardState: BoardState
     ) => {
-        clearHighlightTimeout();
-        setStore((state) => ({
-            boardState: {
-                ...state.boardState,
-                positionIndex: boardState.positionIndex,
-                audioToken: boardState.audioToken,
-                colorId: boardState.colorId ?? null,
-                imageId: boardState.imageId ?? null,
-                currentTrials: boardState.currentTrials,
-                nForTrial: boardState.nForTrial,
-            },
-        }));
-        getStore().speech.play(boardState.audioToken);
-        highlightTimeout = setTimeout(() => {
-            setStore((state) => ({
-                boardState: {
-                    ...state.boardState,
-                    positionIndex: -1,
-                    colorId: null,
-                    imageId: null,
-                },
-            }));
-            highlightTimeout = null;
-        }, STIMULUS_DURATION_MS);
+        presentBoardStimulus(getStore, setStore, boardState);
     };
 
     private static onPlayerChoiceValidated = (
@@ -160,7 +130,7 @@ export class GameSession extends Game {
         if (document.fullscreenElement) {
             document.exitFullscreen?.().catch(() => undefined);
         }
-        clearHighlightTimeout();
+        clearStimulusTimers();
         clearButtonTimeout();
         getStore().pushGameResult(gameResult);
     };

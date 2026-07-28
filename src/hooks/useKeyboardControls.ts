@@ -42,6 +42,12 @@ export const useKeyboardControls = () => {
                 return;
             }
 
+            // Settings dialog owns the keyboard while open (Space would otherwise
+            // start a round behind the overlay — audio plays, board stays hidden).
+            if (document.querySelector('.settings-shell.is-open')) {
+                return;
+            }
+
             switch (e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
@@ -60,18 +66,24 @@ export const useKeyboardControls = () => {
                     if (!busy) increaseTrials();
                     break;
                 case 'Escape':
-                    if (busy) {
+                    // Abort in-flight play/countdown, or leave an Adaptive interstitial.
+                    if (busy || interstitialContinue) {
                         e.preventDefault();
                         cancelGame();
                     }
                     break;
                 case ' ':
+                    // Key-repeat would start then immediately cancel during countdown.
+                    if (e.repeat) {
+                        e.preventDefault();
+                        break;
+                    }
                     e.preventDefault();
                     if (interstitialContinue) {
                         startGame();
-                    } else if (busy) {
+                    } else if (inSession) {
                         cancelGame();
-                    } else {
+                    } else if (!countingDown) {
                         startGame();
                     }
                     break;

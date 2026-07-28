@@ -52,6 +52,47 @@ describe('useKeyboardControls', () => {
         unmount();
     });
 
+    it('ignores space while settings dialog is open', () => {
+        const shell = document.createElement('div');
+        shell.className = 'settings-shell is-open';
+        document.body.appendChild(shell);
+
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+        expect(useGameStore.getState().countdown).toBeNull();
+        expect(useGameStore.getState().game).toBeNull();
+
+        shell.remove();
+        unmount();
+    });
+
+    it('does not cancel countdown on space key-repeat', () => {
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+        expect(useGameStore.getState().countdown).toBe(3);
+
+        document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: ' ', bubbles: true, repeat: true })
+        );
+        expect(useGameStore.getState().countdown).toBe(3);
+
+        useGameStore.getState().cancelGame();
+        unmount();
+    });
+
+    it('does not cancel countdown on a second space tap', () => {
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+        expect(useGameStore.getState().countdown).toBe(3);
+
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+        expect(useGameStore.getState().countdown).toBe(3);
+
+        useGameStore.getState().cancelGame();
+        unmount();
+    });
+
     it('increases level on arrow up', () => {
         const { unmount } = renderHook(() => useKeyboardControls());
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
@@ -99,6 +140,29 @@ describe('useKeyboardControls', () => {
         expect(useGameStore.getState().countdown).toBe(3);
         expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(false);
         useGameStore.getState().cancelGame();
+        unmount();
+    });
+
+    it('ends adaptive interstitial on Escape', () => {
+        useGameStore.setState({
+            adaptiveSession: {
+                ...createInitialAdaptiveSession({ adaptiveTarget: 3 }),
+                phase: 'interstitial',
+                pendingContinue: true,
+                openAnchorsDone: 1,
+            },
+            settings: {
+                ...useGameStore.getState().settings,
+                playMode: 'adaptive',
+            },
+        });
+
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+        expect(useGameStore.getState().adaptiveSession).toBeNull();
+        expect(useGameStore.getState().countdown).toBeNull();
+        expect(useGameStore.getState().game).toBeNull();
         unmount();
     });
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { ModeId } from '../../model/modalities';
 import { AudioPackId } from '../../model/audioPacks';
@@ -38,6 +38,8 @@ function formatInterference(value: number): string {
 
 const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
     const panelRef = useRef<HTMLDivElement>(null);
+    const ladderInfoId = useId();
+    const [ladderInfoOpen, setLadderInfoOpen] = useState(false);
     const playMode = useGameStore((state) => state.settings.playMode);
     const level = useGameStore((state) => state.settings.level);
     const trials = useGameStore((state) => state.settings.trials);
@@ -68,7 +70,10 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
     const ladderIsi = isiMsFromTier(ladder.isiTier);
 
     useEffect(() => {
-        if (!open) return;
+        if (!open) {
+            setLadderInfoOpen(false);
+            return;
+        }
 
         const onKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -166,15 +171,63 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
                     </div>
 
                     {isAdaptive ? (
-                        <div className="settings-row settings-row--readonly">
-                            <div className="settings-row-copy">
-                                <span className="settings-row-label">Ladder</span>
-                                <span className="settings-row-hint">Memory load and interference from your progress</span>
+                        <div className="settings-row settings-row--readonly settings-row--ladder">
+                            <div className="settings-row-main">
+                                <div className="settings-row-copy">
+                                    <div className="settings-row-label-line">
+                                        <span className="settings-row-label">Ladder</span>
+                                        <button
+                                            type="button"
+                                            className={`settings-info-trigger${ladderInfoOpen ? ' is-open' : ''}`}
+                                            aria-expanded={ladderInfoOpen}
+                                            aria-controls={ladderInfoId}
+                                            aria-label="How the adaptive ladder works"
+                                            onClick={() => setLadderInfoOpen((value) => !value)}
+                                        >
+                                            <span aria-hidden="true">i</span>
+                                        </button>
+                                    </div>
+                                    <span className="settings-row-hint">
+                                        Memory load and interference from your progress
+                                    </span>
+                                </div>
+                                <div className="settings-readout" aria-live="polite">
+                                    <span>n={ladder.n}</span>
+                                    <span>{lureStageSummary(ladder.lureStage)}</span>
+                                    <span>ISI tier {ladder.isiTier}</span>
+                                </div>
                             </div>
-                            <div className="settings-readout" aria-live="polite">
-                                <span>n={ladder.n}</span>
-                                <span>{lureStageSummary(ladder.lureStage)}</span>
-                                <span>ISI tier {ladder.isiTier}</span>
+                            <div
+                                id={ladderInfoId}
+                                className={`settings-info-panel${ladderInfoOpen ? ' is-open' : ''}`}
+                            >
+                                <div className="settings-info-panel-inner">
+                                    <p>
+                                        Adaptive raises difficulty from your discrimination (d′), not raw accuracy. It
+                                        scores each modality for hits, misses, false alarms, and correct rejections —
+                                        separately for ordinary trials and temporal lures.
+                                    </p>
+                                    <ul>
+                                        <li>
+                                            <strong>n</strong> — how many trials back you must match
+                                        </li>
+                                        <li>
+                                            <strong>Lure</strong> — a familiar item at the <em>wrong</em> lag (e.g.
+                                            n−1 or n+1). It tempts a match press, but only true n-back counts. Stages
+                                            A–E raise how often / how near those traps appear.
+                                        </li>
+                                        <li>
+                                            <strong>ISI tier</strong> — presentation speed; only tightens after you can
+                                            discriminate well
+                                        </li>
+                                    </ul>
+                                    <p>
+                                        Typical path: master clean matching → add interference (stages) → then raise n
+                                        and ease lures back a step. Progress uses a rolling window of blocks with
+                                        hysteresis, so one noisy block won’t bounce the level. Ladder state is saved
+                                        per mode in this browser.
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     ) : (

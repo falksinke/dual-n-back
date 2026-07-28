@@ -11,7 +11,8 @@ import CountdownFlash from './components/CountdownFlash';
 import { DefaultDrakTheme } from './themes/DefaultDark';
 import { DefaultLightTheme } from './themes/DefaultLight';
 import type { ThemeMode } from './themes/config';
-import { adaptivePhaseLabel, lureStageSummary } from './components/adaptiveDisplay';
+import AdaptiveProgressHud from './components/AdaptiveProgressHud';
+import VariableNHud from './components/VariableNHud';
 
 const App = () => {
     const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
@@ -23,7 +24,6 @@ const App = () => {
     const playMode = useGameStore((state) => state.settings.playMode);
     const level = useGameStore((state) => state.settings.level);
     const mode = useGameStore((state) => state.settings.mode);
-    const lureStage = useGameStore((state) => state.settings.lureStage);
     const variableN = useGameStore((state) => state.settings.variableN);
     const configuredTrials = useGameStore((state) => state.settings.trials);
     const currentTrials = useGameStore((state) => state.boardState.currentTrials);
@@ -37,49 +37,18 @@ const App = () => {
     const pendingContinue = adaptiveSession?.pendingContinue === true;
     const chromeHidden = inSession || countingDown || pendingContinue;
     const isAdaptive = playMode === 'adaptive';
-    const statusN = isAdaptive ? ladder.n : level;
-    const statusLure = isAdaptive ? ladder.lureStage : lureStage;
-    const phaseHint =
-        isAdaptive && adaptiveSession != null && adaptiveSession.phase !== 'idle'
-            ? adaptivePhaseLabel(adaptiveSession.phase)
-            : null;
+    const showVariableN = !isAdaptive && variableN && (inSession || countingDown);
+    const variableNValue = nForTrial > 0 ? nForTrial : level;
 
     return (
         <div className={`app-container${chromeHidden ? ' playing' : ''}`}>
             <div className="app">
                 <Topbar />
                 <div className="session-status" aria-live="polite">
-                    {isAdaptive ? (
-                        <>
-                            <div className="session-status-item">
-                                <span className="session-status-label">N</span>
-                                <span className="session-status-value">{statusN}</span>
-                            </div>
-                            <div className="session-status-item">
-                                <span className="session-status-label">Lure</span>
-                                <span className="session-status-value">
-                                    {statusLure != null ? lureStageSummary(statusLure) : '—'}
-                                </span>
-                            </div>
-                            {phaseHint && (
-                                <div className="session-status-item">
-                                    <span className="session-status-label">Phase</span>
-                                    <span className="session-status-value session-status-value--phase">
-                                        {phaseHint}
-                                    </span>
-                                </div>
-                            )}
-                        </>
-                    ) : (
+                    {!isAdaptive && !showVariableN && (
                         <div className="session-status-item">
                             <span className="session-status-label">Level</span>
                             <span className="session-status-value">{level}</span>
-                        </div>
-                    )}
-                    {inSession && !isAdaptive && variableN && (
-                        <div className="session-status-item">
-                            <span className="session-status-label">N</span>
-                            <span className="session-status-value">{nForTrial}</span>
                         </div>
                     )}
                     <div className="session-status-item">
@@ -87,7 +56,15 @@ const App = () => {
                         <span className="session-status-value">{trialsShown}</span>
                     </div>
                 </div>
+                {showVariableN && <VariableNHud n={variableNValue} />}
                 <Board />
+                {isAdaptive && (
+                    <AdaptiveProgressHud
+                        n={ladder.n}
+                        lureStage={ladder.lureStage}
+                        session={adaptiveSession}
+                    />
+                )}
                 <Footer
                     themeMode={themeMode}
                     onToggleTheme={() => setThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark'))}

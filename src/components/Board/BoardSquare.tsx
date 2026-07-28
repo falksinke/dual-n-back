@@ -8,6 +8,7 @@ interface BoardSquareProps {
 
 const BoardSquare = ({ index }: BoardSquareProps) => {
     const highlighted = useGameStore((state) => state.boardState.positionIndex === index);
+    const stimulusEpoch = useGameStore((state) => state.boardState.stimulusEpoch);
     const colorId = useGameStore((state) => state.boardState.colorId);
     const imageId = useGameStore((state) => state.boardState.imageId);
     const activeModalities = useGameStore((state) => state.activeModalities);
@@ -20,6 +21,7 @@ const BoardSquare = ({ index }: BoardSquareProps) => {
     return (
         <div className={`square square-${index}${highlighted ? ' highlighted' : ''}`}>
             <div
+                key={highlighted ? `on-${stimulusEpoch}` : 'off'}
                 className="inner-square"
                 style={{
                     backgroundColor: fillColor ?? undefined,

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+    adaptiveBlockProgress,
+    adaptiveConditionCode,
     blockRoleLabel,
     controllerActionHint,
     formatSdtMetric,
+    lureStageFlavor,
 } from './adaptiveDisplay';
 
 describe('adaptiveDisplay', () => {
@@ -29,5 +32,28 @@ describe('adaptiveDisplay', () => {
         expect(controllerActionHint({ action: 'lureUp', reason: 'Clean mastery' })).toBe(
             'Lure stage up: Clean mastery'
         );
+    });
+
+    it('builds condition codes and stage flavor', () => {
+        expect(adaptiveConditionCode(3, 'C')).toBe('3C');
+        expect(lureStageFlavor('A')).toBe('Clean matching');
+        expect(lureStageFlavor('E')).toBe('Max interference');
+    });
+
+    it('reports adaptive block progress only after calibration', () => {
+        expect(
+            adaptiveBlockProgress({
+                adaptiveBlocksDone: 2,
+                adaptiveTarget: 8,
+                phase: 'anchor-open',
+            })
+        ).toBeNull();
+        expect(
+            adaptiveBlockProgress({
+                adaptiveBlocksDone: 2,
+                adaptiveTarget: 8,
+                phase: 'adaptive',
+            })
+        ).toEqual({ done: 2, target: 8 });
     });
 });
