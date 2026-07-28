@@ -11,7 +11,11 @@ const GearIcon = () => (
     </svg>
 );
 
-const Topbar = () => {
+interface TopbarProps {
+    onHapticsEnabledChange?: (enabled: boolean) => void;
+}
+
+const Topbar = ({ onHapticsEnabledChange }: TopbarProps) => {
     const [settingsOpen, setSettingsOpen] = useState(false);
 
     return (
@@ -34,7 +38,11 @@ const Topbar = () => {
                 </button>
             </header>
 
-            <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+            <SettingsPanel
+                open={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                onHapticsEnabledChange={onHapticsEnabledChange}
+            />
         </>
     );
 };

@@ -1,0 +1,14 @@
+.haptic-target {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.ios-haptic-switch {
+    position: absolute;
+    inset: 0;
+    opacity: 0.001;
+    z-index: 1;
+    touch-action: manipulation;
+    margin: 0;
+}

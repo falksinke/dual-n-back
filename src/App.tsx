@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from './store/gameStore';
 import Board from './components/Board';
 import Topbar from './components/Topbar';
 import './App.scss';
+import './haptics/Haptics.scss';
 import Footer from './components/Footer';
 import { useThemeVariables } from './hooks/useThemeVariables';
 import { useKeyboardControls } from './hooks/useKeyboardControls';
@@ -14,11 +15,17 @@ import type { ThemeMode } from './themes/config';
 import AdaptiveProgressHud from './components/AdaptiveProgressHud';
 import VariableNHud from './components/VariableNHud';
 import InstallNudge from './components/InstallNudge';
+import { useHaptics } from './haptics/useHaptics';
+import { loadUiPreferences } from './model/uiPreferences';
 import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
 import { shouldApplyWaitingUpdate } from './pwa/updateGate';
 
 const App = () => {
+    const appRef = useRef<HTMLDivElement>(null);
     const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
+    const [hapticsEnabled, setHapticsEnabled] = useState(
+        () => loadUiPreferences().hapticFeedbackEnabled
+    );
     useThemeVariables(themeMode === 'dark' ? DefaultDrakTheme : DefaultLightTheme, themeMode);
     useKeyboardControls();
 
@@ -33,6 +40,7 @@ const App = () => {
     const nForTrial = useGameStore((state) => state.boardState.nForTrial);
     const ladder = useGameStore((state) => state.ladder[mode]);
     const adaptiveSession = useGameStore((state) => state.adaptiveSession);
+    const activeModalities = useGameStore((state) => state.activeModalities);
     const blocksCompletedSignal = useGameStore((state) => state.results.all.length);
     const trialsShown = game !== null ? currentTrials : configuredTrials;
 
@@ -41,6 +49,16 @@ const App = () => {
     const pendingContinue = adaptiveSession?.pendingContinue === true;
     const chromeHidden = inSession || countingDown || pendingContinue;
     const flowBusy = chromeHidden;
+    const uiRevision = [
+        playMode,
+        mode,
+        inSession ? 'play' : 'idle',
+        pendingContinue ? 'continue' : 'ready',
+        activeModalities.join(','),
+        blocksCompletedSignal,
+        hapticsEnabled ? 'h1' : 'h0',
+    ].join('|');
+    useHaptics({ rootRef: appRef, enabled: hapticsEnabled, uiRevision });
     const canApplySwUpdate = shouldApplyWaitingUpdate({
         game,
         countdown,
@@ -68,9 +86,9 @@ const App = () => {
     const variableNValue = nForTrial > 0 ? nForTrial : level;
 
     return (
-        <div className={`app-container${chromeHidden ? ' playing' : ''}`}>
+        <div ref={appRef} className={`app-container${chromeHidden ? ' playing' : ''}`}>
             <div className="app">
-                <Topbar />
+                <Topbar onHapticsEnabledChange={setHapticsEnabled} />
                 <div className="session-status" aria-live="polite">
                     {!isAdaptive && !showVariableN && (
                         <div className="session-status-item">

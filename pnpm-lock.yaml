@@ -11,6 +11,9 @@ importers:
       '@fontsource/ibm-plex-sans':
         specifier: ^5.3.0
         version: 5.3.0
+      browser-haptic:
+        specifier: ^1.0.13
+        version: 1.0.13
       howler:
         specifier: ^2.2.4
         version: 2.2.4
@@ -1264,6 +1267,10 @@ packages:
   brace-expansion@5.0.8:
     resolution: {integrity: sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==}
     engines: {node: 20 || >=22}
+
+  browser-haptic@1.0.13:
+    resolution: {integrity: sha512-8XlfNoXch04NWMQHn9L3LTjyd6MyFGHW2yWbY/wwv/tIq/HTd389DiY29SBq7iUIbO05zOhSJlPP6i/iSS6vZQ==}
+    engines: {node: '>=18'}
 
   browserslist@4.28.7:
     resolution: {integrity: sha512-JxV13hNrFxqjOc8alRbq9dK1MM79NEXYpma2B2J4wAtpWS5zIEIKqWPGCl7N4o7Uc7B7itylh7SuDujATRyyTw==}
@@ -3661,6 +3668,8 @@ snapshots:
   brace-expansion@5.0.8:
     dependencies:
       balanced-match: 4.0.4
+
+  browser-haptic@1.0.13: {}
 
   browserslist@4.28.7:
     dependencies:

@@ -4,6 +4,11 @@ import { ModeId } from '../../model/modalities';
 import { AudioPackId } from '../../model/audioPacks';
 import { isiMsFromTier } from '../../model/ladderPersistence';
 import { msToSecondsLabel } from '../../model/isi';
+import {
+    loadUiPreferences,
+    setHapticFeedbackEnabled,
+} from '../../model/uiPreferences';
+import { isIOS } from '../../haptics/haptics';
 import { lureStageSummary } from '../adaptiveDisplay';
 import IsiRangeSlider from './IsiRangeSlider';
 import './SettingsPanel.scss';
@@ -11,6 +16,7 @@ import './SettingsPanel.scss';
 interface SettingsPanelProps {
     open: boolean;
     onClose: () => void;
+    onHapticsEnabledChange?: (enabled: boolean) => void;
 }
 
 const MODE_OPTIONS: { id: ModeId; label: string }[] = [
@@ -36,10 +42,14 @@ function formatInterference(value: number): string {
     return `${eighths}/8`;
 }
 
-const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
+const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelProps) => {
     const panelRef = useRef<HTMLDivElement>(null);
     const ladderInfoId = useId();
     const [ladderInfoOpen, setLadderInfoOpen] = useState(false);
+    const [hapticFeedbackEnabled, setHapticFeedbackEnabledState] = useState(
+        () => loadUiPreferences().hapticFeedbackEnabled
+    );
+    const showIosHapticsHint = isIOS();
     const playMode = useGameStore((state) => state.settings.playMode);
     const level = useGameStore((state) => state.settings.level);
     const trials = useGameStore((state) => state.settings.trials);
@@ -95,7 +105,14 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
 
     return (
         <div className={`settings-shell${open ? ' is-open' : ''}`} aria-hidden={!open}>
-            <button type="button" className="settings-backdrop" tabIndex={-1} aria-label="Close settings" onClick={onClose} />
+            <button
+                type="button"
+                className="settings-backdrop"
+                tabIndex={-1}
+                aria-label="Close settings"
+                data-haptic-skip
+                onClick={onClose}
+            />
             <div
                 ref={panelRef}
                 className="settings-panel"
@@ -107,7 +124,13 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
                     <h2 id="settings-title" className="settings-title">
                         Trial settings
                     </h2>
-                    <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">
+                    <button
+                        type="button"
+                        className="settings-close"
+                        onClick={onClose}
+                        aria-label="Close settings"
+                        data-haptic-skip
+                    >
                         ✕
                     </button>
                 </div>
@@ -357,6 +380,35 @@ const SettingsPanel = ({ open, onClose }: SettingsPanelProps) => {
                         >
                             <span className="settings-toggle-knob" />
                             <span className="settings-toggle-label">{allowCenterStimulus ? 'On' : 'Off'}</span>
+                        </button>
+                    </div>
+
+                    <div className="settings-row">
+                        <div className="settings-row-copy">
+                            <span className="settings-row-label">Haptic feedback</span>
+                            <span className="settings-row-hint">
+                                {showIosHapticsHint
+                                    ? 'Safari 17.4+ · enable System Haptics in Sounds & Haptics'
+                                    : 'Vibration on supported devices · off by default'}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            className={`settings-toggle${hapticFeedbackEnabled ? ' is-on' : ''}`}
+                            role="switch"
+                            aria-checked={hapticFeedbackEnabled}
+                            data-action="toggle-haptics"
+                            onClick={() => {
+                                const next = !hapticFeedbackEnabled;
+                                setHapticFeedbackEnabledState(next);
+                                setHapticFeedbackEnabled(next);
+                                onHapticsEnabledChange?.(next);
+                            }}
+                        >
+                            <span className="settings-toggle-knob" />
+                            <span className="settings-toggle-label">
+                                {hapticFeedbackEnabled ? 'On' : 'Off'}
+                            </span>
                         </button>
                     </div>
                 </div>
