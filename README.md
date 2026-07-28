@@ -2,6 +2,8 @@
 
 React + Vite implementation of a Brain Workshop–aligned n-back trainer with Dual, Triple, and Quad modes.
 
+Production: [nback.sinke.me](https://nback.sinke.me) (Vercel project `nback` only — do not attach other `*.sinke.me` hosts or path apps here).
+
 ### Commands
 
 - `pnpm install` — install dependencies
