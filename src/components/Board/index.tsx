@@ -1,16 +1,19 @@
 import { useGameStore } from '../../store/gameStore';
 import { GameResult } from '../../model/GameResult';
 import { ResultPanel } from '../ResultPanel';
+import SessionPrimaryButton from '../SessionPrimaryButton';
 import './Board.scss';
 import BoardSquare from './BoardSquare';
 
 const Board = () => {
     const game = useGameStore((state) => state.game);
+    const countdown = useGameStore((state) => state.countdown);
     const lastResult = useGameStore((state) => state.results.last);
     const displayTarget = useGameStore((state) => state.settings.displayTarget);
     const pendingContinue = useGameStore((state) => state.adaptiveSession?.pendingContinue === true);
 
     const showBoard = game !== null || lastResult === null;
+    const showStart = game === null && countdown === null && !pendingContinue && lastResult === null;
 
     return (
         <div className="board-container">
@@ -36,12 +39,10 @@ const Board = () => {
             ) : (
                 <ResultPanel result={lastResult as GameResult} />
             )}
-            {game === null && !pendingContinue && (
-                <p className="start-prompt keybindings-notice">
-                    <span className="keybinding-line">
-                        Press <kbd className="key-space">Space</kbd> to start
-                    </span>
-                </p>
+            {showStart && (
+                <div className="start-prompt">
+                    <SessionPrimaryButton label="Start" />
+                </div>
             )}
         </div>
     );

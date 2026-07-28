@@ -61,9 +61,13 @@
     }
 
     .meta-theme {
+        touch-action: manipulation;
         margin: 0;
-        padding: 0;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 10px 12px;
         border: 0;
+        border-radius: 4px;
         background: transparent;
         color: inherit;
         font: inherit;

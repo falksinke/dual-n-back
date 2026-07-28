@@ -7,6 +7,7 @@ import {
     controllerActionHint,
     formatSdtMetric,
 } from '../adaptiveDisplay';
+import SessionPrimaryButton from '../SessionPrimaryButton';
 
 interface ResultPanelProps {
     result: GameResult;
@@ -124,11 +125,9 @@ export const ResultPanel = ({ result }: ResultPanelProps) => {
             )}
 
             {nextHint && <p className="result-next-hint">{nextHint}</p>}
-            {pendingContinue && (
-                <p className="result-continue-hint">
-                    Press <kbd className="key-space">Space</kbd> to continue
-                </p>
-            )}
+            <div className="result-continue-actions">
+                <SessionPrimaryButton label={pendingContinue ? 'Continue' : 'Start'} />
+            </div>
         </div>
     );
 };

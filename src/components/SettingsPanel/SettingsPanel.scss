@@ -65,11 +65,12 @@
 }
 
 .settings-close {
+    touch-action: manipulation;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: 44px;
+    height: 44px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: transparent;
@@ -131,11 +132,12 @@
 }
 
 .step-btn {
+    touch-action: manipulation;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: 44px;
+    height: 44px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: transparent;
@@ -164,10 +166,11 @@
 
 .settings-toggle {
     --radius-full: 999px;
+    touch-action: manipulation;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    min-height: 32px;
+    min-height: 44px;
     padding: 0;
     border: 0;
     background: transparent;
@@ -386,7 +389,9 @@
 }
 
 .segment-btn {
-    padding: 6px 10px;
+    touch-action: manipulation;
+    min-height: 44px;
+    padding: 10px 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: transparent;
@@ -410,8 +415,10 @@
 }
 
 .settings-cycle {
+    touch-action: manipulation;
     min-width: 5.5rem;
-    padding: 6px 12px;
+    min-height: 44px;
+    padding: 10px 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: transparent;
@@ -503,25 +510,27 @@
         appearance: none;
         -webkit-appearance: none;
         pointer-events: auto;
-        width: 16px;
-        height: 16px;
-        margin-top: -6.5px;
-        border: 2px solid var(--primary);
+        width: 44px;
+        height: 44px;
+        margin-top: -20.5px;
+        border: 2px solid transparent;
         border-radius: 999px;
-        background: var(--background);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+        background:
+            radial-gradient(circle at center, var(--background) 0 7px, var(--primary) 7px 9px, transparent 9.5px);
+        box-shadow: none;
         cursor: grab;
         transition: transform var(--settle), box-shadow var(--settle);
     }
 
     &::-moz-range-thumb {
         pointer-events: auto;
-        width: 16px;
-        height: 16px;
-        border: 2px solid var(--primary);
+        width: 44px;
+        height: 44px;
+        border: 2px solid transparent;
         border-radius: 999px;
-        background: var(--background);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+        background:
+            radial-gradient(circle at center, var(--background) 0 7px, var(--primary) 7px 9px, transparent 9.5px);
+        box-shadow: none;
         cursor: grab;
     }
 

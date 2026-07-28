@@ -1,0 +1,49 @@
+.session-primary-btn {
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 12px 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary) 18%, var(--background));
+    color: var(--textForeground);
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+
+    &:disabled {
+        opacity: 0.45;
+        cursor: default;
+    }
+
+    &:not(:disabled):active {
+        transform: scale(0.98);
+    }
+}
+
+.session-primary-btn-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--textBackground);
+
+    kbd {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1.5rem;
+        min-height: 1.5rem;
+        padding: 0 0.35rem;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font-size: 0.7rem;
+    }
+}

@@ -34,12 +34,17 @@
         font-size: 0.95rem;
     }
 
-    .result-next-hint,
-    .result-continue-hint {
+    .result-next-hint {
         margin: 16px 0 0;
         font-size: 0.85rem;
         line-height: 1.4;
         color: var(--textBackground);
+    }
+
+    .result-continue-actions {
+        margin: 18px 0 0;
+        display: flex;
+        justify-content: center;
     }
 
     .result-continue-hint {

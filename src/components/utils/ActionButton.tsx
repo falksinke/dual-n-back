@@ -7,14 +7,20 @@ interface ActionButtonProps {
 
 const ActionButton = ({ modality }: ActionButtonProps) => {
     const stateClass = useGameStore((state) => state.btns[modality] ?? 'None');
+    const selectModality = useGameStore((state) => state.selectModality);
+    const inSession = useGameStore((state) => state.game !== null);
 
     return (
-        <div className="keybindings-notice">
-            <div className={`keybinding-line user-match-notice ${stateClass}`}>
-                <strong>{DEFAULT_KEYS[modality].toUpperCase()}</strong> — match{' '}
-                {MODALITY_LABELS[modality].toLowerCase()}
-            </div>
-        </div>
+        <button
+            type="button"
+            className={`match-claim-btn user-match-notice ${stateClass}`}
+            aria-label={`Match ${MODALITY_LABELS[modality].toLowerCase()}`}
+            disabled={!inSession}
+            onClick={() => selectModality(modality)}
+        >
+            <kbd className="match-claim-key">{DEFAULT_KEYS[modality].toUpperCase()}</kbd>
+            <span className="match-claim-label">{MODALITY_LABELS[modality]}</span>
+        </button>
     );
 };
 
