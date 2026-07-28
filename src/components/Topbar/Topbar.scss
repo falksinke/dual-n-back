@@ -13,7 +13,7 @@
     justify-content: space-between;
     align-items: center;
     gap: 20px;
-    padding: 28px 32px 0;
+    padding: var(--frame-top) var(--frame-right) 0 var(--frame-left);
 
     .brand {
         display: flex;

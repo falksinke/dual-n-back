@@ -9,7 +9,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 16px;
-    padding: 0 32px 28px;
+    padding: 0 var(--frame-right) var(--frame-bottom) var(--frame-left);
     color: var(--textBackground);
 
     .footer-hints {

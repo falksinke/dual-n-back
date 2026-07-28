@@ -33,11 +33,11 @@
     position: absolute;
     top: 0;
     right: 0;
-    width: min(360px, 100vw);
+    width: min(360px, 100%);
     height: 100%;
     display: grid;
     grid-template-rows: auto 1fr;
-    padding: 28px 24px;
+    padding: var(--frame-top) max(24px, var(--frame-right)) var(--frame-bottom) 24px;
     background: color-mix(in srgb, var(--background) 92%, #000 8%);
     border-left: 1px solid var(--border);
     transform: translateX(100%);
@@ -89,6 +89,11 @@
     display: flex;
     flex-direction: column;
     gap: 18px;
+    min-height: 0; /* allow 1fr grid row to shrink so overflow can scroll */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
 }
 
 .settings-row {
@@ -233,6 +238,108 @@
 
 .settings-row--readonly {
     align-items: flex-start;
+}
+
+.settings-row--ladder {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+}
+
+.settings-row-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.settings-row-label-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings-info-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--textBackground);
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-style: italic;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color var(--settle), color var(--settle), background-color var(--settle);
+
+    &:hover,
+    &:focus-visible {
+        border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+        color: var(--textForeground);
+        outline: none;
+    }
+
+    &.is-open {
+        border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+        color: var(--primary);
+        background: color-mix(in srgb, var(--primary) 10%, transparent);
+    }
+}
+
+.settings-info-panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 200ms ease;
+}
+
+.settings-info-panel.is-open {
+    grid-template-rows: 1fr;
+    margin-top: 12px;
+}
+
+.settings-info-panel-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
+.settings-info-panel-inner p,
+.settings-info-panel-inner ul {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--textBackground);
+}
+
+.settings-info-panel-inner p + p,
+.settings-info-panel-inner p + ul,
+.settings-info-panel-inner ul + p {
+    margin-top: 8px;
+}
+
+.settings-info-panel-inner ul {
+    padding-left: 1.1em;
+}
+
+.settings-info-panel-inner li + li {
+    margin-top: 4px;
+}
+
+.settings-info-panel-inner strong {
+    color: var(--textForeground);
+    font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .settings-info-panel {
+        transition: none;
+    }
 }
 
 .settings-readout {

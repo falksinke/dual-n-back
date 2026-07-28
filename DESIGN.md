@@ -15,7 +15,10 @@
 | gap- Tight | 6px | within a control |
 | gap-group | 10px | between settings |
 | gap-section | 28px | board ↔ prompt |
-| pad-frame | 28px 32px | app shell |
+| pad-frame-y / pad-frame-x | 28px / 32px | base chrome insets |
+| frame-* | `max(pad-frame, safe-area-inset)` | topbar, footer, HUDs, settings (`--frame-top` etc. in `App.scss`) |
+
+Shell height: `min-height: 100vh` with `100dvh` override. Viewport meta includes `viewport-fit=cover`.
 
 ## Motion
 
