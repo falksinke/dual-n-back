@@ -18,6 +18,9 @@ function clearHapticTarget(button: HTMLButtonElement): void {
     button.classList.remove('haptic-target');
     button.removeAttribute(AUGMENTED_ATTR);
     button.querySelectorAll('.ios-haptic-switch').forEach((node) => node.remove());
+    button.closest('.haptic-host')?.querySelectorAll('.ios-haptic-switch').forEach((node) => {
+        node.remove();
+    });
 }
 
 function hapticKindForButton(button: HTMLButtonElement): HapticKind {

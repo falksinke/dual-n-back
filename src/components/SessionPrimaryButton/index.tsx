@@ -13,17 +13,20 @@ const SessionPrimaryButton = ({ label }: SessionPrimaryButtonProps) => {
     );
 
     return (
-        <button
-            type="button"
-            className="session-primary-btn"
-            disabled={blocked}
-            onClick={() => startGame()}
-        >
-            {label}
-            <span className="session-primary-btn-hint">
-                or <kbd>Space</kbd>
-            </span>
-        </button>
+        <div className="session-primary-wrap haptic-host">
+            <button
+                type="button"
+                className="session-primary-btn"
+                disabled={blocked}
+                data-haptic="light"
+                onClick={() => startGame()}
+            >
+                {label}
+                <span className="session-primary-btn-hint">
+                    or <kbd>Space</kbd>
+                </span>
+            </button>
+        </div>
     );
 };
 

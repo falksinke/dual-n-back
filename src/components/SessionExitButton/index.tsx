@@ -14,14 +14,17 @@ const SessionExitButton = () => {
     if (!visible) return null;
 
     return (
-        <button
-            type="button"
-            className="session-exit-btn"
-            aria-label="Exit session"
-            onClick={() => cancelGame()}
-        >
-            <span aria-hidden="true">✕</span>
-        </button>
+        <div className="session-exit-wrap haptic-host">
+            <button
+                type="button"
+                className="session-exit-btn"
+                aria-label="Exit session"
+                data-haptic="light"
+                onClick={() => cancelGame()}
+            >
+                <span aria-hidden="true">✕</span>
+            </button>
+        </div>
     );
 };
 

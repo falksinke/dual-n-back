@@ -166,7 +166,38 @@ describe('mountIosHapticSwitch', () => {
         vi.restoreAllMocks();
     });
 
-    it('forwards switch change to the host button click', () => {
+    it('mounts the switch on .haptic-host and forwards change to the button', () => {
+        Object.defineProperty(global, 'navigator', {
+            value: {
+                userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X)',
+                platform: 'iPhone',
+                maxTouchPoints: 5,
+            },
+            configurable: true,
+        });
+        Object.defineProperty(HTMLInputElement.prototype, 'switch', {
+            configurable: true,
+            value: true,
+        });
+
+        const host = document.createElement('div');
+        host.className = 'haptic-host';
+        const button = document.createElement('button');
+        const onClick = vi.fn();
+        button.addEventListener('click', onClick);
+        host.append(button);
+        document.body.append(host);
+
+        mountIosHapticSwitch(button, true);
+        expect(button.querySelector('input.ios-haptic-switch')).toBeNull();
+        const input = host.querySelector('input.ios-haptic-switch') as HTMLInputElement;
+        expect(input).toBeTruthy();
+        input.checked = true;
+        input.dispatchEvent(new Event('change'));
+        expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not nest a switch inside a bare button', () => {
         Object.defineProperty(global, 'navigator', {
             value: {
                 userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X)',
@@ -181,15 +212,8 @@ describe('mountIosHapticSwitch', () => {
         });
 
         const button = document.createElement('button');
-        const onClick = vi.fn();
-        button.addEventListener('click', onClick);
         document.body.append(button);
-
         mountIosHapticSwitch(button, true);
-        const input = button.querySelector('input.ios-haptic-switch') as HTMLInputElement;
-        expect(input).toBeTruthy();
-        input.checked = true;
-        input.dispatchEvent(new Event('change'));
-        expect(onClick).toHaveBeenCalledTimes(1);
+        expect(button.querySelector('input.ios-haptic-switch')).toBeNull();
     });
 });

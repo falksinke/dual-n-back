@@ -3,7 +3,7 @@
     width: 100%;
     bottom: 0;
     left: 0;
-    z-index: 7;
+    z-index: 20;
     display: flex;
     align-items: stretch;
     justify-content: space-between;
@@ -12,10 +12,18 @@
     pointer-events: none;
 }
 
+.match-claim-wrap {
+    pointer-events: auto;
+    flex: 1 1 0;
+    min-width: 44px;
+    display: flex;
+}
+
 .match-claim-btn {
     pointer-events: auto;
     touch-action: manipulation;
-    flex: 1 1 0;
+    flex: 1 1 auto;
+    width: 100%;
     min-width: 44px;
     min-height: 44px;
     display: inline-flex;

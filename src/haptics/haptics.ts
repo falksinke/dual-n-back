@@ -138,10 +138,12 @@ export function installHapticCaptureBridge(isEnabled: () => boolean = () => true
         if (!isEnabled()) return;
         const eventTarget = event.target as Element | null;
         if (!eventTarget) return;
+        // iOS host overlays own Taptic via the real switch gesture.
         if (eventTarget.closest('.ios-haptic-switch')) return;
 
         const target = eventTarget.closest('[data-haptic]');
         if (!target) return;
+        if ((target as HTMLButtonElement).disabled) return;
         const kind = target.getAttribute('data-haptic') as HapticKind | null;
         if (!kind) return;
 
@@ -149,13 +151,19 @@ export function installHapticCaptureBridge(isEnabled: () => boolean = () => true
         const previous = lastFire.get(target) ?? 0;
         if (now - previous < captureBridgeDebounceMs) return;
         lastFire.set(target, now);
+
+        // Prefer pointerdown so the temporary iOS switch still runs under the gesture.
+        if (isIOS()) {
+            fireIosSwitchHapticSync();
+            return;
+        }
         fireKind(kind);
     };
 
-    document.addEventListener('pointerup', handle, { capture: true, passive: true });
+    document.addEventListener('pointerdown', handle, { capture: true, passive: true });
     document.addEventListener('click', handle, { capture: true, passive: true });
     return () => {
-        document.removeEventListener('pointerup', handle, { capture: true });
+        document.removeEventListener('pointerdown', handle, { capture: true });
         document.removeEventListener('click', handle, { capture: true });
     };
 }

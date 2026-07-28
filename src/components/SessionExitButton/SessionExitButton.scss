@@ -1,4 +1,4 @@
-.session-exit-btn {
+.session-exit-wrap {
     --radius-sm: 4px;
     --settle: 180ms cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -6,6 +6,9 @@
     top: var(--frame-top);
     left: var(--frame-left);
     z-index: 30;
+}
+
+.session-exit-btn {
     touch-action: manipulation;
     display: inline-flex;
     align-items: center;
@@ -35,6 +38,7 @@
     }
 }
 
+.app-container.playing .session-exit-wrap,
 .app-container.playing .session-exit-btn {
     cursor: pointer;
     visibility: visible;
