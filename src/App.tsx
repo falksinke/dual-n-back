@@ -15,6 +15,7 @@ import type { ThemeMode } from './themes/config';
 import AdaptiveProgressHud from './components/AdaptiveProgressHud';
 import VariableNHud from './components/VariableNHud';
 import InstallNudge from './components/InstallNudge';
+import SessionExitButton from './components/SessionExitButton';
 import { useHaptics } from './haptics/useHaptics';
 import { loadUiPreferences } from './model/uiPreferences';
 import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
@@ -89,6 +90,7 @@ const App = () => {
         <div ref={appRef} className={`app-container${chromeHidden ? ' playing' : ''}`}>
             <div className="app">
                 <Topbar onHapticsEnabledChange={setHapticsEnabled} />
+                <SessionExitButton />
                 <div className="session-status" aria-live="polite">
                     {!isAdaptive && !showVariableN && (
                         <div className="session-status-item">

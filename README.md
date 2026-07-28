@@ -23,7 +23,7 @@ Production: [nback.sinke.me](https://nback.sinke.me) (Vercel project `nback` onl
 ### Controls
 
 - **Space** — start / cancel session (also **Start** / **Continue** on screen)
-- **Esc** — cancel session while playing
+- **Esc** / top-left **✕** — cancel session while playing (or countdown / Adaptive continue)
 - **A** — position match (on-screen Position button during a session)
 - **F** — color match (Triple / Quad)
 - **J** — image match (Quad only)
