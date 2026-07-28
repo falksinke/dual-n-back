@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from './store/gameStore';
 import Board from './components/Board';
 import Topbar from './components/Topbar';
@@ -13,6 +13,8 @@ import { DefaultLightTheme } from './themes/DefaultLight';
 import type { ThemeMode } from './themes/config';
 import AdaptiveProgressHud from './components/AdaptiveProgressHud';
 import VariableNHud from './components/VariableNHud';
+import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
+import { shouldApplyWaitingUpdate } from './pwa/updateGate';
 
 const App = () => {
     const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
@@ -36,6 +38,28 @@ const App = () => {
     const countingDown = countdown !== null;
     const pendingContinue = adaptiveSession?.pendingContinue === true;
     const chromeHidden = inSession || countingDown || pendingContinue;
+    const canApplySwUpdate = shouldApplyWaitingUpdate({
+        game,
+        countdown,
+        pendingContinue,
+    });
+
+    useEffect(() => {
+        if (!canApplySwUpdate) return;
+        applyPendingUpdate();
+    }, [canApplySwUpdate]);
+
+    useEffect(() => {
+        return subscribeUpdateReady((ready) => {
+            if (ready && shouldApplyWaitingUpdate({
+                game: useGameStore.getState().game,
+                countdown: useGameStore.getState().countdown,
+                pendingContinue: useGameStore.getState().adaptiveSession?.pendingContinue === true,
+            })) {
+                applyPendingUpdate();
+            }
+        });
+    }, []);
     const isAdaptive = playMode === 'adaptive';
     const showVariableN = !isAdaptive && variableN && (inSession || countingDown);
     const variableNValue = nForTrial > 0 ? nForTrial : level;
