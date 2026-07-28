@@ -1,0 +1,67 @@
+.install-nudge {
+    position: absolute;
+    left: var(--frame-left);
+    right: var(--frame-right);
+    bottom: var(--frame-bottom);
+    z-index: 40;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--background);
+    color: var(--textBackground);
+    box-shadow: none;
+}
+
+.install-nudge-copy {
+    min-width: 0;
+    flex: 1 1 12rem;
+}
+
+.install-nudge-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.install-nudge-body {
+    margin: 6px 0 0;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    opacity: 0.85;
+}
+
+.install-nudge-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.install-nudge-primary,
+.install-nudge-dismiss {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 14px;
+    border-radius: 4px;
+    font: inherit;
+    font-weight: 500;
+    touch-action: manipulation;
+    cursor: pointer;
+}
+
+.install-nudge-primary {
+    border: 1px solid var(--primary);
+    background: var(--primary);
+    color: var(--textForeground);
+}
+
+.install-nudge-dismiss {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--textBackground);
+}

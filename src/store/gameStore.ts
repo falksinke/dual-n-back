@@ -18,6 +18,7 @@ import {
     saveLadder as persistLadder,
     type LadderStorageV1,
 } from '../model/ladderPersistence';
+import { recordBlockCompleted } from '../model/uiPreferences';
 import { LureStageId } from '../model/lureStages';
 import { ControllerAction } from '../model/adaptiveController';
 import {
@@ -259,6 +260,7 @@ function finalizeGameEnd(
             lastBlockRole: state.settings.playMode === 'free' ? 'free' : null,
             lastControllerAction: null,
         });
+        recordBlockCompleted();
         return;
     }
 
@@ -298,6 +300,7 @@ function finalizeGameEnd(
         settings: applyAdaptiveLadderToSettings(state.settings, endResult.ladder),
     });
     get().saveLadder();
+    recordBlockCompleted();
 }
 
 function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): LadderStorageV1 {

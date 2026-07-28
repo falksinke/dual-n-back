@@ -13,6 +13,7 @@ import { DefaultLightTheme } from './themes/DefaultLight';
 import type { ThemeMode } from './themes/config';
 import AdaptiveProgressHud from './components/AdaptiveProgressHud';
 import VariableNHud from './components/VariableNHud';
+import InstallNudge from './components/InstallNudge';
 import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
 import { shouldApplyWaitingUpdate } from './pwa/updateGate';
 
@@ -32,12 +33,14 @@ const App = () => {
     const nForTrial = useGameStore((state) => state.boardState.nForTrial);
     const ladder = useGameStore((state) => state.ladder[mode]);
     const adaptiveSession = useGameStore((state) => state.adaptiveSession);
+    const blocksCompletedSignal = useGameStore((state) => state.results.all.length);
     const trialsShown = game !== null ? currentTrials : configuredTrials;
 
     const inSession = game !== null;
     const countingDown = countdown !== null;
     const pendingContinue = adaptiveSession?.pendingContinue === true;
     const chromeHidden = inSession || countingDown || pendingContinue;
+    const flowBusy = chromeHidden;
     const canApplySwUpdate = shouldApplyWaitingUpdate({
         game,
         countdown,
@@ -95,6 +98,7 @@ const App = () => {
                 />
                 {inSession && <UserMatchNotice />}
                 <CountdownFlash />
+                <InstallNudge flowBusy={flowBusy} blocksCompletedSignal={blocksCompletedSignal} />
             </div>
         </div>
     );
