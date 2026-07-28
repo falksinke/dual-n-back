@@ -7,7 +7,8 @@ React + Vite implementation of a Brain Workshop–aligned n-back trainer with Du
 - `pnpm install` — install dependencies
 - `pnpm dev` — start dev server on port 3000
 - `pnpm test` — run unit/characterization tests
-- `pnpm build` — production build
+- `pnpm build` — production build (includes service worker precache)
+- `pnpm serve` — preview the production build (use for offline / SW smoke)
 
 ### Modes
 
@@ -19,14 +20,14 @@ React + Vite implementation of a Brain Workshop–aligned n-back trainer with Du
 
 ### Controls
 
-- **Space** — start / cancel session
+- **Space** — start / cancel session (also **Start** / **Continue** on screen)
 - **Esc** — cancel session while playing
-- **A** — position match
+- **A** — position match (on-screen Position button during a session)
 - **F** — color match (Triple / Quad)
 - **J** — image match (Quad only)
 - **L** — audio match
-- Keys are case-insensitive.
-- **Settings** — mode, audio pack, level, trials, ISI range, interference chance, variable N, center cell
+- Keys are case-insensitive; touch targets mirror the active modalities.
+- **Settings** — mode, audio pack, level, trials, ISI range, interference chance, variable N, center cell, haptics
 - **↑↓←→** — level / trials when idle
 
 ### Settings
@@ -53,10 +54,47 @@ The system adapts memory load and interference control more precisely; it is **n
 - Piano samples: `public/assets/sounds/piano/` — from [Brain Workshop](https://github.com/brain-workshop/brainworkshop) (`res/sounds/piano/`, GPL-2; see `NOTICE.md` in that folder)
 - SVG glyphs: `public/assets/images/` — first-party simple shapes for the image channel
 
+### Progressive Web App (iPhone + installable)
+
+Installable offline trainer. **No Web Push.** Support floor: iOS Safari / Home Screen **14+** (haptics need **17.4+** with System Haptics on).
+
+#### Install
+
+- **iOS Safari:** after a visit or completed block, use Share → **Add to Home Screen**. An instructional nudge appears when engaged and not already standalone.
+- **Chromium (desktop/Android):** when installable, a deferred **Install** nudge can call the browser install prompt (`beforeinstallprompt`). Dismiss snoozes ~7 days. Standalone / Home Screen launches never show the nudge.
+
+#### Offline
+
+After one online visit with a successful service-worker install, a full Free-play or Adaptive block is playable offline: app shell, letter + piano sounds, poly images, and self-hosted IBM Plex (not Google Fonts CDN). Waiting service-worker updates apply only when idle (no game, countdown, or Adaptive Continue interstitial).
+
+Smoke: `pnpm build && pnpm serve` → load once online → DevTools offline (or airplane mode) → start a block with audio.
+
+#### Haptics (opt-in, default off)
+
+Settings → **Haptic feedback**.
+
+| Platform | Mechanism |
+|----------|-----------|
+| iOS 17.4+ Safari / Home Screen | Invisible `<input switch>` overlays on tappable controls (Taptic). Needs **Settings → Sounds & Haptics → System Haptics**. |
+| Android / vibrate-capable | `browser-haptic` / `navigator.vibrate` via capture bridge on `data-haptic` targets |
+
+Programmatic success pulses are Android-only; iOS only Taptics inside a real control gesture. Haptics are **not** gated on `prefers-reduced-motion`.
+
+#### Manual QA matrix
+
+| Surface | Check |
+|---------|--------|
+| Safari tab | Safe areas, Start/match taps, settings scroll |
+| Home Screen standalone | Same + status bar / home indicator insets |
+| Offline after one visit | Full block with audio |
+| Idle SW update | Mid-session deploy does not reload; idle applies update |
+| Install nudge | Hidden when standalone; shows when engaged on iOS or with BIP |
+| Haptics on | Physical iPhone 17.4+ + System Haptics; Android vibrate |
+
 ### Stack
 
-React 19, Vite 6, TypeScript, Zustand, Howler, Sass.
+React 19, Vite 6, TypeScript, Zustand, Howler, Sass, `vite-plugin-pwa` (injectManifest).
 
 ### Deploy notes
 
-Set Vite `base` to your GitHub Pages subpath (for example `/dual-n-back/`) before publishing.
+Set Vite `base` to your GitHub Pages subpath (for example `/dual-n-back/`) before publishing. Manifest `start_url` / `scope` and the service worker assume site root (`/`) unless you adjust those to match.
