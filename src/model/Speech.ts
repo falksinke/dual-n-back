@@ -1,4 +1,5 @@
 import { Howl } from 'howler';
+import { ensureAudioReady } from '../audio/unlockAudio';
 import { AudioPackId, getSoundSrc, getTokensForPack } from './audioPacks';
 
 export class Speech {
@@ -12,7 +13,13 @@ export class Speech {
     }
 
     public play(token: string) {
-        this.sounds.get(token)?.play();
+        const sound = this.sounds.get(token);
+        if (!sound) return;
+
+        // AirPods / iOS: context may be interrupted after route change; resume then play.
+        void ensureAudioReady().then(() => {
+            sound.play();
+        });
     }
 
     public getSoundSrc(token: string): string[] {
@@ -29,6 +36,9 @@ export class Speech {
                 token,
                 new Howl({
                     src: this.getSoundSrc(token),
+                    // Short one-shots: HTML5 Audio survives AirPods reconnect better than Web Audio on iOS.
+                    html5: true,
+                    preload: true,
                 })
             );
         }

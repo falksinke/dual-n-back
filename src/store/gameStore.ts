@@ -19,6 +19,7 @@ import {
     type LadderStorageV1,
 } from '../model/ladderPersistence';
 import { recordBlockCompleted } from '../model/uiPreferences';
+import { ensureAudioReady } from '../audio/unlockAudio';
 import { LureStageId } from '../model/lureStages';
 import { ControllerAction } from '../model/adaptiveController';
 import {
@@ -376,6 +377,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (get().countdown !== null) {
             throw new Error('Countdown is already in progress');
         }
+
+        void ensureAudioReady();
 
         const state = get();
         const { playMode, mode } = state.settings;
