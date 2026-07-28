@@ -6,6 +6,7 @@ import {
     isIOS,
     playHaptic,
 } from './haptics';
+import { mountIosHapticSwitch } from './hapticOverlay';
 import { augmentHapticTargets } from './hapticTargets';
 
 vi.mock('browser-haptic', () => ({
@@ -156,5 +157,39 @@ describe('augmentHapticTargets', () => {
         augmentHapticTargets(root, { enabled: true });
         expect(button.getAttribute('data-haptic')).toBe('light');
         expect(button.classList.contains('haptic-target')).toBe(true);
+    });
+});
+
+describe('mountIosHapticSwitch', () => {
+    afterEach(() => {
+        document.body.replaceChildren();
+        vi.restoreAllMocks();
+    });
+
+    it('forwards switch change to the host button click', () => {
+        Object.defineProperty(global, 'navigator', {
+            value: {
+                userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X)',
+                platform: 'iPhone',
+                maxTouchPoints: 5,
+            },
+            configurable: true,
+        });
+        Object.defineProperty(HTMLInputElement.prototype, 'switch', {
+            configurable: true,
+            value: true,
+        });
+
+        const button = document.createElement('button');
+        const onClick = vi.fn();
+        button.addEventListener('click', onClick);
+        document.body.append(button);
+
+        mountIosHapticSwitch(button, true);
+        const input = button.querySelector('input.ios-haptic-switch') as HTMLInputElement;
+        expect(input).toBeTruthy();
+        input.checked = true;
+        input.dispatchEvent(new Event('change'));
+        expect(onClick).toHaveBeenCalledTimes(1);
     });
 });

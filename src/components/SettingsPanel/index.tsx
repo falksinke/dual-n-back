@@ -388,8 +388,8 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             <span className="settings-row-label">Haptic feedback</span>
                             <span className="settings-row-hint">
                                 {showIosHapticsHint
-                                    ? 'Safari 17.4+ · enable System Haptics in Sounds & Haptics'
-                                    : 'Vibration on supported devices · off by default'}
+                                    ? 'On by default · Safari 17.4+ · enable System Haptics in Sounds & Haptics'
+                                    : 'On by default · vibration confirms match taps'}
                             </span>
                         </div>
                         <button

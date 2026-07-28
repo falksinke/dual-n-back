@@ -15,9 +15,13 @@ export function mountIosHapticSwitch(container: HTMLElement, active: boolean): v
     input.setAttribute('aria-hidden', 'true');
     input.tabIndex = -1;
     input.setAttribute('switch', '');
-    input.addEventListener('change', () => {
-        input.checked = false;
-        markIosSwitchGesture(container);
-    });
-    container.append(input);
+  input.addEventListener('change', () => {
+    input.checked = false;
+    markIosSwitchGesture(container);
+    // The switch sits on top for Taptic; forward the same gesture to the host control.
+    if (container instanceof HTMLButtonElement && !container.disabled) {
+      container.click();
+    }
+  });
+  container.append(input);
 }

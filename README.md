@@ -71,9 +71,9 @@ After one online visit with a successful service-worker install, a full Free-pla
 
 Smoke: `pnpm build && pnpm serve` → load once online → DevTools offline (or airplane mode) → start a block with audio.
 
-#### Haptics (opt-in, default off)
+#### Haptics (on by default; toggle in Settings)
 
-Settings → **Haptic feedback**.
+Settings → **Haptic feedback** (default **on** so match taps confirm on phone).
 
 | Platform | Mechanism |
 |----------|-----------|

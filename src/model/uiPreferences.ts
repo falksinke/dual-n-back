@@ -1,5 +1,5 @@
 export const UI_PREFERENCES_STORAGE_KEY = 'nback-ui-preferences';
-export const UI_PREFERENCES_SCHEMA_VERSION = 1 as const;
+export const UI_PREFERENCES_SCHEMA_VERSION = 2 as const;
 
 export interface UiPreferencesV1 {
     version: typeof UI_PREFERENCES_SCHEMA_VERSION;
@@ -20,7 +20,8 @@ export function createDefaultUiPreferences(): UiPreferencesV1 {
         visitCount: 0,
         blocksCompleted: 0,
         installNudgeDismissedAt: null,
-        hapticFeedbackEnabled: false,
+        /** On by default so match claims confirm on touch; still toggleable in Settings. */
+        hapticFeedbackEnabled: true,
     };
 }
 
@@ -42,6 +43,18 @@ export function parseUiPreferences(raw: string): UiPreferencesV1 {
             return defaults;
         }
         const obj = parsed as Record<string, unknown>;
+        const storedVersion =
+            typeof obj.version === 'number' && Number.isFinite(obj.version)
+                ? Math.floor(obj.version)
+                : 0;
+        // v1 defaulted haptics off; promote to on when upgrading so presses feel confirmed.
+        const hapticFromStore =
+            typeof obj.hapticFeedbackEnabled === 'boolean'
+                ? obj.hapticFeedbackEnabled
+                : defaults.hapticFeedbackEnabled;
+        const hapticFeedbackEnabled =
+            storedVersion < UI_PREFERENCES_SCHEMA_VERSION ? true : hapticFromStore;
+
         return {
             version: UI_PREFERENCES_SCHEMA_VERSION,
             visitCount:
@@ -57,10 +70,7 @@ export function parseUiPreferences(raw: string): UiPreferencesV1 {
                 Number.isFinite(obj.installNudgeDismissedAt)
                     ? obj.installNudgeDismissedAt
                     : null,
-            hapticFeedbackEnabled:
-                typeof obj.hapticFeedbackEnabled === 'boolean'
-                    ? obj.hapticFeedbackEnabled
-                    : defaults.hapticFeedbackEnabled,
+            hapticFeedbackEnabled,
         };
     } catch {
         return defaults;
@@ -76,7 +86,16 @@ export function loadUiPreferences(storage?: StorageLike): UiPreferencesV1 {
     if (raw == null || raw === '') {
         return createDefaultUiPreferences();
     }
-    return parseUiPreferences(raw);
+    const parsed = parseUiPreferences(raw);
+    try {
+        const stored = JSON.parse(raw) as { version?: number };
+        if (stored.version !== UI_PREFERENCES_SCHEMA_VERSION) {
+            saveUiPreferences(parsed, resolved);
+        }
+    } catch {
+        saveUiPreferences(parsed, resolved);
+    }
+    return parsed;
 }
 
 export function saveUiPreferences(data: UiPreferencesV1, storage?: StorageLike): void {

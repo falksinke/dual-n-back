@@ -20,13 +20,29 @@ function memoryStorage(initial: Record<string, string> = {}) {
 }
 
 describe('uiPreferences', () => {
-    it('defaults haptic feedback off and zero engagement', () => {
+    it('defaults haptic feedback on and zero engagement', () => {
         expect(createDefaultUiPreferences()).toMatchObject({
             visitCount: 0,
             blocksCompleted: 0,
             installNudgeDismissedAt: null,
-            hapticFeedbackEnabled: false,
+            hapticFeedbackEnabled: true,
+            version: 2,
         });
+    });
+
+    it('enables haptics when migrating from schema v1', () => {
+        const migrated = parseUiPreferences(
+            JSON.stringify({
+                version: 1,
+                visitCount: 3,
+                blocksCompleted: 1,
+                installNudgeDismissedAt: null,
+                hapticFeedbackEnabled: false,
+            })
+        );
+        expect(migrated.version).toBe(2);
+        expect(migrated.hapticFeedbackEnabled).toBe(true);
+        expect(migrated.visitCount).toBe(3);
     });
 
     it('records visits and block completions', () => {
