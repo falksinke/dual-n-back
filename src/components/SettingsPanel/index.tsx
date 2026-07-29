@@ -291,7 +291,9 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                         <div className="settings-row-copy">
                             <span className="settings-row-label">ISI</span>
                             <span className="settings-row-hint">
-                                {isAdaptive ? 'Set by ladder tier in Adaptive' : 'Inter-stimulus interval range'}
+                                {isAdaptive
+                                    ? 'Set by ladder tier in Adaptive'
+                                    : 'Onset pacing range · answers score at the minimum'}
                             </span>
                         </div>
                         {isAdaptive ? (

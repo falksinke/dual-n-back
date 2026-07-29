@@ -147,6 +147,7 @@ describe('Game', () => {
         const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
         let randomCall = 0;
         // Dual mode: 1 random per modality + ISI per trial (no history yet at n=2).
+        // ISI random 0 → 500ms; ISI random 1 → 1500ms (response 500 + remainder 1000).
         const randomValues = [0.5, 0.5, 0, 0.5, 0.5, 1];
 
         const game = new Game(
@@ -166,7 +167,8 @@ describe('Game', () => {
 
         const startPromise = game.start();
         await vi.advanceTimersByTimeAsync(500);
-        await vi.advanceTimersByTimeAsync(1500);
+        await vi.advanceTimersByTimeAsync(500);
+        await vi.advanceTimersByTimeAsync(1000);
         await startPromise;
 
         const delayCalls = setTimeoutSpy.mock.calls
@@ -174,7 +176,74 @@ describe('Game', () => {
             .filter((ms): ms is number => typeof ms === 'number');
 
         expect(delayCalls).toContain(500);
-        expect(delayCalls).toContain(1500);
+        expect(delayCalls).toContain(1000);
+    });
+
+    it('scores at isiMin even when onset-to-onset ISI is longer', async () => {
+        const matchTimes: number[] = [];
+        let randomCall = 0;
+        // Force long ISI (1500) on both trials via random = 1 for ISI slots.
+        const randomValues = [0.5, 0.5, 1, 0.5, 0.5, 1];
+
+        const game = new Game(
+            2,
+            2,
+            500,
+            1500,
+            () => undefined,
+            () => {
+                matchTimes.push(Date.now());
+            },
+            () => undefined,
+            {
+                random: () => randomValues[randomCall++] ?? 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+            }
+        );
+
+        const t0 = Date.now();
+        const startPromise = game.start();
+        await vi.advanceTimersByTimeAsync(500);
+        expect(matchTimes).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(matchTimes).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(1000);
+        await startPromise;
+
+        expect(matchTimes[0]! - t0).toBe(500);
+        expect(matchTimes[1]! - matchTimes[0]!).toBe(1500);
+    });
+
+    it('keeps a single delay when isiMin equals isiMax', async () => {
+        const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+        let randomCall = 0;
+        const game = new Game(
+            2,
+            2,
+            1200,
+            1200,
+            () => undefined,
+            () => undefined,
+            () => undefined,
+            {
+                random: () => [0.5, 0.5, 0.5, 0.5][randomCall++] ?? 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        await vi.advanceTimersByTimeAsync(1200);
+        await vi.advanceTimersByTimeAsync(1200);
+        await startPromise;
+
+        const delayCalls = setTimeoutSpy.mock.calls
+            .map(([, ms]) => ms)
+            .filter((ms): ms is number => typeof ms === 'number' && ms === 1200);
+        expect(delayCalls.length).toBeGreaterThanOrEqual(2);
+        expect(delayCalls.every((ms) => ms === 1200)).toBe(true);
     });
 
     it('uses near-miss history when interference is 1 and claiming N-back fails', async () => {

@@ -12,12 +12,33 @@ type StoreSetter = (
 ) => void;
 
 let buttonTimeout: ReturnType<typeof setTimeout> | null = null;
+/** performance.now() when scored colors were last applied — used to avoid wiping them on a same-turn next onset. */
+let lastScoreAtMs = 0;
 
 const clearButtonTimeout = () => {
     if (buttonTimeout !== null) {
         clearTimeout(buttonTimeout);
         buttonTimeout = null;
     }
+};
+
+const resetButtons = (
+    setStore: StoreSetter,
+    modalities: ModalityId[]
+): void => {
+    setStore({
+        btns: Object.fromEntries(
+            modalities.map((m) => [m, ButtonState.None])
+        ) as Partial<Record<ModalityId, `${ButtonState}`>>,
+    });
+};
+
+const scheduleButtonClear = (getStore: StoreGetter, setStore: StoreSetter): void => {
+    clearButtonTimeout();
+    buttonTimeout = setTimeout(() => {
+        resetButtons(setStore, getStore().activeModalities);
+        buttonTimeout = null;
+    }, 500);
 };
 
 const defaultBoardReset = {
@@ -92,6 +113,14 @@ export class GameSession extends Game {
         setStore: StoreSetter,
         boardState: BoardState
     ) => {
+        // Drop leftover colors from the previous trial so they don't bleed into a
+        // short-ISI next onset — unless scoring and this onset share the same turn
+        // (response window === sampled ISI), where feedback must remain visible.
+        const scoredThisTurn = lastScoreAtMs > 0 && performance.now() - lastScoreAtMs < 32;
+        if (!scoredThisTurn) {
+            clearButtonTimeout();
+            resetButtons(setStore, getStore().activeModalities);
+        }
         presentBoardStimulus(getStore, setStore, boardState);
     };
 
@@ -112,14 +141,8 @@ export class GameSession extends Game {
                 : ButtonState.None;
         }
         setStore({ btns });
-        buttonTimeout = setTimeout(() => {
-            setStore((state) => ({
-                btns: Object.fromEntries(
-                    state.activeModalities.map((m) => [m, ButtonState.None])
-                ) as Partial<Record<ModalityId, `${ButtonState}`>>,
-            }));
-            buttonTimeout = null;
-        }, 500);
+        lastScoreAtMs = performance.now();
+        scheduleButtonClear(getStore, setStore);
     };
 
     private static onGameEnded = (

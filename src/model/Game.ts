@@ -155,7 +155,12 @@ export class Game {
         this._pendingLureLags = {};
         this._trialOnsetMs = null;
         this._claimRtMs = {};
+        this.delayTimeout = null;
+        this.delayResolve = null;
     }
+
+    private delayTimeout: ReturnType<typeof setTimeout> | null = null;
+    private delayResolve: (() => void) | null = null;
 
     public async start(): Promise<void> {
         this._isGameInProgress = true;
@@ -165,7 +170,22 @@ export class Game {
         this._currentIteration = 0;
         while (this._currentIteration < this.gameLength && this._isGameInProgress) {
             this.generateState();
-            await this.executeDelayed(this.sampleIsi(), this.processChoice.bind(this));
+            if (!this._isGameInProgress) break;
+
+            const isi = this.sampleIsi();
+            // Fixed answer/feedback deadline = isiMin; onset-to-onset still uses sampled ISI.
+            const responseMs = Math.min(this.isiMin, isi);
+
+            await this.delay(responseMs);
+            if (!this._isGameInProgress) break;
+            this.processChoice();
+
+            const remainder = isi - responseMs;
+            if (remainder > 0) {
+                await this.delay(remainder);
+                if (!this._isGameInProgress) break;
+            }
+
             this._currentIteration++;
         }
 
@@ -177,6 +197,7 @@ export class Game {
 
     public stop(): void {
         this._isGameInProgress = false;
+        this.clearDelay();
     }
 
     public addChoice(modality: ModalityId) {
@@ -208,16 +229,28 @@ export class Game {
         return Math.round(this.isiMin + this.random() * (this.isiMax - this.isiMin));
     }
 
-    private async executeDelayed(delayMs: number, fn: () => void) {
-        await this.delay(delayMs).then(fn);
+    private clearDelay(): void {
+        if (this.delayTimeout !== null) {
+            clearTimeout(this.delayTimeout);
+            this.delayTimeout = null;
+        }
+        if (this.delayResolve != null) {
+            const resolve = this.delayResolve;
+            this.delayResolve = null;
+            resolve();
+        }
     }
 
     private delay(milliseconds: number): Promise<void> {
-        return new Promise((resolve) =>
-            setTimeout(() => {
+        return new Promise((resolve) => {
+            this.clearDelay();
+            this.delayResolve = resolve;
+            this.delayTimeout = setTimeout(() => {
+                this.delayTimeout = null;
+                this.delayResolve = null;
                 resolve();
-            }, milliseconds)
-        );
+            }, milliseconds);
+        });
     }
 
     private processChoice(): void {
