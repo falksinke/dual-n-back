@@ -14,6 +14,7 @@ import { AudioPackId } from '../model/audioPacks';
 import { ColorId } from '../model/colorSet';
 import { ImageId } from '../model/imageSet';
 import {
+    advanceAcquisition,
     demoteCurriculumStage,
     promoteCurriculumStage,
     settingsFromCurriculum,
@@ -152,6 +153,8 @@ export interface GameStoreActions {
     increaseLevel: () => void;
     decreaseLadderStep: () => void;
     increaseLadderStep: () => void;
+    /** Dismiss strategy instruction and enter guided practice. */
+    acknowledgeStrategyInstruction: () => void;
     decreaseTrials: () => void;
     increaseTrials: () => void;
     setIsiMin: (ms: number) => void;
@@ -696,6 +699,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (settings.playMode === 'adaptive') {
             persistSettingsSnapshot(get().settings);
         }
+    },
+    acknowledgeStrategyInstruction: () => {
+        const state = get();
+        if (state.game !== null || state.countdown !== null) {
+            return;
+        }
+        if (state.settings.playMode !== 'adaptive') {
+            return;
+        }
+        const mode = state.settings.mode;
+        const current = state.ladder[mode];
+        if (current.stage !== 'instruction') {
+            return;
+        }
+        const nextModeLadder = advanceAcquisition(current);
+        const nextLadder = { ...state.ladder, [mode]: nextModeLadder };
+        const settings = applyAdaptiveLadderToSettings(state.settings, nextModeLadder);
+        set({ ladder: nextLadder, settings });
+        get().saveLadder();
+        persistSettingsSnapshot(get().settings);
     },
     decreaseTrials: () => {
         set((state) => ({

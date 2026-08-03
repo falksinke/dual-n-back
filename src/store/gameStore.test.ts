@@ -256,6 +256,37 @@ describe('gameStore', () => {
         expect(settings.interferenceChance).toBe(0.125);
     });
 
+    it('acknowledges strategy instruction into guided practice', () => {
+        useGameStore.setState((state) => ({
+            ladder: {
+                ...state.ladder,
+                dual: {
+                    track: 'fixed',
+                    n: 2,
+                    stage: 'instruction',
+                    lureStage: 'A',
+                    isiTier: 0,
+                    failStreak: 0,
+                    promoteStreak: 0,
+                },
+            },
+            settings: {
+                ...state.settings,
+                playMode: 'adaptive',
+                mode: 'dual',
+            },
+            game: null,
+            countdown: null,
+        }));
+
+        useGameStore.getState().acknowledgeStrategyInstruction();
+
+        expect(useGameStore.getState().ladder.dual.stage).toBe('guided');
+        expect(useGameStore.getState().settings.level).toBe(2);
+        expect(useGameStore.getState().settings.variableN).toBe(false);
+        expect(useGameStore.getState().settings.lureStage).toBe('A');
+    });
+
     it('manually steps the adaptive ladder and clears fail streak', () => {
         useGameStore.setState((state) => ({
             ladder: {

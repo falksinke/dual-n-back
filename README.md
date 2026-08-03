@@ -39,16 +39,20 @@ Production: [nback.sinke.me](https://nback.sinke.me) (Vercel project `nback` onl
 - **Audio pack** — `letters` (default) or `piano` (Brain Workshop C-scale samples)
 - **Interference** — BW-style near-miss chance (default **⅛**, steps of 1/8 through 1); Free-play only
 - **Variable N** — per-trial lag sampled from Beta(level/2, 1); current N shown in session status while playing; Free-play only
-- **ISI** — inter-stimulus interval between onsets; each trial samples uniformly in the range (free-play default **1.0–1.5 s**). The range randomizes **stimulus pacing**; **answer scoring / button feedback always uses the minimum ISI**, so every trial has the same time-to-score. Stimulus flash duration is fixed (~1 s) and separate from ISI. Adaptive drives ISI from a discrete tier ladder.
+- **ISI** — inter-stimulus interval between onsets; each trial samples uniformly in the range (free-play default **1.0–1.5 s**). The range randomizes **stimulus pacing**; **answer scoring / button feedback always uses the minimum ISI**, so every trial has the same time-to-score. Stimulus flash duration is fixed (~1 s) and separate from ISI. Adaptive drives ISI from the cyclic curriculum stage.
 - **Cross-modal quotas** — optional Adaptive-only block composition (default off)
 
 ### Adaptive training
 
-Adaptive sessions use stratified signal-detection metrics (per-modality d′ clean / lure / all and criterion) to progress **lure difficulty before n**, with rolling three-block evidence, median-plus-floor gating, opening/closing calibration anchors, weak-modality remediation, and optional ISI tightening.
+Adaptive teaches **cyclic one-slot updating** on a dual-track curriculum: fixed-N teach → lure-sensitive verify → speed/jitter automate, then a **flexible-lag** track (variable N) after fixed mastery. Assessed blocks promote/hold/demote with **lure-sensitive d′ gates**, not Match % alone; **3** consecutive fails demote one stage.
 
-Ladder state (n, lure stage A–E, ISI tier) is persisted in `localStorage` under `nback-adaptive-ladder`.
+Per-n shape (fixed track, variable N off): instruction → guided pointer → fade → clean → near lures → both lures → fast → jitter → mastery → flexible track → then N↑ and restart.
 
-The system adapts memory load and interference control more precisely; it is **not** a claim of improved general intelligence.
+Design rationale and stage table: [docs/adaptive-mode.md](docs/adaptive-mode.md).
+
+Ladder state (`track`, `n`, `stage`, streaks) is persisted locally under `nback-adaptive-ladder` (schema **v3**) per mode, and optionally synced to the server when a **player code** is set. Older v2 Match-% ladders reset on load.
+
+The system structures practice difficulty; it is **not** a claim of improved general intelligence, far transfer, or IQ gains.
 
 ### Assets
 

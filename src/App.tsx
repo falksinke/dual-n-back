@@ -14,10 +14,13 @@ import { DefaultLightTheme } from './themes/DefaultLight';
 import type { ThemeMode } from './themes/config';
 import AdaptiveProgressHud from './components/AdaptiveProgressHud';
 import VariableNHud from './components/VariableNHud';
+import SlotPointerHud from './components/SlotPointerHud';
+import StrategyInstruction from './components/StrategyInstruction';
 import InstallNudge from './components/InstallNudge';
 import SessionExitButton from './components/SessionExitButton';
 import { useHaptics } from './haptics/useHaptics';
 import { HapticsEnabledProvider } from './haptics/HapticsEnabledContext';
+import { settingsFromCurriculum } from './model/adaptiveCurriculum';
 import { loadUiPreferences } from './model/uiPreferences';
 import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
 import { shouldApplyWaitingUpdate } from './pwa/updateGate';
@@ -41,8 +44,12 @@ const App = () => {
     const configuredTrials = useGameStore((state) => state.settings.trials);
     const currentTrials = useGameStore((state) => state.boardState.currentTrials);
     const nForTrial = useGameStore((state) => state.boardState.nForTrial);
+    const stimulusEpoch = useGameStore((state) => state.boardState.stimulusEpoch);
     const ladder = useGameStore((state) => state.ladder[mode]);
     const adaptiveSession = useGameStore((state) => state.adaptiveSession);
+    const acknowledgeStrategyInstruction = useGameStore(
+        (state) => state.acknowledgeStrategyInstruction
+    );
     const activeModalities = useGameStore((state) => state.activeModalities);
     const blocksCompletedSignal = useGameStore((state) => state.results.all.length);
     const trialsShown = game !== null ? currentTrials : configuredTrials;
@@ -89,6 +96,18 @@ const App = () => {
         });
     }, []);
     const isAdaptive = playMode === 'adaptive';
+    const showStrategyInstruction =
+        isAdaptive &&
+        ladder.stage === 'instruction' &&
+        !inSession &&
+        !countingDown &&
+        !pendingContinue &&
+        !showingResults;
+    const curriculumSettings = settingsFromCurriculum(ladder);
+    const showSlotPointer =
+        isAdaptive &&
+        (inSession || countingDown) &&
+        curriculumSettings.pointerMode !== 'off';
     // Per-trial N must stay visible in Adaptive too — recipe "var N" alone is not enough.
     const showVariableN = variableN && (inSession || countingDown);
     const variableNValue = nForTrial > 0 ? nForTrial : level;
@@ -130,7 +149,21 @@ const App = () => {
                         </div>
                     )}
                     {showVariableN && <VariableNHud n={variableNValue} />}
+                    {showSlotPointer && (
+                        <SlotPointerHud
+                            n={level}
+                            trialIndex={Math.max(0, currentTrials - 1)}
+                            pointerMode={curriculumSettings.pointerMode}
+                            stimulusEpoch={stimulusEpoch}
+                        />
+                    )}
                     <Board />
+                    {showStrategyInstruction && (
+                        <StrategyInstruction
+                            n={ladder.n}
+                            onContinue={acknowledgeStrategyInstruction}
+                        />
+                    )}
                     {isAdaptive && (
                         <AdaptiveProgressHud ladder={ladder} session={adaptiveSession} />
                     )}
