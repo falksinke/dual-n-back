@@ -1,6 +1,11 @@
-import { ControllerAction } from '../model/adaptiveController';
-import { LureStageId } from '../model/lureStages';
+import type { CurriculumProgressionDecision } from '../model/adaptiveController';
+import {
+    settingsFromCurriculum,
+    type CurriculumLadderState,
+} from '../model/adaptiveCurriculum';
+import { FAILS_TO_DEMOTE_STAGE } from '../model/adaptiveController';
 import { AdaptivePhase, BlockRole } from '../store/adaptiveSession';
+import { msToSecondsLabel } from '../model/isi';
 
 export function formatSdtMetric(value: number): string {
     if (!Number.isFinite(value)) return '—';
@@ -9,14 +14,14 @@ export function formatSdtMetric(value: number): string {
 
 export function blockRoleLabel(role: BlockRole | null): string | null {
     switch (role) {
-        case 'anchor-open':
-            return 'Calibration';
-        case 'adaptive':
+        case 'guided':
+            return 'Guided block';
+        case 'fade':
+            return 'Pointer fade';
+        case 'assessed':
             return 'Adaptive block';
-        case 'remediation':
-            return 'Remediation';
-        case 'anchor-close':
-            return 'Closing anchor';
+        case 'instruction':
+            return 'Strategy instruction';
         case 'free':
             return null;
         default:
@@ -24,18 +29,16 @@ export function blockRoleLabel(role: BlockRole | null): string | null {
     }
 }
 
-const ACTION_VERB: Record<ControllerAction['action'], string> = {
+const ACTION_VERB: Record<CurriculumProgressionDecision['action'], string> = {
     hold: 'Hold',
-    lureUp: 'Lure stage up',
-    lureDown: 'Lure stage down',
-    nUp: 'N up',
-    nDown: 'N down',
-    isiTighten: 'Faster timing',
-    isiRevert: 'Slower timing',
-    remediate: 'Remediation',
+    promote: 'Advance',
+    demote: 'Step back',
+    advance_acquisition: 'Next scaffold',
 };
 
-export function controllerActionHint(action: ControllerAction | null): string | null {
+export function controllerActionHint(
+    action: CurriculumProgressionDecision | null
+): string | null {
     if (action == null) return null;
     const verb = ACTION_VERB[action.action];
     return action.reason ? `${verb}: ${action.reason}` : verb;
@@ -43,14 +46,8 @@ export function controllerActionHint(action: ControllerAction | null): string | 
 
 export function adaptivePhaseLabel(phase: AdaptivePhase): string {
     switch (phase) {
-        case 'anchor-open':
-            return 'Calibration';
-        case 'adaptive':
+        case 'playing':
             return 'Adaptive';
-        case 'remediation':
-            return 'Remediation';
-        case 'anchor-close':
-            return 'Closing';
         case 'interstitial':
             return 'Break';
         case 'summary':
@@ -60,44 +57,42 @@ export function adaptivePhaseLabel(phase: AdaptivePhase): string {
     }
 }
 
-export function lureStageSummary(stage: LureStageId): string {
-    return `Stage ${stage}`;
+/** Compact condition id used as the Adaptive badge, e.g. C2-fixed_clean. */
+export function adaptiveConditionCode(ladder: CurriculumLadderState): string {
+    const track = ladder.track === 'flexible' ? 'F' : 'C';
+    return `${track}${ladder.n}`;
 }
 
-/** Compact condition id used as the Adaptive “level” badge, e.g. 2C. */
-export function adaptiveConditionCode(n: number, stage: LureStageId): string {
-    return `${n}${stage}`;
-}
-
-export function lureStageFlavor(stage: LureStageId): string {
-    switch (stage) {
-        case 'A':
-            return 'Clean matching';
-        case 'B':
-            return 'Distant lures';
-        case 'C':
-            return 'Near lures';
-        case 'D':
-            return 'Mixed pressure';
-        case 'E':
-            return 'Max interference';
+export function progressLevelFlavor(ladder: CurriculumLadderState): string {
+    const level = settingsFromCurriculum(
+        ladder.stage === 'instruction' ? { ...ladder, stage: 'guided' } : ladder
+    );
+    const parts: string[] = [ladder.stage.replace(/_/g, ' '), `n=${level.n}`];
+    if (level.isiMin === level.isiMax) {
+        parts.push(`${msToSecondsLabel(level.isiMin)}s`);
+    } else {
+        parts.push(`${msToSecondsLabel(level.isiMin)}–${msToSecondsLabel(level.isiMax)}s`);
     }
+    parts.push(`lure ${level.lureStage}`);
+    if (level.variableN) {
+        parts.push('var N');
+    }
+    return parts.join(' · ');
+}
+
+export function progressLevelSummary(ladder: CurriculumLadderState): string {
+    const track = ladder.track === 'flexible' ? 'Flexible lag' : 'Fixed cyclic';
+    return `${track} · ${progressLevelFlavor(ladder)}`;
 }
 
 export function adaptiveBlockProgress(
-    session: { adaptiveBlocksDone: number; adaptiveTarget: number; phase: AdaptivePhase } | null
-): { done: number; target: number } | null {
+    session: { blocksDone: number; phase: AdaptivePhase } | null
+): { done: number; failHint: string } | null {
     if (session == null) return null;
-    if (
-        session.phase === 'adaptive' ||
-        session.phase === 'interstitial' ||
-        session.phase === 'remediation' ||
-        session.phase === 'anchor-close' ||
-        session.phase === 'summary'
-    ) {
+    if (session.phase === 'playing' || session.phase === 'interstitial') {
         return {
-            done: Math.min(session.adaptiveBlocksDone, session.adaptiveTarget),
-            target: session.adaptiveTarget,
+            done: session.blocksDone,
+            failHint: `Lure-sensitive gates · demote after ${FAILS_TO_DEMOTE_STAGE} fails`,
         };
     }
     return null;

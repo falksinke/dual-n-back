@@ -1,314 +1,167 @@
 import { describe, expect, it } from 'vitest';
-import { ModalityId } from './modalities';
 import {
-    BlockSdtReport,
-    ModalitySdtReport,
-    SdtSensitivity,
-} from './sdtMetrics';
-import {
-    ADAPTIVE_THRESHOLDS,
-    decideAdaptive,
-    LadderState,
+    decideCurriculumProgression,
+    FAILS_TO_DEMOTE_STAGE,
 } from './adaptiveController';
+import {
+    createDefaultCurriculumLadder,
+    type CurriculumLadderState,
+} from './adaptiveCurriculum';
+import type { BlockSdtReport, ModalitySdtReport, SdtSensitivity } from './sdtMetrics';
+import { emptySdtCounts } from './sdtMetrics';
 
-const DUAL: ModalityId[] = ['position', 'audio'];
-
-function fakeSensitivity(dPrime: number, criterion = 0): SdtSensitivity {
+function sens(dPrime: number, faRate = 0.05, criterion = 0): SdtSensitivity {
     return {
-        counts: { hits: 10, misses: 0, falseAlarms: 0, correctRejections: 10 },
-        hitRate: 0.5,
-        falseAlarmRate: 0.5,
+        counts: emptySdtCounts(),
+        hitRate: 0.9,
+        falseAlarmRate: faRate,
         dPrime,
         criterion,
     };
 }
 
-function makeModalityReport(
-    modality: ModalityId,
-    clean: number,
-    lure: number,
-    all = clean,
-    criterion = 0,
-    sampleOverrides?: Partial<{
-        lureSampleOk: boolean;
-        targetCount: number;
-        lureNonTargetCount: number;
-    }>
+function modality(
+    id: 'position' | 'audio',
+    opts: {
+        cleanD?: number;
+        lureD?: number;
+        allD?: number;
+        lureFaRate?: number;
+        lureSampleOk?: boolean;
+        targetCount?: number;
+        lureNonTargetCount?: number;
+        criterion?: number;
+    } = {}
 ): ModalitySdtReport {
+    const cleanD = opts.cleanD ?? 2.2;
+    const lureD = opts.lureD ?? 1.8;
+    const allD = opts.allD ?? 2.0;
+    const lureFa = opts.lureFaRate ?? 0.1;
     return {
-        modality,
-        all: fakeSensitivity(all, criterion),
-        clean: fakeSensitivity(clean, criterion),
-        lure: fakeSensitivity(lure, criterion),
-        lureSampleOk: sampleOverrides?.lureSampleOk ?? true,
-        targetCount: sampleOverrides?.targetCount ?? 10,
-        lureNonTargetCount: sampleOverrides?.lureNonTargetCount ?? 10,
-        lureCost: 0,
-        medianCorrectRtMs: null,
+        modality: id,
+        all: sens(allD, 0.08, opts.criterion ?? 0),
+        clean: sens(cleanD, 0.05, opts.criterion ?? 0),
+        lure: sens(lureD, lureFa, opts.criterion ?? 0),
+        lureSampleOk: opts.lureSampleOk ?? true,
+        targetCount: opts.targetCount ?? 8,
+        lureNonTargetCount: opts.lureNonTargetCount ?? 6,
+        lureCost: lureFa - 0.05,
+        medianCorrectRtMs: 400,
     };
 }
 
-function makeBlock(
-    modalities: ModalityId[],
-    byMod: Partial<
-        Record<
-            ModalityId,
-            {
-                clean: number;
-                lure: number;
-                all?: number;
-                c?: number;
-                lureSampleOk?: boolean;
-                targetCount?: number;
-                lureNonTargetCount?: number;
-            }
-        >
-    >,
-    medianCorrectRtMs: number | null = null
+function report(
+    mods: ModalitySdtReport[],
+    extras: Partial<BlockSdtReport> = {}
 ): BlockSdtReport {
-    const byModality: Partial<Record<ModalityId, ModalitySdtReport>> = {};
-    for (const modality of modalities) {
-        const spec = byMod[modality] ?? { clean: 2.5, lure: 2.0, all: 2.5 };
-        byModality[modality] = makeModalityReport(
-            modality,
-            spec.clean,
-            spec.lure,
-            spec.all ?? spec.clean,
-            spec.c ?? 0,
-            {
-                lureSampleOk: spec.lureSampleOk,
-                targetCount: spec.targetCount,
-                lureNonTargetCount: spec.lureNonTargetCount,
-            }
-        );
+    const byModality: BlockSdtReport['byModality'] = {};
+    for (const m of mods) {
+        byModality[m.modality] = m;
     }
-    return { modalities, byModality, medianCorrectRtMs };
+    return {
+        modalities: mods.map((m) => m.modality),
+        byModality,
+        medianCorrectRtMs: 400,
+        ...extras,
+    };
 }
 
-function repeatBlock(block: BlockSdtReport, count: number): BlockSdtReport[] {
-    return Array.from({ length: count }, () => block);
-}
+const assessedFixed = (): CurriculumLadderState => ({
+    ...createDefaultCurriculumLadder(),
+    stage: 'fixed_clean',
+    lureStage: 'A',
+});
 
-const baseLadder: LadderState = { n: 2, lureStage: 'C', isiTier: 0 };
-
-describe('decideAdaptive', () => {
-    it('holds when the evidence window has fewer than three blocks', () => {
-        const block = makeBlock(DUAL, {
-            position: { clean: 2.5, lure: 2.0 },
-            audio: { clean: 2.5, lure: 2.0 },
+describe('decideCurriculumProgression', () => {
+    it('advances acquisition on guided blocks without SDT promote of assessed stage', () => {
+        const ladder: CurriculumLadderState = {
+            ...createDefaultCurriculumLadder(),
+            stage: 'guided',
+        };
+        const decision = decideCurriculumProgression({
+            ladder,
+            blockRole: 'guided',
+            sdt: report([modality('position'), modality('audio')]),
+            matchPct: 95,
         });
-
-        const action = decideAdaptive([block, block], baseLadder, DUAL);
-
-        expect(action).toEqual({
-            action: 'hold',
-            reason: 'insufficient evidence window (need 3 adaptive blocks)',
-        });
+        expect(decision.action).toBe('advance_acquisition');
+        expect(decision.ladder.stage).toBe('fade');
+        expect(decision.ladder.n).toBe(ladder.n);
     });
 
-    it('promotes lure stage after two consecutive promotion windows', () => {
-        const strong = makeBlock(DUAL, {
-            position: { clean: 2.5, lure: 1.8 },
-            audio: { clean: 2.5, lure: 1.8 },
+    it('holds when samples are sparse', () => {
+        const decision = decideCurriculumProgression({
+            ladder: assessedFixed(),
+            blockRole: 'assessed',
+            sdt: report([
+                modality('position', { targetCount: 1, lureNonTargetCount: 0, lureSampleOk: false }),
+                modality('audio', { targetCount: 1, lureNonTargetCount: 0, lureSampleOk: false }),
+            ]),
+            matchPct: 100,
         });
-        const window = repeatBlock(strong, ADAPTIVE_THRESHOLDS.windowSize);
-
-        const withoutPrior = decideAdaptive(window, baseLadder, DUAL, {
-            previousWindowPromoted: false,
-        });
-        expect(withoutPrior.action).toBe('hold');
-
-        const withPrior = decideAdaptive(window, baseLadder, DUAL, {
-            previousWindowPromoted: true,
-        });
-        expect(withPrior).toEqual({
-            action: 'lureUp',
-            reason: 'clean mastery with stable lure discrimination across two windows',
-        });
+        expect(decision.action).toBe('hold');
+        expect(decision.ladder.stage).toBe('fixed_clean');
     });
 
-    it('demotes lure stage when clean is adequate but lure collapses', () => {
-        const block = makeBlock(DUAL, {
-            position: { clean: 2.5, lure: 0.8 },
-            audio: { clean: 2.5, lure: 0.9 },
+    it('does not promote when Match % is high but lure FA is high (AE2)', () => {
+        const decision = decideCurriculumProgression({
+            ladder: { ...assessedFixed(), stage: 'fixed_lure_both', lureStage: 'E' },
+            blockRole: 'assessed',
+            sdt: report([
+                modality('position', { cleanD: 2.5, lureD: 0.4, lureFaRate: 0.55 }),
+                modality('audio', { cleanD: 2.4, lureD: 0.5, lureFaRate: 0.5 }),
+            ]),
+            matchPct: 92,
         });
-        const window = repeatBlock(block, ADAPTIVE_THRESHOLDS.windowSize);
-
-        const action = decideAdaptive(window, baseLadder, DUAL);
-
-        expect(action).toEqual({
-            action: 'lureDown',
-            reason: 'clean discrimination adequate but lure d′ below threshold',
-        });
+        expect(decision.action).not.toBe('promote');
+        expect(['hold', 'demote']).toContain(decision.action);
     });
 
-    it('inserts remediation when exactly one modality is below the clean floor', () => {
-        const block = makeBlock(DUAL, {
-            position: { clean: 1.0, lure: 1.8 },
-            audio: { clean: 2.5, lure: 2.0 },
+    it('promotes when clean and lure gates pass', () => {
+        const decision = decideCurriculumProgression({
+            ladder: assessedFixed(),
+            blockRole: 'assessed',
+            sdt: report([
+                modality('position', { cleanD: 2.3, lureD: 1.8, lureFaRate: 0.08 }),
+                modality('audio', { cleanD: 2.1, lureD: 1.7, lureFaRate: 0.1 }),
+            ]),
+            matchPct: 70,
         });
-        const window = repeatBlock(block, ADAPTIVE_THRESHOLDS.windowSize);
-
-        const action = decideAdaptive(window, baseLadder, DUAL);
-
-        expect(action).toEqual({
-            action: 'remediate',
-            modality: 'position',
-            reason: 'single modality below clean d′ floor while aggregate remains adequate',
-        });
+        expect(decision.action).toBe('promote');
+        expect(decision.ladder.stage).toBe('fixed_lure_near');
     });
 
-    it('holds on extreme criterion bias instead of promoting', () => {
-        const biased = makeBlock(DUAL, {
-            position: { clean: 2.5, lure: 1.8, c: -1.8 },
-            audio: { clean: 2.5, lure: 1.8, c: 0.2 },
+    it('holds (no promote) on modality collapse', () => {
+        const decision = decideCurriculumProgression({
+            ladder: assessedFixed(),
+            blockRole: 'assessed',
+            sdt: report([
+                modality('position', { cleanD: 2.5, lureD: 2.0 }),
+                modality('audio', { cleanD: 0.6, lureD: 0.4 }),
+            ]),
+            matchPct: 80,
         });
-        const window = repeatBlock(biased, ADAPTIVE_THRESHOLDS.windowSize);
-
-        const action = decideAdaptive(window, baseLadder, DUAL, {
-            previousWindowPromoted: true,
-        });
-
-        expect(action).toEqual({
-            action: 'hold',
-            reason: 'extreme response criterion; adjust strategy before changing difficulty',
-        });
+        expect(decision.action).not.toBe('promote');
     });
 
-    it('raises n at top lure stage E after two promotion windows', () => {
-        const strong = makeBlock(DUAL, {
-            position: { clean: 2.5, lure: 2.0, all: 2.5 },
-            audio: { clean: 2.5, lure: 2.0, all: 2.5 },
+    it(`demotes after ${FAILS_TO_DEMOTE_STAGE} consecutive assessed fails`, () => {
+        let ladder: CurriculumLadderState = {
+            ...assessedFixed(),
+            stage: 'fixed_fast',
+            lureStage: 'E',
+            failStreak: FAILS_TO_DEMOTE_STAGE - 1,
+        };
+        const decision = decideCurriculumProgression({
+            ladder,
+            blockRole: 'assessed',
+            sdt: report([
+                modality('position', { cleanD: 0.8, lureD: 0.5 }),
+                modality('audio', { cleanD: 0.7, lureD: 0.4 }),
+            ]),
+            matchPct: 40,
         });
-        const window = repeatBlock(strong, ADAPTIVE_THRESHOLDS.windowSize);
-        const ladder: LadderState = { n: 3, lureStage: 'E', isiTier: 0 };
-
-        const action = decideAdaptive(window, ladder, DUAL, {
-            previousWindowPromoted: true,
-        });
-
-        expect(action).toEqual({
-            action: 'nUp',
-            reason: 'top lure stage mastered with stable all-modality discrimination across two windows',
-        });
-    });
-
-    it('tightens ISI when discrimination is mastered and responses are fast enough', () => {
-        const fast = makeBlock(
-            DUAL,
-            {
-                position: { clean: 2.5, lure: 1.8, all: 2.5 },
-                audio: { clean: 2.5, lure: 1.8, all: 2.5 },
-            },
-            1800
-        );
-        const window = repeatBlock(fast, ADAPTIVE_THRESHOLDS.windowSize);
-        const ladder: LadderState = { n: 3, lureStage: 'E', isiTier: 0 };
-
-        const action = decideAdaptive(window, ladder, DUAL);
-
-        expect(action).toEqual({
-            action: 'isiTighten',
-            reason: 'discrimination mastered with fast correct responses; tighten timing one tier',
-        });
-    });
-
-    it('reverts ISI after post-tighten collapse', () => {
-        const collapsed = makeBlock(DUAL, {
-            position: { clean: 1.8, lure: 1.0, all: 1.2 },
-            audio: { clean: 1.8, lure: 1.0, all: 1.2 },
-        });
-        const window = repeatBlock(collapsed, ADAPTIVE_THRESHOLDS.windowSize);
-        const ladder: LadderState = { n: 3, lureStage: 'D', isiTier: 1 };
-
-        const action = decideAdaptive(window, ladder, DUAL, { postIsiTighten: true });
-
-        expect(action).toEqual({
-            action: 'isiRevert',
-            reason: 'median d′_all fell below promote floor after ISI tighten',
-        });
-    });
-
-    it('demotes n on core clean load failure and holds at floor n=2', () => {
-        const weak = makeBlock(DUAL, {
-            position: { clean: 1.0, lure: 0.8 },
-            audio: { clean: 1.0, lure: 0.8 },
-        });
-        const window = repeatBlock(weak, ADAPTIVE_THRESHOLDS.windowSize);
-
-        const demote = decideAdaptive(window, { n: 3, lureStage: 'C', isiTier: 0 }, DUAL);
-        expect(demote.action).toBe('nDown');
-
-        const atFloor = decideAdaptive(window, { n: 2, lureStage: 'C', isiTier: 0 }, DUAL);
-        expect(atFloor).toEqual({
-            action: 'hold',
-            reason: 'clean load failure at minimum n; hold and practice current level',
-        });
-    });
-
-    it('holds lureUp when lure stratum has zero non-target samples (stage A)', () => {
-        const noLures = makeBlock(DUAL, {
-            position: {
-                clean: 2.5,
-                lure: 2.0,
-                lureSampleOk: false,
-                lureNonTargetCount: 0,
-            },
-            audio: {
-                clean: 2.5,
-                lure: 2.0,
-                lureSampleOk: false,
-                lureNonTargetCount: 0,
-            },
-        });
-        const window = repeatBlock(noLures, ADAPTIVE_THRESHOLDS.windowSize);
-        const ladder: LadderState = { n: 2, lureStage: 'A', isiTier: 0 };
-
-        const action = decideAdaptive(window, ladder, DUAL, {
-            previousWindowPromoted: true,
-        });
-
-        expect(action).toEqual({
-            action: 'hold',
-            reason: 'insufficient lure samples',
-        });
-    });
-
-    it('does not demote lure from phantom d′ when lure samples are absent', () => {
-        const noLures = makeBlock(DUAL, {
-            position: {
-                clean: 2.5,
-                lure: 0,
-                lureSampleOk: false,
-                lureNonTargetCount: 0,
-            },
-            audio: {
-                clean: 2.5,
-                lure: 0,
-                lureSampleOk: false,
-                lureNonTargetCount: 0,
-            },
-        });
-        const window = repeatBlock(noLures, ADAPTIVE_THRESHOLDS.windowSize);
-        const ladder: LadderState = { n: 2, lureStage: 'C', isiTier: 0 };
-
-        const action = decideAdaptive(window, ladder, DUAL);
-
-        expect(action.action).not.toBe('lureDown');
-    });
-
-    it('holds when window lacks minimum target samples per modality', () => {
-        const sparse = makeBlock(DUAL, {
-            position: { clean: 2.5, lure: 2.0, targetCount: 0 },
-            audio: { clean: 2.5, lure: 2.0, targetCount: 0 },
-        });
-        const window = repeatBlock(sparse, ADAPTIVE_THRESHOLDS.windowSize);
-
-        const action = decideAdaptive(window, baseLadder, DUAL);
-
-        expect(action).toEqual({
-            action: 'hold',
-            reason: 'insufficient samples',
-        });
+        expect(decision.action).toBe('demote');
+        expect(decision.ladder.stage).toBe('fixed_lure_both');
+        expect(decision.ladder.failStreak).toBe(0);
     });
 });

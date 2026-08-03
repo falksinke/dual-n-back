@@ -3,6 +3,8 @@ import { ButtonState } from '../model/enums/buttonState';
 import { Speech } from '../model/Speech';
 import { GameResult } from '../model/GameResult';
 import {
+    ANSWER_GRACE_DEFAULT_MS,
+    clampAnswerGraceMs,
     clampIsiMs,
     FREE_PLAY_DEFAULT_ISI_MAX_MS,
     FREE_PLAY_DEFAULT_ISI_MIN_MS,
@@ -12,16 +14,26 @@ import { AudioPackId } from '../model/audioPacks';
 import { ColorId } from '../model/colorSet';
 import { ImageId } from '../model/imageSet';
 import {
-    isiMsFromTier,
+    demoteCurriculumStage,
+    promoteCurriculumStage,
+    settingsFromCurriculum,
+} from '../model/adaptiveCurriculum';
+import type { CurriculumProgressionDecision } from '../model/adaptiveController';
+import {
     loadLadder,
     ModeLadderSnapshot,
     saveLadder as persistLadder,
-    type LadderStorageV1,
+    type LadderStorageV3,
 } from '../model/ladderPersistence';
+import {
+    loadSettings,
+    persistableSettingsFromStoreSettings,
+    saveSettings,
+} from '../model/settingsPersistence';
 import { recordBlockCompleted } from '../model/uiPreferences';
 import { ensureAudioReady } from '../audio/unlockAudio';
 import { LureStageId } from '../model/lureStages';
-import { ControllerAction } from '../model/adaptiveController';
+import { noteLocalProgressChanged } from '../sync/noteLocal';
 import {
     AdaptiveSessionState,
     BlockConfig,
@@ -32,6 +44,10 @@ import {
     playingPhaseForBlockRole,
     processAdaptiveBlockEnd,
 } from './adaptiveSession';
+import {
+    VARIABLE_N_HOLD_OPTIONS,
+    type VariableNHoldTrials,
+} from '../model/variableN';
 import { GameSession } from './GameSession';
 
 export type PlayMode = 'free' | 'adaptive';
@@ -41,11 +57,14 @@ export const INTERFERENCE_OPTIONS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.
 
 export type InterferenceChance = (typeof INTERFERENCE_OPTIONS)[number];
 
+export { VARIABLE_N_HOLD_OPTIONS, type VariableNHoldTrials };
+
 export interface FreePlaySettingsSnapshot {
     level: number;
     isiMin: number;
     isiMax: number;
     variableN: boolean;
+    variableNHoldTrials: VariableNHoldTrials;
     interferenceChance: InterferenceChance;
 }
 
@@ -85,21 +104,32 @@ export interface GameStoreState {
         displayTrials: boolean;
         displayTarget: boolean;
         allowCenterStimulus: boolean;
+        /** Current Variable N lag in the center square (requires center cell off). */
+        displayVariableNCenter: boolean;
+        /** Extra claim time (ms) beyond the ISI scoring window. */
+        answerGraceMs: number;
         useFullScreen: boolean;
         mode: ModeId;
         audioPack: AudioPackId;
         interferenceChance: InterferenceChance;
         variableN: boolean;
+        /** Mean stretch (trials) before Variable N randomly resamples the lag. */
+        variableNHoldTrials: VariableNHoldTrials;
         playMode: PlayMode;
         /** When set (Adaptive), Game uses lure-stage generation instead of interferenceChance. */
         lureStage?: LureStageId;
         /** Cross-modal match/lure quotas (Adaptive only; default off). */
         useBlockQuotas: boolean;
+        /**
+         * Jaeggi-style fixed match counts in free-play (default on).
+         * Skipped automatically when Variable N or Adaptive lure stages are active.
+         */
+        useJaeggiQuotas: boolean;
     };
     /** Multi-block Adaptive session FSM; null in free-play or when idle. */
     adaptiveSession: AdaptiveSessionState | null;
     lastBlockRole: BlockRole | null;
-    lastControllerAction: ControllerAction | null;
+    lastControllerAction: CurriculumProgressionDecision | null;
     /** Subset modalities for remediation blocks; null uses full mode preset. */
     blockModalities: ModalityId[] | null;
     /** Free-play settings saved when entering adaptive mode. */
@@ -120,17 +150,24 @@ export interface GameStoreActions {
     clearGame: () => void;
     decreaseLevel: () => void;
     increaseLevel: () => void;
+    decreaseLadderStep: () => void;
+    increaseLadderStep: () => void;
     decreaseTrials: () => void;
     increaseTrials: () => void;
     setIsiMin: (ms: number) => void;
     setIsiMax: (ms: number) => void;
+    setAnswerGraceMs: (ms: number) => void;
     setAllowCenterStimulus: (allow: boolean) => void;
+    setDisplayVariableNCenter: (enabled: boolean) => void;
     setMode: (mode: ModeId) => void;
     setAudioPack: (pack: AudioPackId) => void;
     cycleInterferenceChance: () => void;
     setVariableN: (enabled: boolean) => void;
+    cycleVariableNHoldTrials: () => void;
     setPlayMode: (playMode: PlayMode) => void;
     setUseBlockQuotas: (enabled: boolean) => void;
+    setUseJaeggiQuotas: (enabled: boolean) => void;
+    setActiveFeedback: (enabled: boolean) => void;
     saveLadder: () => void;
 }
 
@@ -155,12 +192,51 @@ function createEmptyButtons(modalities: ModalityId[]): Partial<Record<ModalityId
 }
 
 let countdownTimer: ReturnType<typeof setTimeout> | null = null;
+let countdownDeadlineMs: number | null = null;
+let countdownPausedRemainingMs: number | null = null;
+/** Value passed to the in-flight countdown tick callback when paused. */
+let countdownPausedTickValue: number | null = null;
 
 const clearCountdownTimer = () => {
     if (countdownTimer !== null) {
         clearTimeout(countdownTimer);
         countdownTimer = null;
     }
+    countdownDeadlineMs = null;
+};
+
+const resetCountdownBackgroundPause = () => {
+    countdownPausedRemainingMs = null;
+    countdownPausedTickValue = null;
+};
+
+/** Pause pre-round countdown while the app is backgrounded. */
+export const pauseCountdownForBackground = (): void => {
+    if (countdownTimer === null || countdownPausedTickValue === null) return;
+    const remaining =
+        countdownDeadlineMs != null
+            ? Math.max(0, countdownDeadlineMs - Date.now())
+            : COUNTDOWN_TICK_MS;
+    countdownPausedRemainingMs = remaining;
+    clearCountdownTimer();
+};
+
+/** Resume a countdown frozen by {@link pauseCountdownForBackground}. */
+export const resumeCountdownForBackground = (get: StoreGet, set: StoreSet): void => {
+    if (countdownPausedRemainingMs == null || countdownPausedTickValue == null) {
+        countdownPausedRemainingMs = null;
+        countdownPausedTickValue = null;
+        return;
+    }
+    if (get().countdown === null) {
+        countdownPausedRemainingMs = null;
+        countdownPausedTickValue = null;
+        return;
+    }
+    const remaining = countdownPausedRemainingMs;
+    const tickValue = countdownPausedTickValue;
+    countdownPausedRemainingMs = null;
+    scheduleCountdownTick(tickValue, get, set, remaining);
 };
 
 type StoreGet = () => GameStore;
@@ -196,41 +272,50 @@ function applyBlockConfigToStore(
 } {
     return {
         settings: applyBlockConfigToSettings(settings, block),
-        blockModalities: block.modalities ?? null,
+        blockModalities: null,
     };
+}
+
+function asInterferenceChance(value: number): InterferenceChance {
+    const match = INTERFERENCE_OPTIONS.find((option) => option === value);
+    return match ?? 0.125;
 }
 
 function applyAdaptiveLadderToSettings<
     T extends GameStoreState['settings'],
 >(settings: T, modeLadder: ModeLadderSnapshot): T {
-    const { isiMin, isiMax } = isiMsFromTier(modeLadder.isiTier);
+    const level = settingsFromCurriculum(
+        modeLadder.stage === 'instruction' ? { ...modeLadder, stage: 'guided' } : modeLadder
+    );
     return {
         ...settings,
-        level: modeLadder.n,
-        lureStage: modeLadder.lureStage,
-        variableN: false,
-        isiMin,
-        isiMax,
+        level: level.n,
+        variableN: level.variableN,
+        interferenceChance: asInterferenceChance(level.interferenceChance),
+        isiMin: level.isiMin,
+        isiMax: level.isiMax,
+        lureStage: level.lureStage,
     };
 }
 
 function applyBlockConfigToSettings<
     T extends GameStoreState['settings'],
 >(settings: T, block: BlockConfig): T {
-    const { isiMin, isiMax } = isiMsFromTier(block.isiTier);
     return {
         ...settings,
         level: block.n,
-        lureStage: block.lureStage,
         trials: block.trials,
-        variableN: false,
-        isiMin,
-        isiMax,
+        variableN: block.variableN,
+        interferenceChance: asInterferenceChance(block.interferenceChance),
+        isiMin: block.isiMin,
+        isiMax: block.isiMax,
+        lureStage: block.lureStage,
     };
 }
 
 function beginCountdown(get: StoreGet, set: StoreSet, clearLastResult: boolean) {
     clearCountdownTimer();
+    resetCountdownBackgroundPause();
     set((state) => ({
         countdown: COUNTDOWN_START,
         results: clearLastResult
@@ -265,8 +350,7 @@ function finalizeGameEnd(
         return;
     }
 
-    const blockRole = blockRoleFromPhase(state.adaptiveSession.phase);
-    if (blockRole == null) {
+    if (blockRoleFromPhase(state.adaptiveSession.phase) == null) {
         throw new Error('Adaptive block ended outside a playing phase');
     }
 
@@ -275,9 +359,8 @@ function finalizeGameEnd(
     const endResult = processAdaptiveBlockEnd(
         state.adaptiveSession,
         modeLadder,
-        mode,
-        blockRole,
-        result.sdt
+        result.sdt,
+        result.generalMatchPercentage
     );
 
     const nextLadderByMode = {
@@ -304,9 +387,9 @@ function finalizeGameEnd(
     recordBlockCompleted();
 }
 
-function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): LadderStorageV1 {
+function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): LadderStorageV3 {
     return {
-        version: 1,
+        version: 3,
         byMode: {
             dual: { ...ladder.dual },
             triple: { ...ladder.triple },
@@ -316,6 +399,7 @@ function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): Lad
 }
 
 const initialLadderStorage = loadLadder();
+const initialPersistedSettings = loadSettings();
 
 /** First-run free-play settings (also used when resetting fixture expectations in tests). */
 export const createDefaultFreePlaySettings = (): GameStoreState['settings'] => ({
@@ -327,18 +411,63 @@ export const createDefaultFreePlaySettings = (): GameStoreState['settings'] => (
     displayTrials: true,
     displayTarget: true,
     allowCenterStimulus: false,
+    displayVariableNCenter: false,
+    answerGraceMs: ANSWER_GRACE_DEFAULT_MS,
     useFullScreen: false,
     mode: 'dual',
     audioPack: 'letters',
     interferenceChance: 0.125,
     variableN: false,
+    variableNHoldTrials: 1,
     playMode: 'free',
     useBlockQuotas: false,
+    useJaeggiQuotas: true,
 });
 
-const scheduleCountdownTick = (current: number, get: StoreGet, set: StoreSet) => {
+function settingsFromPersisted(): GameStoreState['settings'] {
+    const s = initialPersistedSettings;
+    return {
+        level: s.level,
+        trials: s.trials,
+        isiMin: s.isiMin,
+        isiMax: s.isiMax,
+        activeFeedback: s.activeFeedback,
+        displayTrials: s.displayTrials,
+        displayTarget: s.displayTarget,
+        allowCenterStimulus: s.allowCenterStimulus,
+        displayVariableNCenter: s.displayVariableNCenter,
+        answerGraceMs: s.answerGraceMs,
+        useFullScreen: s.useFullScreen,
+        mode: s.mode,
+        audioPack: s.audioPack,
+        interferenceChance: s.interferenceChance,
+        variableN: s.variableN,
+        variableNHoldTrials: s.variableNHoldTrials,
+        playMode: s.playMode,
+        useBlockQuotas: s.useBlockQuotas,
+        useJaeggiQuotas: s.useJaeggiQuotas,
+    };
+}
+
+function persistSettingsSnapshot(settings: GameStoreState['settings']): void {
+    saveSettings(
+        persistableSettingsFromStoreSettings(settings as unknown as Record<string, unknown>)
+    );
+    noteLocalProgressChanged();
+}
+
+const scheduleCountdownTick = (
+    current: number,
+    get: StoreGet,
+    set: StoreSet,
+    delayMs: number = COUNTDOWN_TICK_MS
+) => {
+    countdownPausedTickValue = current;
+    countdownDeadlineMs = Date.now() + delayMs;
     countdownTimer = setTimeout(() => {
         countdownTimer = null;
+        countdownDeadlineMs = null;
+        countdownPausedTickValue = null;
         if (get().countdown === null) return;
 
         if (current <= 1) {
@@ -349,7 +478,7 @@ const scheduleCountdownTick = (current: number, get: StoreGet, set: StoreSet) =>
         const next = current - 1;
         set({ countdown: next });
         scheduleCountdownTick(next, get, set);
-    }, COUNTDOWN_TICK_MS);
+    }, delayMs);
 };
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -357,14 +486,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
         all: [],
         last: null,
     },
-    speech: new Speech('letters'),
-    btns: createEmptyButtons(getModalitiesForMode('dual')),
-    activeModalities: getModalitiesForMode('dual'),
+    speech: new Speech(initialPersistedSettings.audioPack),
+    btns: createEmptyButtons(getModalitiesForMode(initialPersistedSettings.mode)),
+    activeModalities: getModalitiesForMode(initialPersistedSettings.mode),
     countdown: null,
     game: null,
     ladder: initialLadderStorage.byMode,
     boardState: { ...defaultBoardState },
-    settings: createDefaultFreePlaySettings(),
+    settings: settingsFromPersisted(),
     adaptiveSession: null,
     lastBlockRole: null,
     lastControllerAction: null,
@@ -447,6 +576,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     },
     cancelGame: () => {
         clearCountdownTimer();
+        resetCountdownBackgroundPause();
         get().game?.cancel();
         const modalities = getModalitiesForMode(get().settings.mode);
 
@@ -491,14 +621,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
         })),
     resetBoard: () => set({ boardState: { ...defaultBoardState } }),
     clearGame: () => set({ game: null }),
-    decreaseLevel: () =>
+    decreaseLevel: () => {
         set((state) => ({
             settings: {
                 ...state.settings,
                 level: state.settings.level > 1 ? state.settings.level - 1 : state.settings.level,
             },
-        })),
-    increaseLevel: () =>
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    increaseLevel: () => {
         set((state) => {
             const nextLevel = state.settings.level + 1;
             return {
@@ -508,8 +640,64 @@ export const useGameStore = create<GameStore>((set, get) => ({
                     trials: Math.max(nextLevel * 2, state.settings.trials),
                 },
             };
-        }),
-    decreaseTrials: () =>
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    decreaseLadderStep: () => {
+        const state = get();
+        if (state.game !== null || state.countdown !== null) {
+            return;
+        }
+        const mode = state.settings.mode;
+        const current = state.ladder[mode];
+        const nextModeLadder = { ...demoteCurriculumStage(current), failStreak: 0 };
+        if (
+            nextModeLadder.stage === current.stage &&
+            nextModeLadder.track === current.track &&
+            nextModeLadder.n === current.n &&
+            current.failStreak === 0
+        ) {
+            return;
+        }
+        const nextLadder = { ...state.ladder, [mode]: nextModeLadder };
+        let settings = state.settings;
+        if (settings.playMode === 'adaptive') {
+            settings = applyAdaptiveLadderToSettings(settings, nextModeLadder);
+        }
+        set({ ladder: nextLadder, settings });
+        get().saveLadder();
+        if (settings.playMode === 'adaptive') {
+            persistSettingsSnapshot(get().settings);
+        }
+    },
+    increaseLadderStep: () => {
+        const state = get();
+        if (state.game !== null || state.countdown !== null) {
+            return;
+        }
+        const mode = state.settings.mode;
+        const current = state.ladder[mode];
+        const nextModeLadder = { ...promoteCurriculumStage(current), failStreak: 0 };
+        if (
+            nextModeLadder.stage === current.stage &&
+            nextModeLadder.track === current.track &&
+            nextModeLadder.n === current.n &&
+            current.failStreak === 0
+        ) {
+            return;
+        }
+        const nextLadder = { ...state.ladder, [mode]: nextModeLadder };
+        let settings = state.settings;
+        if (settings.playMode === 'adaptive') {
+            settings = applyAdaptiveLadderToSettings(settings, nextModeLadder);
+        }
+        set({ ladder: nextLadder, settings });
+        get().saveLadder();
+        if (settings.playMode === 'adaptive') {
+            persistSettingsSnapshot(get().settings);
+        }
+    },
+    decreaseTrials: () => {
         set((state) => ({
             settings: {
                 ...state.settings,
@@ -518,15 +706,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
                         ? state.settings.trials - 1
                         : state.settings.trials,
             },
-        })),
-    increaseTrials: () =>
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    increaseTrials: () => {
         set((state) => ({
             settings: {
                 ...state.settings,
                 trials: state.settings.trials + 1,
             },
-        })),
-    setIsiMin: (ms) =>
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setIsiMin: (ms) => {
         set((state) => {
             const isiMin = clampIsiMs(ms);
             return {
@@ -536,8 +728,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
                     isiMax: Math.max(isiMin, state.settings.isiMax),
                 },
             };
-        }),
-    setIsiMax: (ms) =>
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    setIsiMax: (ms) => {
         set((state) => {
             const isiMax = clampIsiMs(ms);
             return {
@@ -547,15 +741,44 @@ export const useGameStore = create<GameStore>((set, get) => ({
                     isiMin: Math.min(isiMax, state.settings.isiMin),
                 },
             };
-        }),
-    setAllowCenterStimulus: (allow) =>
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    setAnswerGraceMs: (ms) => {
+        set((state) => ({
+            settings: {
+                ...state.settings,
+                answerGraceMs: clampAnswerGraceMs(ms),
+            },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setAllowCenterStimulus: (allow) => {
         set((state) => ({
             settings: {
                 ...state.settings,
                 allowCenterStimulus: allow,
+                // Middle square can't host both a stimulus and the Variable N digit.
+                displayVariableNCenter: allow ? false : state.settings.displayVariableNCenter,
             },
-        })),
-    setMode: (mode) =>
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setDisplayVariableNCenter: (enabled) => {
+        set((state) => {
+            if (enabled && state.settings.allowCenterStimulus) {
+                return state;
+            }
+            return {
+                settings: {
+                    ...state.settings,
+                    displayVariableNCenter: enabled,
+                },
+            };
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    setMode: (mode) => {
         set((state) => {
             // Don't reshape live session chrome mid-run; snapshot applies on next start.
             if (state.game !== null) {
@@ -574,13 +797,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 activeModalities: modalities,
                 btns: createEmptyButtons(modalities),
             };
-        }),
-    setAudioPack: (pack) =>
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    setAudioPack: (pack) => {
         set((state) => ({
             settings: { ...state.settings, audioPack: pack },
             speech: new Speech(pack),
-        })),
-    cycleInterferenceChance: () =>
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    cycleInterferenceChance: () => {
         set((state) => {
             const current = state.settings.interferenceChance;
             const idx = INTERFERENCE_OPTIONS.indexOf(current);
@@ -588,15 +815,45 @@ export const useGameStore = create<GameStore>((set, get) => ({
             return {
                 settings: { ...state.settings, interferenceChance: next },
             };
-        }),
-    setVariableN: (enabled) =>
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    setVariableN: (enabled) => {
         set((state) => ({
             settings: { ...state.settings, variableN: enabled },
-        })),
-    setUseBlockQuotas: (enabled) =>
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    cycleVariableNHoldTrials: () => {
+        set((state) => {
+            const current = state.settings.variableNHoldTrials;
+            const idx = VARIABLE_N_HOLD_OPTIONS.indexOf(current);
+            const next =
+                VARIABLE_N_HOLD_OPTIONS[(idx + 1) % VARIABLE_N_HOLD_OPTIONS.length];
+            return {
+                settings: { ...state.settings, variableNHoldTrials: next },
+            };
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    setUseBlockQuotas: (enabled) => {
         set((state) => ({
             settings: { ...state.settings, useBlockQuotas: enabled },
-        })),
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setUseJaeggiQuotas: (enabled) => {
+        set((state) => ({
+            settings: { ...state.settings, useJaeggiQuotas: enabled },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setActiveFeedback: (enabled) => {
+        set((state) => ({
+            settings: { ...state.settings, activeFeedback: enabled },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
     setPlayMode: (playMode) => {
         const state = get();
         if (state.game !== null || state.countdown !== null) {
@@ -613,6 +870,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                               isiMin: current.settings.isiMin,
                               isiMax: current.settings.isiMax,
                               variableN: current.settings.variableN,
+                              variableNHoldTrials: current.settings.variableNHoldTrials,
                               interferenceChance: current.settings.interferenceChance,
                           }
                         : current.freePlaySettingsSnapshot,
@@ -633,6 +891,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
                     isiMin: snapshot.isiMin,
                     isiMax: snapshot.isiMax,
                     variableN: snapshot.variableN,
+                    variableNHoldTrials:
+                        snapshot.variableNHoldTrials ?? settings.variableNHoldTrials,
                     interferenceChance: snapshot.interferenceChance,
                 };
             }
@@ -646,8 +906,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 blockModalities: null,
             };
         });
+        persistSettingsSnapshot(get().settings);
     },
     saveLadder: () => {
         persistLadder(ladderStorageFromState(get().ladder));
+        noteLocalProgressChanged();
     },
 }));

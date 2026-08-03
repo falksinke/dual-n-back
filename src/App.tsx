@@ -17,6 +17,7 @@ import VariableNHud from './components/VariableNHud';
 import InstallNudge from './components/InstallNudge';
 import SessionExitButton from './components/SessionExitButton';
 import { useHaptics } from './haptics/useHaptics';
+import { HapticsEnabledProvider } from './haptics/HapticsEnabledContext';
 import { loadUiPreferences } from './model/uiPreferences';
 import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
 import { shouldApplyWaitingUpdate } from './pwa/updateGate';
@@ -32,6 +33,7 @@ const App = () => {
 
     const game = useGameStore((state) => state.game);
     const countdown = useGameStore((state) => state.countdown);
+    const lastResult = useGameStore((state) => state.results.last);
     const playMode = useGameStore((state) => state.settings.playMode);
     const level = useGameStore((state) => state.settings.level);
     const mode = useGameStore((state) => state.settings.mode);
@@ -44,10 +46,12 @@ const App = () => {
     const activeModalities = useGameStore((state) => state.activeModalities);
     const blocksCompletedSignal = useGameStore((state) => state.results.all.length);
     const trialsShown = game !== null ? currentTrials : configuredTrials;
+    const [settingsOpen, setSettingsOpen] = useState(false);
 
     const inSession = game !== null;
     const countingDown = countdown !== null;
     const pendingContinue = adaptiveSession?.pendingContinue === true;
+    const showingResults = lastResult != null;
     const chromeHidden = inSession || countingDown || pendingContinue;
     const flowBusy = chromeHidden;
     const uiRevision = [
@@ -55,9 +59,11 @@ const App = () => {
         mode,
         inSession ? 'play' : 'idle',
         pendingContinue ? 'continue' : 'ready',
+        settingsOpen ? 'settings' : 'closed',
         activeModalities.join(','),
         blocksCompletedSignal,
         hapticsEnabled ? 'h1' : 'h0',
+        `${ladder.track}:${ladder.n}:${ladder.stage}`,
     ].join('|');
     useHaptics({ rootRef: appRef, enabled: hapticsEnabled, uiRevision });
     const canApplySwUpdate = shouldApplyWaitingUpdate({
@@ -83,44 +89,66 @@ const App = () => {
         });
     }, []);
     const isAdaptive = playMode === 'adaptive';
-    const showVariableN = !isAdaptive && variableN && (inSession || countingDown);
+    // Per-trial N must stay visible in Adaptive too — recipe "var N" alone is not enough.
+    const showVariableN = variableN && (inSession || countingDown);
     const variableNValue = nForTrial > 0 ? nForTrial : level;
+    const showSessionStatus = !showingResults;
+
+    const appContainerClass = [
+        'app-container',
+        chromeHidden ? 'playing' : '',
+        isAdaptive ? 'adaptive' : '',
+        inSession ? 'in-session' : '',
+        pendingContinue ? 'pending-continue' : '',
+        showingResults ? 'showing-results' : '',
+    ]
+        .filter(Boolean)
+        .join(' ');
 
     return (
-        <div ref={appRef} className={`app-container${chromeHidden ? ' playing' : ''}`}>
-            <div className="app">
-                <Topbar onHapticsEnabledChange={setHapticsEnabled} />
-                <SessionExitButton />
-                <div className="session-status" aria-live="polite">
-                    {!isAdaptive && !showVariableN && (
-                        <div className="session-status-item">
-                            <span className="session-status-label">Level</span>
-                            <span className="session-status-value">{level}</span>
+        <HapticsEnabledProvider value={hapticsEnabled}>
+            <div ref={appRef} className={appContainerClass}>
+                <div className="app">
+                    <Topbar
+                        settingsOpen={settingsOpen}
+                        onSettingsOpenChange={setSettingsOpen}
+                        onHapticsEnabledChange={setHapticsEnabled}
+                    />
+                    <SessionExitButton />
+                    {showSessionStatus && (
+                        <div className="session-status" aria-live="polite">
+                            {!isAdaptive && !showVariableN && (
+                                <div className="session-status-item">
+                                    <span className="session-status-label">Level</span>
+                                    <span className="session-status-value">{level}</span>
+                                </div>
+                            )}
+                            <div className="session-status-item">
+                                <span className="session-status-label">Trials</span>
+                                <span className="session-status-value">{trialsShown}</span>
+                            </div>
                         </div>
                     )}
-                    <div className="session-status-item">
-                        <span className="session-status-label">Trials</span>
-                        <span className="session-status-value">{trialsShown}</span>
-                    </div>
-                </div>
-                {showVariableN && <VariableNHud n={variableNValue} />}
-                <Board />
-                {isAdaptive && (
-                    <AdaptiveProgressHud
-                        n={ladder.n}
-                        lureStage={ladder.lureStage}
-                        session={adaptiveSession}
+                    {showVariableN && <VariableNHud n={variableNValue} />}
+                    <Board />
+                    {isAdaptive && (
+                        <AdaptiveProgressHud ladder={ladder} session={adaptiveSession} />
+                    )}
+                    <Footer
+                        themeMode={themeMode}
+                        onToggleTheme={() =>
+                            setThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark'))
+                        }
                     />
-                )}
-                <Footer
-                    themeMode={themeMode}
-                    onToggleTheme={() => setThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark'))}
-                />
-                {inSession && <UserMatchNotice />}
-                <CountdownFlash />
-                <InstallNudge flowBusy={flowBusy} blocksCompletedSignal={blocksCompletedSignal} />
+                    {inSession && <UserMatchNotice />}
+                    <CountdownFlash />
+                    <InstallNudge
+                        flowBusy={flowBusy}
+                        blocksCompletedSignal={blocksCompletedSignal}
+                    />
+                </div>
             </div>
-        </div>
+        </HapticsEnabledProvider>
     );
 };
 

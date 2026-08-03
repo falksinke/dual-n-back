@@ -1,405 +1,213 @@
-import { ModalityId } from './modalities';
-import { BlockSdtReport } from './sdtMetrics';
-import { LureStageId, nextLureStage } from './lureStages';
+import {
+    advanceAcquisition,
+    demoteCurriculumStage,
+    isAssessedStage,
+    promoteCurriculumStage,
+    type CurriculumBlockRole,
+    type CurriculumLadderState,
+} from './adaptiveCurriculum';
+import type { BlockSdtReport, ModalitySdtReport } from './sdtMetrics';
 
-export type LadderState = { n: number; lureStage: LureStageId; isiTier: number };
+/** Median clean d′ required to promote an assessed stage. */
+export const PROMOTE_MEDIAN_CLEAN_DPRIME = 2.0;
+/** Every modality must clear this clean d′ floor. */
+export const PROMOTE_FLOOR_CLEAN_DPRIME = 1.4;
+/** Median lure d′ floor when lure samples exist. */
+export const PROMOTE_MEDIAN_LURE_DPRIME = 1.2;
+/** Max mean lure FA rate across modalities with lure samples. */
+export const PROMOTE_MAX_LURE_FA_RATE = 0.35;
+/** |criterion| above this → Hold (extreme bias). */
+export const EXTREME_CRITERION = 1.5;
+/** Min targets per modality before assessed promote is allowed. */
+export const MIN_TARGETS_PER_MODALITY = 3;
+/** Min lure non-targets when lure stage expects lures (lureSampleOk modalities). */
+export const MIN_LURE_NON_TARGETS = 2;
+/** Consecutive assessed fails before demoting one stage. */
+export const FAILS_TO_DEMOTE_STAGE = 3;
 
-export type ControllerAction =
-    | { action: 'hold'; reason: string }
-    | {
-          action: 'lureUp' | 'lureDown' | 'nUp' | 'nDown' | 'isiTighten' | 'isiRevert';
-          reason: string;
-      }
-    | { action: 'remediate'; modality: ModalityId; reason: string };
+export type CurriculumProgressionAction =
+    | 'promote'
+    | 'demote'
+    | 'hold'
+    | 'advance_acquisition';
 
-export const ADAPTIVE_THRESHOLDS = {
-    medianCleanPromote: 2.0,
-    modalityFloorClean: 1.4,
-    medianAllNUp: 2.0,
-    modalityFloorAll: 1.4,
-    lureDPrimeMin: 1.2,
-    criterionExtreme: 1.5,
-    windowSize: 3,
-    minTargetsPerModality: 3,
-    minLureNonTargetsPerModality: 3,
-    /** Latest-block median correct RT at or below this qualifies for ISI tighten. */
-    speedRtThresholdMs: 2000,
-    maxIsiTier: 3,
-} as const;
+export type CurriculumProgressionDecision = {
+    action: CurriculumProgressionAction;
+    ladder: CurriculumLadderState;
+    reason: string;
+};
 
-export interface DecideAdaptiveOptions {
-    /** Caller sets true when the prior window also met promotion criteria. */
-    previousWindowPromoted?: boolean;
-    /** Caller sets true on the first window after an ISI tighten was applied. */
-    postIsiTighten?: boolean;
-}
-
-interface BlockAggregates {
-    medianClean: number;
-    minClean: number;
-    medianAll: number;
-    minAll: number;
-    medianLure: number;
-    minLure: number;
-    maxAbsCriterion: number;
-    modalityClean: Record<ModalityId, number>;
-    lureSamplesOk: boolean;
-    targetSamplesOk: boolean;
-}
-
-interface WindowAggregates {
-    meanMedianClean: number;
-    minClean: number;
-    meanMedianAll: number;
-    minAll: number;
-    meanMedianLure: number;
-    minLure: number;
-    maxAbsCriterion: number;
-    modalityMeanClean: Record<ModalityId, number>;
-    latestMedianCorrectRtMs: number | null;
-    lureSamplesOk: boolean;
-    targetSamplesOk: boolean;
+function modalities(report: BlockSdtReport): ModalitySdtReport[] {
+    return report.modalities
+        .map((id) => report.byModality[id])
+        .filter((m): m is ModalitySdtReport => m != null);
 }
 
 function median(values: number[]): number | null {
     if (values.length === 0) return null;
     const sorted = [...values].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    if (sorted.length % 2 === 1) return sorted[mid];
-    return (sorted[mid - 1] + sorted[mid]) / 2;
+    if (sorted.length % 2 === 1) return sorted[mid]!;
+    return (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-function mean(values: number[]): number {
-    if (values.length === 0) return 0;
-    return values.reduce((sum, value) => sum + value, 0) / values.length;
+function mean(values: number[]): number | null {
+    if (values.length === 0) return null;
+    return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-function aggregateBlock(report: BlockSdtReport, modalities: ModalityId[]): BlockAggregates {
-    const cleanValues: number[] = [];
-    const allValues: number[] = [];
-    const lureValues: number[] = [];
-    const modalityClean: Partial<Record<ModalityId, number>> = {};
-    let maxAbsCriterion = 0;
-
-    for (const modality of modalities) {
-        const mod = report.byModality[modality];
-        if (!mod) continue;
-        cleanValues.push(mod.clean.dPrime);
-        allValues.push(mod.all.dPrime);
-        if (mod.lureSampleOk) {
-            lureValues.push(mod.lure.dPrime);
-        }
-        modalityClean[modality] = mod.clean.dPrime;
-        maxAbsCriterion = Math.max(
-            maxAbsCriterion,
-            Math.abs(mod.all.criterion),
-            Math.abs(mod.clean.criterion),
-            mod.lureSampleOk ? Math.abs(mod.lure.criterion) : 0
-        );
+function samplesOk(mods: ModalitySdtReport[], expectsLures: boolean): boolean {
+    if (mods.length === 0) return false;
+    for (const m of mods) {
+        if (m.targetCount < MIN_TARGETS_PER_MODALITY) return false;
     }
+    if (!expectsLures) return true;
+    const lureMods = mods.filter((m) => m.lureSampleOk);
+    if (lureMods.length === 0) return false;
+    return lureMods.every((m) => m.lureNonTargetCount >= MIN_LURE_NON_TARGETS);
+}
 
+function expectsLures(ladder: CurriculumLadderState): boolean {
+    return ladder.lureStage !== 'A';
+}
+
+function modalityCollapse(mods: ModalitySdtReport[]): boolean {
+    if (mods.length < 2) return false;
+    const cleans = mods.map((m) => m.clean.dPrime);
+    const med = median(cleans);
+    if (med == null) return false;
+    const min = Math.min(...cleans);
+    return med >= PROMOTE_FLOOR_CLEAN_DPRIME && min < PROMOTE_FLOOR_CLEAN_DPRIME;
+}
+
+function extremeCriterion(mods: ModalitySdtReport[]): boolean {
+    return mods.some((m) => Math.abs(m.all.criterion) > EXTREME_CRITERION);
+}
+
+function gatesPass(mods: ModalitySdtReport[], expectsLure: boolean): boolean {
+    const cleanDs = mods.map((m) => m.clean.dPrime);
+    const medClean = median(cleanDs);
+    const minClean = Math.min(...cleanDs);
+    if (medClean == null || medClean < PROMOTE_MEDIAN_CLEAN_DPRIME) return false;
+    if (minClean < PROMOTE_FLOOR_CLEAN_DPRIME) return false;
+    if (extremeCriterion(mods)) return false;
+
+    if (!expectsLure) return true;
+
+    const lureMods = mods.filter((m) => m.lureSampleOk);
+    if (lureMods.length === 0) return false;
+    const medLure = median(lureMods.map((m) => m.lure.dPrime));
+    const meanLureFa = mean(lureMods.map((m) => m.lure.falseAlarmRate));
+    if (medLure == null || medLure < PROMOTE_MEDIAN_LURE_DPRIME) return false;
+    if (meanLureFa == null || meanLureFa > PROMOTE_MAX_LURE_FA_RATE) return false;
+    return true;
+}
+
+function hold(
+    ladder: CurriculumLadderState,
+    failStreak: number,
+    reason: string
+): CurriculumProgressionDecision {
     return {
-        medianClean: median(cleanValues) ?? 0,
-        minClean: cleanValues.length ? Math.min(...cleanValues) : 0,
-        medianAll: median(allValues) ?? 0,
-        minAll: allValues.length ? Math.min(...allValues) : 0,
-        medianLure: median(lureValues) ?? 0,
-        minLure: lureValues.length ? Math.min(...lureValues) : 0,
-        maxAbsCriterion,
-        modalityClean: modalityClean as Record<ModalityId, number>,
-        lureSamplesOk: true,
-        targetSamplesOk: true,
+        action: 'hold',
+        ladder: { ...ladder, failStreak, promoteStreak: 0 },
+        reason,
     };
-}
-
-function windowSampleFlags(
-    window: BlockSdtReport[],
-    modalities: ModalityId[]
-): { lureSamplesOk: boolean; targetSamplesOk: boolean } {
-    let targetSamplesOk = true;
-    let lureSamplesOk = true;
-
-    for (const modality of modalities) {
-        let targetCount = 0;
-        let lureNonTargetCount = 0;
-        for (const block of window) {
-            const mod = block.byModality[modality];
-            if (!mod) continue;
-            targetCount += mod.targetCount;
-            lureNonTargetCount += mod.lureNonTargetCount;
-        }
-        if (targetCount < ADAPTIVE_THRESHOLDS.minTargetsPerModality) {
-            targetSamplesOk = false;
-        }
-        if (lureNonTargetCount < ADAPTIVE_THRESHOLDS.minLureNonTargetsPerModality) {
-            lureSamplesOk = false;
-        }
-    }
-
-    return { lureSamplesOk, targetSamplesOk };
 }
 
 /**
- * Window-level gating uses the mean of each block's per-modality median d′ values
- * (three block medians averaged) for stability across the rolling window.
+ * Decide curriculum progression from block role + stratified SDT.
+ * Match % is display-only and must not gate promotion.
  */
-function aggregateWindow(
-    window: BlockSdtReport[],
-    modalities: ModalityId[]
-): WindowAggregates {
-    const perBlock = window.map((block) => aggregateBlock(block, modalities));
-    const modalityMeanClean = {} as Record<ModalityId, number>;
+export function decideCurriculumProgression(input: {
+    ladder: CurriculumLadderState;
+    blockRole: CurriculumBlockRole;
+    sdt: BlockSdtReport | null | undefined;
+    matchPct?: number;
+}): CurriculumProgressionDecision {
+    const { ladder, blockRole, sdt } = input;
 
-    for (const modality of modalities) {
-        modalityMeanClean[modality] = mean(
-            perBlock.map((block) => block.modalityClean[modality] ?? 0)
-        );
-    }
-
-    const latest = window[window.length - 1];
-    const sampleFlags = windowSampleFlags(window, modalities);
-
-    return {
-        meanMedianClean: mean(perBlock.map((block) => block.medianClean)),
-        minClean: Math.min(...perBlock.map((block) => block.minClean)),
-        meanMedianAll: mean(perBlock.map((block) => block.medianAll)),
-        minAll: Math.min(...perBlock.map((block) => block.minAll)),
-        meanMedianLure: mean(perBlock.map((block) => block.medianLure)),
-        minLure: Math.min(...perBlock.map((block) => block.minLure)),
-        maxAbsCriterion: Math.max(...perBlock.map((block) => block.maxAbsCriterion)),
-        modalityMeanClean,
-        latestMedianCorrectRtMs: latest?.medianCorrectRtMs ?? null,
-        lureSamplesOk: sampleFlags.lureSamplesOk,
-        targetSamplesOk: sampleFlags.targetSamplesOk,
-    };
-}
-
-function cleanPoor(stats: WindowAggregates, modalities: ModalityId[]): boolean {
-    const weak = weakModalities(stats, modalities);
-    if (
-        weak.length === 1 &&
-        stats.meanMedianClean >= ADAPTIVE_THRESHOLDS.modalityFloorClean
-    ) {
-        return false;
-    }
-    return (
-        stats.meanMedianClean < ADAPTIVE_THRESHOLDS.medianCleanPromote ||
-        stats.minClean < ADAPTIVE_THRESHOLDS.modalityFloorClean
-    );
-}
-
-function cleanMastery(stats: WindowAggregates): boolean {
-    return (
-        stats.meanMedianClean >= ADAPTIVE_THRESHOLDS.medianCleanPromote &&
-        stats.minClean >= ADAPTIVE_THRESHOLDS.modalityFloorClean
-    );
-}
-
-function lurePoor(stats: WindowAggregates): boolean {
-    if (!stats.lureSamplesOk) return false;
-    return (
-        stats.meanMedianLure < ADAPTIVE_THRESHOLDS.lureDPrimeMin ||
-        stats.minLure < ADAPTIVE_THRESHOLDS.lureDPrimeMin
-    );
-}
-
-function lureStable(stats: WindowAggregates): boolean {
-    if (!stats.lureSamplesOk) return false;
-    return (
-        stats.meanMedianLure >= ADAPTIVE_THRESHOLDS.lureDPrimeMin &&
-        stats.minLure >= ADAPTIVE_THRESHOLDS.lureDPrimeMin
-    );
-}
-
-function allMastery(stats: WindowAggregates): boolean {
-    return (
-        stats.meanMedianAll >= ADAPTIVE_THRESHOLDS.medianAllNUp &&
-        stats.minAll >= ADAPTIVE_THRESHOLDS.modalityFloorAll &&
-        lureStable(stats)
-    );
-}
-
-function extremeCollapse(stats: WindowAggregates): boolean {
-    const lureFailed =
-        stats.lureSamplesOk &&
-        stats.minLure < ADAPTIVE_THRESHOLDS.lureDPrimeMin;
-    return (
-        stats.minClean < ADAPTIVE_THRESHOLDS.modalityFloorClean && lureFailed
-    );
-}
-
-function extremeCriterion(stats: WindowAggregates): boolean {
-    return stats.maxAbsCriterion > ADAPTIVE_THRESHOLDS.criterionExtreme;
-}
-
-function weakModalities(stats: WindowAggregates, modalities: ModalityId[]): ModalityId[] {
-    return modalities.filter(
-        (modality) =>
-            stats.modalityMeanClean[modality] < ADAPTIVE_THRESHOLDS.modalityFloorClean
-    );
-}
-
-function shouldRemediate(stats: WindowAggregates, modalities: ModalityId[]): ModalityId | null {
-    const weak = weakModalities(stats, modalities);
-    if (weak.length !== 1) return null;
-    if (stats.meanMedianClean < ADAPTIVE_THRESHOLDS.modalityFloorClean) return null;
-    return weak[0];
-}
-
-function speedEligible(stats: WindowAggregates): boolean {
-    return (
-        stats.latestMedianCorrectRtMs != null &&
-        stats.latestMedianCorrectRtMs <= ADAPTIVE_THRESHOLDS.speedRtThresholdMs
-    );
-}
-
-export function canDecide(window: BlockSdtReport[]): boolean {
-    return window.length >= ADAPTIVE_THRESHOLDS.windowSize;
-}
-
-export function decideAdaptive(
-    window: BlockSdtReport[],
-    ladder: LadderState,
-    modalities: ModalityId[],
-    opts: DecideAdaptiveOptions = {}
-): ControllerAction {
-    if (!canDecide(window)) {
+    if (blockRole === 'instruction' || blockRole === 'guided' || blockRole === 'fade') {
+        const next = advanceAcquisition(ladder);
         return {
-            action: 'hold',
-            reason: 'insufficient evidence window (need 3 adaptive blocks)',
+            action: 'advance_acquisition',
+            ladder: next,
+            reason: `Acquisition ${blockRole} → ${next.stage}`,
         };
     }
 
-    const evidence = window.slice(-ADAPTIVE_THRESHOLDS.windowSize);
-    const stats = aggregateWindow(evidence, modalities);
-    const previousWindowPromoted = opts.previousWindowPromoted === true;
-
-    if (!stats.targetSamplesOk) {
+    if (!isAssessedStage(ladder.stage)) {
+        const next = advanceAcquisition(ladder);
         return {
-            action: 'hold',
-            reason: 'insufficient samples',
+            action: 'advance_acquisition',
+            ladder: next,
+            reason: `Non-assessed stage ${ladder.stage} → ${next.stage}`,
         };
     }
 
-    const wouldPromoteLure =
-        previousWindowPromoted &&
-        cleanMastery(stats) &&
-        nextLureStage(ladder.lureStage) != null;
+    const mods = sdt != null ? modalities(sdt) : [];
+    const lureExpected = expectsLures(ladder);
 
-    const wouldPromoteN =
-        previousWindowPromoted && ladder.lureStage === 'E' && allMastery(stats);
-
-    if (
-        (wouldPromoteLure || wouldPromoteN) &&
-        !stats.lureSamplesOk
-    ) {
-        return {
-            action: 'hold',
-            reason: 'insufficient lure samples',
-        };
+    if (!samplesOk(mods, lureExpected)) {
+        return hold(ladder, ladder.failStreak, 'Sparse SDT samples — hold');
     }
 
-    if (opts.postIsiTighten && stats.meanMedianAll < ADAPTIVE_THRESHOLDS.medianAllNUp) {
-        return {
-            action: 'isiRevert',
-            reason: 'median d′_all fell below promote floor after ISI tighten',
-        };
-    }
-
-    if (extremeCollapse(stats)) {
-        if (ladder.n <= 2) {
+    if (modalityCollapse(mods)) {
+        const nextFail = ladder.failStreak + 1;
+        if (nextFail >= FAILS_TO_DEMOTE_STAGE) {
+            const demoted = demoteCurriculumStage(ladder);
             return {
-                action: 'hold',
-                reason: 'clean load failure at minimum n; hold and practice current level',
+                action: 'demote',
+                ladder: demoted,
+                reason: 'Modality collapse — demote stage',
             };
         }
+        return hold(ladder, nextFail, 'Modality collapse — hold');
+    }
+
+    if (gatesPass(mods, lureExpected)) {
+        const next = promoteCurriculumStage(ladder);
         return {
-            action: 'nDown',
-            reason: 'extreme collapse in clean and lure discrimination',
+            action: 'promote',
+            ladder: { ...next, failStreak: 0, promoteStreak: ladder.promoteStreak + 1 },
+            reason: 'Clean/lure gates met — promote stage',
         };
     }
 
-    if (cleanPoor(stats, modalities)) {
-        if (ladder.n <= 2) {
-            return {
-                action: 'hold',
-                reason: 'clean load failure at minimum n; hold and practice current level',
-            };
-        }
+    // Lure-specific failure while clean OK → demote preference via fail streak
+    const cleanDs = mods.map((m) => m.clean.dPrime);
+    const medClean = median(cleanDs);
+    const minClean = Math.min(...cleanDs);
+    const cleanOk =
+        medClean != null &&
+        medClean >= PROMOTE_FLOOR_CLEAN_DPRIME &&
+        minClean >= PROMOTE_FLOOR_CLEAN_DPRIME * 0.9;
+
+    const nextFail = ladder.failStreak + 1;
+    if (nextFail >= FAILS_TO_DEMOTE_STAGE) {
+        const demoted = demoteCurriculumStage(ladder);
         return {
-            action: 'nDown',
-            reason: 'core clean load below promote median or modality floor',
+            action: 'demote',
+            ladder: demoted,
+            reason: cleanOk
+                ? 'Repeated lure/gate failure — demote stage'
+                : 'Repeated assessed failure — demote stage',
         };
     }
 
-    if (lurePoor(stats)) {
-        if (ladder.lureStage === 'A') {
-            return {
-                action: 'hold',
-                reason: 'lure discrimination poor but already at minimum lure stage',
-            };
-        }
-        return {
-            action: 'lureDown',
-            reason: 'clean discrimination adequate but lure d′ below threshold',
-        };
-    }
-
-    const remediateModality = shouldRemediate(stats, modalities);
-    if (remediateModality != null) {
-        return {
-            action: 'remediate',
-            modality: remediateModality,
-            reason: 'single modality below clean d′ floor while aggregate remains adequate',
-        };
-    }
-
-    if (extremeCriterion(stats)) {
-        return {
-            action: 'hold',
-            reason: 'extreme response criterion; adjust strategy before changing difficulty',
-        };
-    }
-
-    if (
-        previousWindowPromoted &&
-        ladder.lureStage === 'E' &&
-        allMastery(stats)
-    ) {
-        return {
-            action: 'nUp',
-            reason: 'top lure stage mastered with stable all-modality discrimination across two windows',
-        };
-    }
-
-    if (
-        previousWindowPromoted &&
-        cleanMastery(stats) &&
-        lureStable(stats) &&
-        nextLureStage(ladder.lureStage) != null
-    ) {
-        return {
-            action: 'lureUp',
-            reason: 'clean mastery with stable lure discrimination across two windows',
-        };
-    }
-
-    if (
-        cleanMastery(stats) &&
-        lureStable(stats) &&
-        allMastery(stats) &&
-        ladder.lureStage === 'E' &&
-        speedEligible(stats) &&
-        ladder.isiTier < ADAPTIVE_THRESHOLDS.maxIsiTier
-    ) {
-        return {
-            action: 'isiTighten',
-            reason: 'discrimination mastered with fast correct responses; tighten timing one tier',
-        };
-    }
-
-    return {
-        action: 'hold',
-        reason: 'performance stable; continue current ladder settings',
-    };
+    return hold(
+        ladder,
+        nextFail,
+        cleanOk
+            ? `Lure/gate miss — fail ${nextFail}/${FAILS_TO_DEMOTE_STAGE}`
+            : `Assessed gates not met — fail ${nextFail}/${FAILS_TO_DEMOTE_STAGE}`
+    );
 }
+
+/** @deprecated Match-% Adaptive path — use decideCurriculumProgression. */
+export {
+    decideProgression as decideAdaptive,
+    type ProgressionAction,
+    type ProgressionDecision,
+    type ProgressionDecision as ControllerAction,
+} from './adaptiveLevels';

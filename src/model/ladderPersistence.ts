@@ -1,23 +1,25 @@
-import { DEFAULT_ISI_MAX_MS, DEFAULT_ISI_MIN_MS } from './isi';
-import { isLureStageId, LureStageId } from './lureStages';
+import {
+    clampCurriculumN,
+    createDefaultCurriculumLadder,
+    isCurriculumStage,
+    type CurriculumLadderState,
+} from './adaptiveCurriculum';
+import { isLureStageId } from './lureStages';
 import { ModeId } from './modalities';
 
 export const LADDER_STORAGE_KEY = 'nback-adaptive-ladder';
-export const LADDER_SCHEMA_VERSION = 1 as const;
-export const DEFAULT_LADDER_N = 2;
-export const DEFAULT_LADDER_LURE_STAGE: LureStageId = 'A';
-export const DEFAULT_ISI_TIER = 0;
+export const LADDER_SCHEMA_VERSION = 3 as const;
 
-export interface ModeLadderSnapshot {
-    n: number;
-    lureStage: LureStageId;
-    isiTier: number;
-}
+/** Per-mode Adaptive dual-track curriculum snapshot. */
+export type ModeLadderSnapshot = CurriculumLadderState;
 
-export interface LadderStorageV1 {
+export interface LadderStorageV3 {
     version: typeof LADDER_SCHEMA_VERSION;
     byMode: Record<ModeId, ModeLadderSnapshot>;
 }
+
+/** @deprecated Alias during call-site migration. */
+export type LadderStorageV2 = LadderStorageV3;
 
 export interface StorageLike {
     getItem(key: string): string | null;
@@ -27,11 +29,7 @@ export interface StorageLike {
 const MODE_IDS: ModeId[] = ['dual', 'triple', 'quad'];
 
 export function createDefaultModeLadder(): ModeLadderSnapshot {
-    return {
-        n: DEFAULT_LADDER_N,
-        lureStage: DEFAULT_LADDER_LURE_STAGE,
-        isiTier: DEFAULT_ISI_TIER,
-    };
+    return createDefaultCurriculumLadder();
 }
 
 export function createDefaultLadderByMode(): Record<ModeId, ModeLadderSnapshot> {
@@ -42,26 +40,11 @@ export function createDefaultLadderByMode(): Record<ModeId, ModeLadderSnapshot> 
     };
 }
 
-export function createDefaultLadderStorage(): LadderStorageV1 {
+export function createDefaultLadderStorage(): LadderStorageV3 {
     return {
         version: LADDER_SCHEMA_VERSION,
         byMode: createDefaultLadderByMode(),
     };
-}
-
-/**
- * Discrete ISI tighten ladder (plan KTD7): fixed onset intervals, clamped.
- * Higher tier = faster (shorter) ISI. Tier 0 keeps the wide default range.
- */
-const ISI_TIER_FIXED_MS = [null, 2500, 2000, 1500] as const;
-
-export function isiMsFromTier(tier: number): { isiMin: number; isiMax: number } {
-    const index = Math.max(0, Math.min(ISI_TIER_FIXED_MS.length - 1, Math.floor(tier)));
-    const fixed = ISI_TIER_FIXED_MS[index];
-    if (fixed == null) {
-        return { isiMin: DEFAULT_ISI_MIN_MS, isiMax: DEFAULT_ISI_MAX_MS };
-    }
-    return { isiMin: fixed, isiMax: fixed };
 }
 
 function normalizeModeLadder(raw: unknown): ModeLadderSnapshot {
@@ -70,10 +53,9 @@ function normalizeModeLadder(raw: unknown): ModeLadderSnapshot {
         return defaults;
     }
     const obj = raw as Record<string, unknown>;
-    const n =
-        typeof obj.n === 'number' && Number.isFinite(obj.n) && obj.n >= 2
-            ? Math.floor(obj.n)
-            : defaults.n;
+    const track = obj.track === 'flexible' ? 'flexible' : 'fixed';
+    const stage =
+        typeof obj.stage === 'string' && isCurriculumStage(obj.stage) ? obj.stage : defaults.stage;
     const lureStage =
         typeof obj.lureStage === 'string' && isLureStageId(obj.lureStage)
             ? obj.lureStage
@@ -82,7 +64,26 @@ function normalizeModeLadder(raw: unknown): ModeLadderSnapshot {
         typeof obj.isiTier === 'number' && Number.isFinite(obj.isiTier) && obj.isiTier >= 0
             ? Math.floor(obj.isiTier)
             : defaults.isiTier;
-    return { n, lureStage, isiTier };
+    const failStreak =
+        typeof obj.failStreak === 'number' && Number.isFinite(obj.failStreak) && obj.failStreak >= 0
+            ? Math.floor(obj.failStreak)
+            : defaults.failStreak;
+    const promoteStreak =
+        typeof obj.promoteStreak === 'number' &&
+        Number.isFinite(obj.promoteStreak) &&
+        obj.promoteStreak >= 0
+            ? Math.floor(obj.promoteStreak)
+            : defaults.promoteStreak;
+
+    return {
+        track,
+        n: clampCurriculumN(typeof obj.n === 'number' ? obj.n : defaults.n),
+        stage,
+        lureStage,
+        isiTier,
+        failStreak,
+        promoteStreak,
+    };
 }
 
 function normalizeByMode(raw: unknown): Record<ModeId, ModeLadderSnapshot> {
@@ -99,13 +100,14 @@ function normalizeByMode(raw: unknown): Record<ModeId, ModeLadderSnapshot> {
     return byMode;
 }
 
-export function parseLadderStorage(raw: string): LadderStorageV1 {
+export function parseLadderStorage(raw: string): LadderStorageV3 {
     try {
         const parsed: unknown = JSON.parse(raw);
         if (parsed == null || typeof parsed !== 'object') {
             return createDefaultLadderStorage();
         }
         const obj = parsed as Record<string, unknown>;
+        // Clean break from v1/v2 Match-% index state.
         if (obj.version !== LADDER_SCHEMA_VERSION) {
             return createDefaultLadderStorage();
         }
@@ -128,7 +130,7 @@ function resolveStorage(storage?: StorageLike): StorageLike | null {
     return null;
 }
 
-export function loadLadder(storage?: StorageLike): LadderStorageV1 {
+export function loadLadder(storage?: StorageLike): LadderStorageV3 {
     const resolved = resolveStorage(storage);
     if (resolved == null) {
         return createDefaultLadderStorage();
@@ -140,7 +142,7 @@ export function loadLadder(storage?: StorageLike): LadderStorageV1 {
     return parseLadderStorage(raw);
 }
 
-export function saveLadder(data: LadderStorageV1, storage?: StorageLike): void {
+export function saveLadder(data: LadderStorageV3, storage?: StorageLike): void {
     const resolved = resolveStorage(storage);
     if (resolved == null) {
         return;
@@ -148,6 +150,6 @@ export function saveLadder(data: LadderStorageV1, storage?: StorageLike): void {
     try {
         resolved.setItem(LADDER_STORAGE_KEY, JSON.stringify(data));
     } catch {
-        // localStorage quota / privacy mode — fail silently (plan risk mitigation).
+        // localStorage quota / privacy mode — fail silently.
     }
 }

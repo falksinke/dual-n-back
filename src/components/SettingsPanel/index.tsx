@@ -2,14 +2,23 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { ModeId } from '../../model/modalities';
 import { AudioPackId } from '../../model/audioPacks';
-import { isiMsFromTier } from '../../model/ladderPersistence';
 import { msToSecondsLabel } from '../../model/isi';
+import { FAILS_TO_DEMOTE_STAGE } from '../../model/adaptiveController';
+import { settingsFromCurriculum } from '../../model/adaptiveCurriculum';
 import {
     loadUiPreferences,
     setHapticFeedbackEnabled,
 } from '../../model/uiPreferences';
-import { isIOS } from '../../haptics/haptics';
-import { lureStageSummary } from '../adaptiveDisplay';
+import { loadPlayerCode } from '../../model/playerCode';
+import {
+    applyPlayerCode,
+    getSyncStatus,
+    subscribeSyncStatus,
+    type SyncStatus,
+} from '../../sync/progressSync';
+import { fireKind, isIOS } from '../../haptics/haptics';
+import { progressLevelSummary } from '../adaptiveDisplay';
+import AnswerGraceSlider from './AnswerGraceSlider';
 import IsiRangeSlider from './IsiRangeSlider';
 import './SettingsPanel.scss';
 
@@ -42,42 +51,86 @@ function formatInterference(value: number): string {
     return `${eighths}/8`;
 }
 
+function formatVariableNHold(hold: number): string {
+    if (hold === 1) return 'Every trial';
+    return `~Every ${hold} trials`;
+}
+
+function syncStatusLabel(status: SyncStatus): string {
+    switch (status.kind) {
+        case 'not_linked':
+            return 'Not linked';
+        case 'linking':
+            return 'Linking…';
+        case 'syncing':
+            return 'Syncing…';
+        case 'linked':
+            return status.lastSyncedAt != null ? 'Linked · synced' : 'Linked';
+        case 'error':
+            return status.message;
+        default:
+            return 'Not linked';
+    }
+}
+
 const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelProps) => {
     const panelRef = useRef<HTMLDivElement>(null);
     const ladderInfoId = useId();
+    const playerCodeInputId = useId();
     const [ladderInfoOpen, setLadderInfoOpen] = useState(false);
     const [hapticFeedbackEnabled, setHapticFeedbackEnabledState] = useState(
         () => loadUiPreferences().hapticFeedbackEnabled
     );
+    const [playerCodeDraft, setPlayerCodeDraft] = useState(() => loadPlayerCode() ?? '');
+    const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => getSyncStatus());
+    const [applyBusy, setApplyBusy] = useState(false);
     const showIosHapticsHint = isIOS();
     const playMode = useGameStore((state) => state.settings.playMode);
     const level = useGameStore((state) => state.settings.level);
     const trials = useGameStore((state) => state.settings.trials);
     const isiMin = useGameStore((state) => state.settings.isiMin);
     const isiMax = useGameStore((state) => state.settings.isiMax);
+    const answerGraceMs = useGameStore((state) => state.settings.answerGraceMs);
     const allowCenterStimulus = useGameStore((state) => state.settings.allowCenterStimulus);
+    const displayVariableNCenter = useGameStore(
+        (state) => state.settings.displayVariableNCenter
+    );
     const mode = useGameStore((state) => state.settings.mode);
     const audioPack = useGameStore((state) => state.settings.audioPack);
     const interferenceChance = useGameStore((state) => state.settings.interferenceChance);
     const variableN = useGameStore((state) => state.settings.variableN);
+    const variableNHoldTrials = useGameStore((state) => state.settings.variableNHoldTrials);
     const ladder = useGameStore((state) => state.ladder[mode]);
     const decreaseLevel = useGameStore((state) => state.decreaseLevel);
     const increaseLevel = useGameStore((state) => state.increaseLevel);
+    const decreaseLadderStep = useGameStore((state) => state.decreaseLadderStep);
+    const increaseLadderStep = useGameStore((state) => state.increaseLadderStep);
     const decreaseTrials = useGameStore((state) => state.decreaseTrials);
     const increaseTrials = useGameStore((state) => state.increaseTrials);
     const setIsiMin = useGameStore((state) => state.setIsiMin);
     const setIsiMax = useGameStore((state) => state.setIsiMax);
+    const setAnswerGraceMs = useGameStore((state) => state.setAnswerGraceMs);
     const setAllowCenterStimulus = useGameStore((state) => state.setAllowCenterStimulus);
+    const setDisplayVariableNCenter = useGameStore(
+        (state) => state.setDisplayVariableNCenter
+    );
     const setMode = useGameStore((state) => state.setMode);
     const setAudioPack = useGameStore((state) => state.setAudioPack);
     const cycleInterferenceChance = useGameStore((state) => state.cycleInterferenceChance);
     const setVariableN = useGameStore((state) => state.setVariableN);
+    const cycleVariableNHoldTrials = useGameStore((state) => state.cycleVariableNHoldTrials);
     const setPlayMode = useGameStore((state) => state.setPlayMode);
     const useBlockQuotas = useGameStore((state) => state.settings.useBlockQuotas);
     const setUseBlockQuotas = useGameStore((state) => state.setUseBlockQuotas);
+    const useJaeggiQuotas = useGameStore((state) => state.settings.useJaeggiQuotas);
+    const setUseJaeggiQuotas = useGameStore((state) => state.setUseJaeggiQuotas);
+    const activeFeedback = useGameStore((state) => state.settings.activeFeedback);
+    const setActiveFeedback = useGameStore((state) => state.setActiveFeedback);
 
     const isAdaptive = playMode === 'adaptive';
-    const ladderIsi = isiMsFromTier(ladder.isiTier);
+    const progressLevel = settingsFromCurriculum(
+        ladder.stage === 'instruction' ? { ...ladder, stage: 'guided' } : ladder
+    );
 
     useEffect(() => {
         if (!open) {
@@ -98,10 +151,33 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
     }, [open, onClose]);
 
     useEffect(() => {
+        return subscribeSyncStatus(() => {
+            setSyncStatus(getSyncStatus());
+        });
+    }, []);
+
+    useEffect(() => {
         if (open) {
+            setPlayerCodeDraft(loadPlayerCode() ?? '');
+            setSyncStatus(getSyncStatus());
             panelRef.current?.querySelector<HTMLElement>('button, input')?.focus();
         }
     }, [open]);
+
+    const onApplyPlayerCode = async () => {
+        if (applyBusy) return;
+        setApplyBusy(true);
+        try {
+            await applyPlayerCode(playerCodeDraft);
+            setPlayerCodeDraft(loadPlayerCode() ?? playerCodeDraft.trim());
+            fireKind('selection');
+        } catch {
+            // Status text already updated in progressSync.
+        } finally {
+            setApplyBusy(false);
+            setSyncStatus(getSyncStatus());
+        }
+    };
 
     return (
         <div className={`settings-shell${open ? ' is-open' : ''}`} aria-hidden={!open}>
@@ -110,7 +186,7 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                 className="settings-backdrop"
                 tabIndex={-1}
                 aria-label="Close settings"
-                data-haptic-skip
+                data-haptic="light"
                 onClick={onClose}
             />
             <div
@@ -124,18 +200,72 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                     <h2 id="settings-title" className="settings-title">
                         Trial settings
                     </h2>
-                    <button
-                        type="button"
-                        className="settings-close"
-                        onClick={onClose}
-                        aria-label="Close settings"
-                        data-haptic-skip
-                    >
-                        ✕
-                    </button>
+                    <div className="settings-close-host haptic-host">
+                        <button
+                            type="button"
+                            className="settings-close"
+                            onClick={onClose}
+                            aria-label="Close settings"
+                            data-haptic="light"
+                        >
+                            ✕
+                        </button>
+                    </div>
                 </div>
 
                 <div className="settings-body">
+                    <div className="settings-row settings-row--stack">
+                        <div className="settings-row-copy">
+                            <span className="settings-row-label">Player code</span>
+                            <span className="settings-row-hint">
+                                Same code on another device loads this progress. Anyone with the
+                                code can change it.
+                            </span>
+                        </div>
+                        <div className="settings-player-code">
+                            <label className="visually-hidden" htmlFor={playerCodeInputId}>
+                                Player code
+                            </label>
+                            <input
+                                id={playerCodeInputId}
+                                className="settings-player-code-input"
+                                type="text"
+                                autoComplete="off"
+                                spellCheck={false}
+                                minLength={6}
+                                maxLength={64}
+                                placeholder="Enter a code"
+                                value={playerCodeDraft}
+                                onChange={(e) => setPlayerCodeDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        void onApplyPlayerCode();
+                                    }
+                                }}
+                            />
+                            <div className="settings-player-code-actions haptic-host">
+                                <button
+                                    type="button"
+                                    className="settings-player-code-apply"
+                                    data-haptic="light"
+                                    disabled={applyBusy || playerCodeDraft.trim().length < 6}
+                                    onClick={() => void onApplyPlayerCode()}
+                                >
+                                    {applyBusy ? '…' : 'Apply'}
+                                </button>
+                            </div>
+                        </div>
+                        <span
+                            className={`settings-player-code-status${
+                                syncStatus.kind === 'error' ? ' is-error' : ''
+                            }`}
+                            role="status"
+                        >
+                            {syncStatusLabel(syncStatus)}
+                        </span>
+                    </div>
+
                     <div className="settings-row">
                         <div className="settings-row-copy">
                             <span className="settings-row-label">Training path</span>
@@ -143,14 +273,16 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                         </div>
                         <div className="settings-segment">
                             {PLAY_MODE_OPTIONS.map((option) => (
-                                <button
-                                    key={option.id}
-                                    type="button"
-                                    className={`segment-btn${playMode === option.id ? ' is-active' : ''}`}
-                                    onClick={() => setPlayMode(option.id)}
-                                >
-                                    {option.label}
-                                </button>
+                                <div key={option.id} className="segment-btn-host haptic-host">
+                                    <button
+                                        type="button"
+                                        className={`segment-btn${playMode === option.id ? ' is-active' : ''}`}
+                                        data-haptic="light"
+                                        onClick={() => setPlayMode(option.id)}
+                                    >
+                                        {option.label}
+                                    </button>
+                                </div>
                             ))}
                         </div>
                     </div>
@@ -162,14 +294,16 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                         </div>
                         <div className="settings-segment">
                             {MODE_OPTIONS.map((option) => (
-                                <button
-                                    key={option.id}
-                                    type="button"
-                                    className={`segment-btn${mode === option.id ? ' is-active' : ''}`}
-                                    onClick={() => setMode(option.id)}
-                                >
-                                    {option.label}
-                                </button>
+                                <div key={option.id} className="segment-btn-host haptic-host">
+                                    <button
+                                        type="button"
+                                        className={`segment-btn${mode === option.id ? ' is-active' : ''}`}
+                                        data-haptic="light"
+                                        onClick={() => setMode(option.id)}
+                                    >
+                                        {option.label}
+                                    </button>
+                                </div>
                             ))}
                         </div>
                     </div>
@@ -181,20 +315,22 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                         </div>
                         <div className="settings-segment">
                             {PACK_OPTIONS.map((option) => (
-                                <button
-                                    key={option.id}
-                                    type="button"
-                                    className={`segment-btn${audioPack === option.id ? ' is-active' : ''}`}
-                                    onClick={() => setAudioPack(option.id)}
-                                >
-                                    {option.label}
-                                </button>
+                                <div key={option.id} className="segment-btn-host haptic-host">
+                                    <button
+                                        type="button"
+                                        className={`segment-btn${audioPack === option.id ? ' is-active' : ''}`}
+                                        data-haptic="light"
+                                        onClick={() => setAudioPack(option.id)}
+                                    >
+                                        {option.label}
+                                    </button>
+                                </div>
                             ))}
                         </div>
                     </div>
 
                     {isAdaptive ? (
-                        <div className="settings-row settings-row--readonly settings-row--ladder">
+                        <div className="settings-row settings-row--ladder">
                             <div className="settings-row-main">
                                 <div className="settings-row-copy">
                                     <div className="settings-row-label-line">
@@ -211,13 +347,41 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                         </button>
                                     </div>
                                     <span className="settings-row-hint">
-                                        Memory load and interference from your progress
+                                        Manual step · Match% still promotes/demotes after blocks
                                     </span>
                                 </div>
-                                <div className="settings-readout" aria-live="polite">
-                                    <span>n={ladder.n}</span>
-                                    <span>{lureStageSummary(ladder.lureStage)}</span>
-                                    <span>ISI tier {ladder.isiTier}</span>
+                                <div className="settings-ladder-controls">
+                                    <div className="settings-stepper haptic-host">
+                                        <button
+                                            type="button"
+                                            className="step-btn"
+                                            data-haptic="light"
+                                            onClick={decreaseLadderStep}
+                                            aria-label="Decrease ladder step"
+                                        >
+                                            −
+                                        </button>
+                                        <span className="step-value" aria-live="polite">
+                                            {ladder.track === 'flexible' ? 'F' : 'C'}
+                                            {ladder.n}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className="step-btn"
+                                            data-haptic="light"
+                                            onClick={increaseLadderStep}
+                                            aria-label="Increase ladder step"
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+                                    <div className="settings-readout" aria-live="polite">
+                                        <span>n={progressLevel.n}</span>
+                                        <span>{ladder.stage.replace(/_/g, ' ')}</span>
+                                        <span>
+                                            fails {ladder.failStreak}/{FAILS_TO_DEMOTE_STAGE}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                             <div
@@ -226,29 +390,25 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             >
                                 <div className="settings-info-panel-inner">
                                     <p>
-                                        Adaptive raises difficulty from your discrimination (d′), not raw accuracy. It
-                                        scores each modality for hits, misses, false alarms, and correct rejections —
-                                        separately for ordinary trials and temporal lures.
+                                        Adaptive teaches fixed-N cyclic updating (compare → replace → next), then
+                                        unlocks a flexible-lag track. Assessed blocks use lure-sensitive d′ gates —
+                                        not Match % alone. {FAILS_TO_DEMOTE_STAGE} consecutive fails demote one stage.
                                     </p>
                                     <ul>
                                         <li>
-                                            <strong>n</strong> — how many trials back you must match
+                                            <strong>Fixed track</strong> — guided pointer → lures → speed → mastery
                                         </li>
                                         <li>
-                                            <strong>Lure</strong> — a familiar item at the <em>wrong</em> lag (e.g.
-                                            n−1 or n+1). It tempts a match press, but only true n-back counts. Stages
-                                            A–E raise how often / how near those traps appear.
+                                            <strong>Then</strong> — flexible lag (variable N), then raise n and
+                                            re-teach
                                         </li>
                                         <li>
-                                            <strong>ISI tier</strong> — presentation speed; only tightens after you can
-                                            discriminate well
+                                            <strong>Current</strong> — {progressLevelSummary(ladder)}
                                         </li>
                                     </ul>
                                     <p>
-                                        Typical path: master clean matching → add interference (stages) → then raise n
-                                        and ease lures back a step. Progress uses a rolling window of blocks with
-                                        hysteresis, so one noisy block won’t bounce the level. Ladder state is saved
-                                        per mode in this browser.
+                                        Use − / + to jump steps manually (clears the fail streak). Position is saved
+                                        per mode (and with your player code when linked).
                                     </p>
                                 </div>
                             </div>
@@ -292,15 +452,15 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             <span className="settings-row-label">ISI</span>
                             <span className="settings-row-hint">
                                 {isAdaptive
-                                    ? 'Set by ladder tier in Adaptive'
+                                    ? 'Set by the Match% ladder'
                                     : 'Onset pacing range · answers score at the minimum'}
                             </span>
                         </div>
                         {isAdaptive ? (
                             <div className="settings-readout settings-readout--isi" aria-live="polite">
-                                <span>{msToSecondsLabel(ladderIsi.isiMin)}s</span>
+                                <span>{msToSecondsLabel(progressLevel.isiMin)}s</span>
                                 <span className="settings-readout-sep">–</span>
-                                <span>{msToSecondsLabel(ladderIsi.isiMax)}s</span>
+                                <span>{msToSecondsLabel(progressLevel.isiMax)}s</span>
                             </div>
                         ) : (
                             <IsiRangeSlider
@@ -310,6 +470,16 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                 onMaxChange={setIsiMax}
                             />
                         )}
+                    </div>
+
+                    <div className="settings-row settings-row--isi">
+                        <div className="settings-row-copy">
+                            <span className="settings-row-label">Answer leeway</span>
+                            <span className="settings-row-hint">
+                                Extra press time after the scoring window · helps at fast ISIs
+                            </span>
+                        </div>
+                        <AnswerGraceSlider valueMs={answerGraceMs} onChange={setAnswerGraceMs} />
                     </div>
 
                     {!isAdaptive && (
@@ -333,19 +503,80 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                     <span className="settings-row-label">Variable N</span>
                                     <span className="settings-row-hint">Per-trial lag from beta distribution</span>
                                 </div>
-                                <button
-                                    type="button"
-                                    className={`settings-toggle${variableN ? ' is-on' : ''}`}
-                                    role="switch"
-                                    aria-checked={variableN}
-                                    onClick={() => setVariableN(!variableN)}
-                                >
-                                    <span className="settings-toggle-knob" />
-                                    <span className="settings-toggle-label">{variableN ? 'On' : 'Off'}</span>
-                                </button>
+                                <div className="settings-toggle-host haptic-host">
+                                    <button
+                                        type="button"
+                                        className={`settings-toggle${variableN ? ' is-on' : ''}`}
+                                        role="switch"
+                                        aria-checked={variableN}
+                                        aria-label="Variable N"
+                                        onClick={() => setVariableN(!variableN)}
+                                    >
+                                        <span className="settings-toggle-knob" />
+                                    </button>
+                                </div>
                             </div>
                         </>
                     )}
+
+                    <div
+                        className={`settings-row${
+                            !isAdaptive && !variableN ? ' is-disabled' : ''
+                        }`}
+                    >
+                        <div className="settings-row-copy">
+                            <span className="settings-row-label">Variable N switch</span>
+                            <span className="settings-row-hint">
+                                {isAdaptive
+                                    ? 'Typical stretch before lag randomly resamples'
+                                    : variableN
+                                      ? 'Typical stretch before lag randomly resamples'
+                                      : 'Turn on Variable N to use'}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            className="settings-cycle"
+                            aria-label="Variable N switch interval"
+                            disabled={!isAdaptive && !variableN}
+                            onClick={() => {
+                                if (!isAdaptive && !variableN) return;
+                                cycleVariableNHoldTrials();
+                            }}
+                        >
+                            {formatVariableNHold(variableNHoldTrials)}
+                        </button>
+                    </div>
+
+                    <div className={`settings-row${isAdaptive ? ' is-disabled' : ''}`}>
+                        <div className="settings-row-copy">
+                            <span className="settings-row-label">Jaeggi match quotas</span>
+                            <span className="settings-row-hint">
+                                {isAdaptive
+                                    ? 'Free-play only · fixed match counts per block'
+                                    : variableN
+                                      ? 'Variable N uses the same target density via its own plan'
+                                      : 'Fixed matches per block (4+4+2 at 20 trials) · on by default'}
+                            </span>
+                        </div>
+                        <div className="settings-toggle-host haptic-host">
+                            <button
+                                type="button"
+                                className={`settings-toggle${useJaeggiQuotas ? ' is-on' : ''}`}
+                                role="switch"
+                                aria-checked={useJaeggiQuotas}
+                                aria-label="Jaeggi match quotas"
+                                aria-disabled={isAdaptive}
+                                disabled={isAdaptive}
+                                onClick={() => {
+                                    if (isAdaptive) return;
+                                    setUseJaeggiQuotas(!useJaeggiQuotas);
+                                }}
+                            >
+                                <span className="settings-toggle-knob" />
+                            </button>
+                        </div>
+                    </div>
 
                     <div className="settings-row">
                         <div className="settings-row-copy">
@@ -356,16 +587,18 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                     : 'Applied in Adaptive training only'}
                             </span>
                         </div>
-                        <button
-                            type="button"
-                            className={`settings-toggle${useBlockQuotas ? ' is-on' : ''}`}
-                            role="switch"
-                            aria-checked={useBlockQuotas}
-                            onClick={() => setUseBlockQuotas(!useBlockQuotas)}
-                        >
-                            <span className="settings-toggle-knob" />
-                            <span className="settings-toggle-label">{useBlockQuotas ? 'On' : 'Off'}</span>
-                        </button>
+                        <div className="settings-toggle-host haptic-host">
+                            <button
+                                type="button"
+                                className={`settings-toggle${useBlockQuotas ? ' is-on' : ''}`}
+                                role="switch"
+                                aria-checked={useBlockQuotas}
+                                aria-label="Cross-modal quotas"
+                                onClick={() => setUseBlockQuotas(!useBlockQuotas)}
+                            >
+                                <span className="settings-toggle-knob" />
+                            </button>
+                        </div>
                     </div>
 
                     <div className="settings-row">
@@ -373,16 +606,69 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             <span className="settings-row-label">Center cell</span>
                             <span className="settings-row-hint">Stimulus in the middle square</span>
                         </div>
-                        <button
-                            type="button"
-                            className={`settings-toggle${allowCenterStimulus ? ' is-on' : ''}`}
-                            role="switch"
-                            aria-checked={allowCenterStimulus}
-                            onClick={() => setAllowCenterStimulus(!allowCenterStimulus)}
-                        >
-                            <span className="settings-toggle-knob" />
-                            <span className="settings-toggle-label">{allowCenterStimulus ? 'On' : 'Off'}</span>
-                        </button>
+                        <div className="settings-toggle-host haptic-host">
+                            <button
+                                type="button"
+                                className={`settings-toggle${allowCenterStimulus ? ' is-on' : ''}`}
+                                role="switch"
+                                aria-checked={allowCenterStimulus}
+                                aria-label="Center cell"
+                                onClick={() => setAllowCenterStimulus(!allowCenterStimulus)}
+                            >
+                                <span className="settings-toggle-knob" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div
+                        className={`settings-row${allowCenterStimulus ? ' is-disabled' : ''}`}
+                    >
+                        <div className="settings-row-copy">
+                            <span className="settings-row-label">N in center</span>
+                            <span className="settings-row-hint">
+                                {allowCenterStimulus
+                                    ? 'Turn off Center cell to use'
+                                    : 'Show current Variable N lag in the middle square'}
+                            </span>
+                        </div>
+                        <div className="settings-toggle-host haptic-host">
+                            <button
+                                type="button"
+                                className={`settings-toggle${displayVariableNCenter ? ' is-on' : ''}`}
+                                role="switch"
+                                aria-checked={displayVariableNCenter}
+                                aria-label="N in center"
+                                aria-disabled={allowCenterStimulus}
+                                disabled={allowCenterStimulus}
+                                onClick={() => {
+                                    if (allowCenterStimulus) return;
+                                    setDisplayVariableNCenter(!displayVariableNCenter);
+                                }}
+                            >
+                                <span className="settings-toggle-knob" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="settings-row">
+                        <div className="settings-row-copy">
+                            <span className="settings-row-label">Instant match feedback</span>
+                            <span className="settings-row-hint">
+                                Green/red on press · off waits until trial end
+                            </span>
+                        </div>
+                        <div className="settings-toggle-host haptic-host">
+                            <button
+                                type="button"
+                                className={`settings-toggle${activeFeedback ? ' is-on' : ''}`}
+                                role="switch"
+                                aria-checked={activeFeedback}
+                                aria-label="Instant match feedback"
+                                onClick={() => setActiveFeedback(!activeFeedback)}
+                            >
+                                <span className="settings-toggle-knob" />
+                            </button>
+                        </div>
                     </div>
 
                     <div className="settings-row">
@@ -394,24 +680,27 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                     : 'On by default · vibration confirms match taps'}
                             </span>
                         </div>
-                        <button
-                            type="button"
-                            className={`settings-toggle${hapticFeedbackEnabled ? ' is-on' : ''}`}
-                            role="switch"
-                            aria-checked={hapticFeedbackEnabled}
-                            data-action="toggle-haptics"
-                            onClick={() => {
-                                const next = !hapticFeedbackEnabled;
-                                setHapticFeedbackEnabledState(next);
-                                setHapticFeedbackEnabled(next);
-                                onHapticsEnabledChange?.(next);
-                            }}
-                        >
-                            <span className="settings-toggle-knob" />
-                            <span className="settings-toggle-label">
-                                {hapticFeedbackEnabled ? 'On' : 'Off'}
-                            </span>
-                        </button>
+                        <div className="settings-toggle-host haptic-host">
+                            <button
+                                type="button"
+                                className={`settings-toggle${hapticFeedbackEnabled ? ' is-on' : ''}`}
+                                role="switch"
+                                aria-checked={hapticFeedbackEnabled}
+                                aria-label="Haptic feedback"
+                                data-action="toggle-haptics"
+                                onClick={() => {
+                                    const next = !hapticFeedbackEnabled;
+                                    setHapticFeedbackEnabledState(next);
+                                    setHapticFeedbackEnabled(next);
+                                    onHapticsEnabledChange?.(next);
+                                    if (next) {
+                                        fireKind('selection');
+                                    }
+                                }}
+                            >
+                                <span className="settings-toggle-knob" />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

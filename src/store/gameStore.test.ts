@@ -7,8 +7,6 @@ import {
 } from './gameStore';
 import { ButtonState } from '../model/enums/buttonState';
 import {
-    DEFAULT_ISI_MAX_MS,
-    DEFAULT_ISI_MIN_MS,
     FREE_PLAY_DEFAULT_ISI_MAX_MS,
     FREE_PLAY_DEFAULT_ISI_MIN_MS,
 } from '../model/isi';
@@ -54,12 +52,17 @@ describe('gameStore', () => {
                 displayTrials: true,
                 displayTarget: true,
                 allowCenterStimulus: true,
+                displayVariableNCenter: false,
+                answerGraceMs: 250,
                 useFullScreen: false,
                 mode: 'dual',
                 audioPack: 'letters',
                 interferenceChance: 0.125,
                 variableN: false,
+                variableNHoldTrials: 1,
                 playMode: 'free',
+                useBlockQuotas: false,
+                useJaeggiQuotas: true,
             },
         });
     });
@@ -173,10 +176,11 @@ describe('gameStore', () => {
 
     it('defaults playMode to free and keeps ladder separate from manual settings', () => {
         expect(useGameStore.getState().settings.playMode).toBe('free');
-        expect(useGameStore.getState().ladder.dual).toEqual({
+        expect(useGameStore.getState().ladder.dual).toMatchObject({
+            track: 'fixed',
             n: 2,
-            lureStage: 'A',
-            isiTier: 0,
+            stage: 'instruction',
+            failStreak: 0,
         });
     });
 
@@ -184,8 +188,10 @@ describe('gameStore', () => {
         const defaults = createDefaultFreePlaySettings();
         expect(defaults.level).toBe(2);
         expect(defaults.allowCenterStimulus).toBe(false);
+        expect(defaults.displayVariableNCenter).toBe(false);
         expect(defaults.isiMin).toBe(FREE_PLAY_DEFAULT_ISI_MIN_MS);
         expect(defaults.isiMax).toBe(FREE_PLAY_DEFAULT_ISI_MAX_MS);
+        expect(defaults.useJaeggiQuotas).toBe(true);
         expect(FREE_PLAY_DEFAULT_ISI_MIN_MS).toBe(1000);
         expect(FREE_PLAY_DEFAULT_ISI_MAX_MS).toBe(1500);
 
@@ -196,16 +202,44 @@ describe('gameStore', () => {
         expect(useGameStore.getState().settings.level).toBe(1);
     });
 
+    it('allows N-in-center only while center cell is off', () => {
+        useGameStore.setState({
+            settings: {
+                ...createDefaultFreePlaySettings(),
+                allowCenterStimulus: false,
+                displayVariableNCenter: false,
+            },
+        });
+
+        useGameStore.getState().setDisplayVariableNCenter(true);
+        expect(useGameStore.getState().settings.displayVariableNCenter).toBe(true);
+
+        useGameStore.getState().setAllowCenterStimulus(true);
+        expect(useGameStore.getState().settings.allowCenterStimulus).toBe(true);
+        expect(useGameStore.getState().settings.displayVariableNCenter).toBe(false);
+
+        useGameStore.getState().setDisplayVariableNCenter(true);
+        expect(useGameStore.getState().settings.displayVariableNCenter).toBe(false);
+    });
+
     it('applies adaptive ladder to settings when switching playMode while idle', () => {
         useGameStore.setState((state) => ({
             ladder: {
                 ...state.ladder,
-                dual: { n: 4, lureStage: 'D', isiTier: 0 },
+                dual: {
+                    track: 'flexible',
+                    n: 2,
+                    stage: 'flex_base',
+                    lureStage: 'E',
+                    isiTier: 0,
+                    failStreak: 1,
+                    promoteStreak: 0,
+                },
             },
             settings: {
                 ...state.settings,
                 level: 5,
-                variableN: true,
+                variableN: false,
                 interferenceChance: 0.5,
             },
         }));
@@ -214,13 +248,59 @@ describe('gameStore', () => {
 
         const { settings } = useGameStore.getState();
         expect(settings.playMode).toBe('adaptive');
-        expect(settings.level).toBe(4);
-        expect(settings.lureStage).toBe('D');
-        expect(settings.variableN).toBe(false);
-        expect(settings.isiMin).toBe(DEFAULT_ISI_MIN_MS);
-        expect(settings.isiMax).toBe(DEFAULT_ISI_MAX_MS);
-        // Free-play knobs remain in store but adaptive session uses ladder-driven fields.
-        expect(settings.interferenceChance).toBe(0.5);
+        expect(settings.level).toBe(2);
+        expect(settings.lureStage).toBe('E');
+        expect(settings.variableN).toBe(true);
+        expect(settings.isiMin).toBe(2500);
+        expect(settings.isiMax).toBe(2500);
+        expect(settings.interferenceChance).toBe(0.125);
+    });
+
+    it('manually steps the adaptive ladder and clears fail streak', () => {
+        useGameStore.setState((state) => ({
+            ladder: {
+                ...state.ladder,
+                dual: {
+                    track: 'fixed',
+                    n: 2,
+                    stage: 'guided',
+                    lureStage: 'A',
+                    isiTier: 0,
+                    failStreak: 2,
+                    promoteStreak: 0,
+                },
+            },
+            settings: {
+                ...state.settings,
+                playMode: 'adaptive',
+                mode: 'dual',
+            },
+            game: null,
+            countdown: null,
+        }));
+
+        useGameStore.getState().increaseLadderStep();
+        expect(useGameStore.getState().ladder.dual.stage).toBe('fade');
+        expect(useGameStore.getState().ladder.dual.failStreak).toBe(0);
+        expect(useGameStore.getState().settings.level).toBe(2);
+
+        useGameStore.setState((state) => ({
+            ladder: {
+                ...state.ladder,
+                dual: {
+                    track: 'fixed',
+                    n: 2,
+                    stage: 'fixed_fast',
+                    lureStage: 'E',
+                    isiTier: 1,
+                    failStreak: 2,
+                    promoteStreak: 0,
+                },
+            },
+        }));
+        useGameStore.getState().decreaseLadderStep();
+        expect(useGameStore.getState().ladder.dual.stage).toBe('fixed_lure_both');
+        expect(useGameStore.getState().ladder.dual.failStreak).toBe(0);
     });
 
     it('rejects playMode changes during countdown or active session', async () => {
@@ -240,18 +320,37 @@ describe('gameStore', () => {
         useGameStore.setState((state) => ({
             ladder: {
                 ...state.ladder,
-                dual: { n: 3, lureStage: 'B', isiTier: 0 },
-                triple: { n: 5, lureStage: 'E', isiTier: 0 },
+                dual: {
+                    track: 'fixed',
+                    n: 2,
+                    stage: 'fixed_clean',
+                    lureStage: 'A',
+                    isiTier: 0,
+                    failStreak: 0,
+                    promoteStreak: 0,
+                },
+                triple: {
+                    track: 'fixed',
+                    n: 3,
+                    stage: 'instruction',
+                    lureStage: 'A',
+                    isiTier: 0,
+                    failStreak: 0,
+                    promoteStreak: 0,
+                },
             },
-            settings: { ...state.settings, playMode: 'adaptive', mode: 'dual', level: 3 },
+            settings: { ...state.settings, playMode: 'adaptive', mode: 'dual', level: 2 },
         }));
 
         useGameStore.getState().setMode('triple');
 
         const { settings } = useGameStore.getState();
         expect(settings.mode).toBe('triple');
-        expect(settings.level).toBe(5);
-        expect(settings.lureStage).toBe('E');
+        expect(settings.level).toBe(3);
+        expect(settings.isiMin).toBe(2500);
+        expect(settings.isiMax).toBe(2500);
+        expect(settings.interferenceChance).toBe(0);
+        expect(settings.lureStage).toBe('A');
     });
 
     it('persists ladder state via saveLadder', () => {
@@ -269,7 +368,15 @@ describe('gameStore', () => {
         useGameStore.setState((state) => ({
             ladder: {
                 ...state.ladder,
-                quad: { n: 6, lureStage: 'C', isiTier: 1 },
+                quad: {
+                    track: 'flexible',
+                    n: 2,
+                    stage: 'flex_base',
+                    lureStage: 'E',
+                    isiTier: 0,
+                    failStreak: 2,
+                    promoteStreak: 0,
+                },
             },
         }));
 
@@ -277,28 +384,30 @@ describe('gameStore', () => {
 
         const raw = storage.getItem(LADDER_STORAGE_KEY);
         expect(raw).not.toBeNull();
-        expect(JSON.parse(raw!)).toEqual({
-            version: 1,
-            byMode: {
-                dual: { n: 2, lureStage: 'A', isiTier: 0 },
-                triple: { n: 2, lureStage: 'A', isiTier: 0 },
-                quad: { n: 6, lureStage: 'C', isiTier: 1 },
-            },
+        const parsed = JSON.parse(raw!);
+        expect(parsed.version).toBe(3);
+        expect(parsed.byMode.quad).toMatchObject({
+            track: 'flexible',
+            stage: 'flex_base',
+            failStreak: 2,
         });
+        expect(parsed.byMode.dual.stage).toBe('instruction');
 
         vi.unstubAllGlobals();
     });
 
-    it('starts adaptive session in anchor-open after countdown', async () => {
+    it('starts adaptive session in playing after countdown', async () => {
         useGameStore.getState().setPlayMode('adaptive');
         useGameStore.getState().startGame();
-        expect(useGameStore.getState().adaptiveSession?.phase).toBe('anchor-open');
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('playing');
 
         await finishCountdown();
-        expect(useGameStore.getState().adaptiveSession?.phase).toBe('anchor-open');
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('playing');
         expect(useGameStore.getState().game).not.toBeNull();
         expect(useGameStore.getState().settings.variableN).toBe(false);
         expect(useGameStore.getState().settings.lureStage).toBe('A');
+        expect(useGameStore.getState().settings.isiMin).toBe(2500);
+        expect(useGameStore.getState().settings.interferenceChance).toBe(0);
 
         useGameStore.getState().cancelGame();
     });
@@ -319,7 +428,7 @@ describe('gameStore', () => {
         useGameStore.getState().setPlayMode('adaptive');
         useGameStore.getState().startGame();
         expect(useGameStore.getState().countdown).toBe(3);
-        expect(useGameStore.getState().adaptiveSession?.phase).toBe('anchor-open');
+        expect(useGameStore.getState().adaptiveSession?.phase).toBe('playing');
 
         useGameStore.getState().cancelGame();
 
@@ -348,6 +457,7 @@ describe('gameStore', () => {
             isiMin: 4000,
             isiMax: 6000,
             variableN: true,
+            variableNHoldTrials: 1,
             interferenceChance: 0.5,
         });
 
@@ -384,22 +494,22 @@ describe('gameStore', () => {
         expect(useGameStore.getState().results.last).toBe(result);
     });
 
-    it('enters interstitial after adaptive block ends and continues on next startGame', async () => {
+    it('advances acquisition after guided block then continues on next startGame', async () => {
         useGameStore.getState().setPlayMode('adaptive');
         useGameStore.getState().startGame();
         await finishCountdown();
 
         useGameStore.setState({
             adaptiveSession: {
-                ...createInitialAdaptiveSession({ adaptiveTarget: 3 }),
-                phase: 'anchor-open',
+                ...createInitialAdaptiveSession(),
+                phase: 'playing',
             },
         });
 
         const result = new GameResult(
             {
-                audio: { success: 1, failed: 0 },
-                position: { success: 1, failed: 0 },
+                audio: { success: 8, failed: 0 },
+                position: { success: 8, failed: 0 },
             },
             ['position', 'audio']
         );
@@ -407,12 +517,53 @@ describe('gameStore', () => {
 
         expect(useGameStore.getState().adaptiveSession?.phase).toBe('interstitial');
         expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(true);
-        expect(useGameStore.getState().adaptiveSession?.openAnchorsDone).toBe(1);
-        expect(useGameStore.getState().lastBlockRole).toBe('anchor-open');
+        expect(useGameStore.getState().ladder.dual.stage).toBe('fade');
+        expect(useGameStore.getState().lastControllerAction?.action).toBe('advance_acquisition');
+        expect(useGameStore.getState().lastBlockRole).toBe('guided');
 
         useGameStore.getState().startGame();
         expect(useGameStore.getState().countdown).toBe(3);
         expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(false);
         useGameStore.getState().cancelGame();
+    });
+
+    it('holds assessed stage when SDT samples are sparse', async () => {
+        useGameStore.setState((state) => ({
+            ladder: {
+                ...state.ladder,
+                dual: {
+                    track: 'fixed',
+                    n: 2,
+                    stage: 'fixed_fast',
+                    lureStage: 'E',
+                    isiTier: 1,
+                    failStreak: 0,
+                    promoteStreak: 0,
+                },
+            },
+        }));
+        useGameStore.getState().setPlayMode('adaptive');
+
+        const fail = new GameResult(
+            {
+                audio: { success: 1, failed: 4 },
+                position: { success: 1, failed: 4 },
+            },
+            ['position', 'audio'],
+            null
+        );
+
+        useGameStore.setState({
+            adaptiveSession: {
+                ...createInitialAdaptiveSession(),
+                phase: 'playing',
+            },
+            game: null,
+            countdown: null,
+        });
+        useGameStore.getState().pushGameResult(fail);
+
+        expect(useGameStore.getState().ladder.dual.stage).toBe('fixed_fast');
+        expect(useGameStore.getState().lastControllerAction?.action).toBe('hold');
     });
 });

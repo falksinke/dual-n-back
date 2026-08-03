@@ -2,58 +2,55 @@ import { describe, expect, it } from 'vitest';
 import {
     adaptiveBlockProgress,
     adaptiveConditionCode,
+    adaptivePhaseLabel,
     blockRoleLabel,
     controllerActionHint,
-    formatSdtMetric,
-    lureStageFlavor,
+    progressLevelFlavor,
+    progressLevelSummary,
 } from './adaptiveDisplay';
+import { createDefaultCurriculumLadder } from '../model/adaptiveCurriculum';
 
 describe('adaptiveDisplay', () => {
-    it('formats finite SDT metrics to two decimals', () => {
-        expect(formatSdtMetric(1.234)).toBe('1.23');
-        expect(formatSdtMetric(0)).toBe('0.00');
-    });
-
-    it('shows em dash for non-finite SDT metrics', () => {
-        expect(formatSdtMetric(Number.NaN)).toBe('—');
-        expect(formatSdtMetric(Number.POSITIVE_INFINITY)).toBe('—');
-    });
-
-    it('maps block roles to trainee-facing labels', () => {
-        expect(blockRoleLabel('anchor-open')).toBe('Calibration');
-        expect(blockRoleLabel('adaptive')).toBe('Adaptive block');
+    it('labels adaptive block roles', () => {
+        expect(blockRoleLabel('assessed')).toBe('Adaptive block');
+        expect(blockRoleLabel('guided')).toBe('Guided block');
         expect(blockRoleLabel('free')).toBeNull();
     });
 
-    it('builds controller action hints from reason text', () => {
+    it('formats promote/demote hints', () => {
+        const ladder = createDefaultCurriculumLadder();
         expect(
-            controllerActionHint({ action: 'hold', reason: 'Need more evidence' })
-        ).toBe('Hold: Need more evidence');
-        expect(controllerActionHint({ action: 'lureUp', reason: 'Clean mastery' })).toBe(
-            'Lure stage up: Clean mastery'
-        );
+            controllerActionHint({
+                action: 'promote',
+                ladder: { ...ladder, stage: 'fixed_lure_near' },
+                reason: 'Clean/lure gates met — promote stage',
+            })
+        ).toBe('Advance: Clean/lure gates met — promote stage');
     });
 
-    it('builds condition codes and stage flavor', () => {
-        expect(adaptiveConditionCode(3, 'C')).toBe('3C');
-        expect(lureStageFlavor('A')).toBe('Clean matching');
-        expect(lureStageFlavor('E')).toBe('Max interference');
+    it('labels phases and condition codes', () => {
+        const ladder = createDefaultCurriculumLadder();
+        expect(adaptivePhaseLabel('playing')).toBe('Adaptive');
+        expect(adaptiveConditionCode(ladder)).toBe('C2');
+        expect(progressLevelFlavor(ladder)).toContain('n=2');
+        expect(progressLevelSummary(ladder)).toContain('Fixed cyclic');
     });
 
-    it('reports adaptive block progress only after calibration', () => {
+    it('reports block progress while playing', () => {
         expect(
             adaptiveBlockProgress({
-                adaptiveBlocksDone: 2,
-                adaptiveTarget: 8,
-                phase: 'anchor-open',
+                blocksDone: 2,
+                phase: 'playing',
+            })
+        ).toEqual({
+            done: 2,
+            failHint: expect.stringContaining('Lure-sensitive'),
+        });
+        expect(
+            adaptiveBlockProgress({
+                blocksDone: 2,
+                phase: 'idle',
             })
         ).toBeNull();
-        expect(
-            adaptiveBlockProgress({
-                adaptiveBlocksDone: 2,
-                adaptiveTarget: 8,
-                phase: 'adaptive',
-            })
-        ).toEqual({ done: 2, target: 8 });
     });
 });
