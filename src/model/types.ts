@@ -3,6 +3,7 @@ import { ImageId } from './imageSet';
 import { ModalityId, ModeId } from './modalities';
 import { AudioPackId } from './audioPacks';
 import { LureStageId } from './lureStages';
+import type { PositionGrid } from './positionGrid';
 
 export interface BoardState {
     positionIndex: number;
@@ -16,7 +17,9 @@ export interface BoardState {
 
 export type GameDeps = {
     random?: () => number;
-    /** When false, position stimuli never use the center cell (index 4). */
+    /** Spatial board; `2x2` uses indices 0–3. Default `3x3`. */
+    positionGrid?: PositionGrid;
+    /** When false on 3×3, position stimuli never use the center cell (index 4). */
     allowCenterStimulus?: boolean;
     /** Active modalities for this session. Defaults to dual preset. */
     modalities?: ModalityId[];
@@ -26,6 +29,12 @@ export type GameDeps = {
     guaranteedMatchChance?: number;
     /** When true, per-trial N is sampled from a beta distribution. */
     variableN?: boolean;
+    /** Consecutive trials that keep the same lag before resampling (default 1). */
+    variableNHoldTrials?: number;
+    /** When true, claims show their result immediately and need no end-of-trial feedback reserve. */
+    activeFeedback?: boolean;
+    /** Extra claim time (ms) beyond the ISI scoring window; extends onset gap. */
+    answerGraceMs?: number;
     audioPack?: AudioPackId;
     mode?: ModeId;
     /**
@@ -37,6 +46,11 @@ export type GameDeps = {
      * When true with lureStage set, precompute cross-modal match/lure quotas (Adaptive only).
      */
     useBlockQuotas?: boolean;
+    /**
+     * When true in free-play (no lureStage, fixed N), precompute Jaeggi-style fixed match counts.
+     * Default off at the GameDeps layer; store default is on.
+     */
+    useJaeggiQuotas?: boolean;
 };
 
 export function getModalityValue(state: BoardState, modality: ModalityId): number | string {

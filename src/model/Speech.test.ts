@@ -17,6 +17,7 @@ vi.mock('howler', () => ({
 
 vi.mock('../audio/unlockAudio', () => ({
     ensureAudioReady: vi.fn(() => Promise.resolve()),
+    isAudioSuspendedForBackground: vi.fn(() => false),
 }));
 
 describe('Speech', () => {

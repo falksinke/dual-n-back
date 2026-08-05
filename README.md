@@ -1,4 +1,4 @@
-## Dual N Back
+## N-Back
 
 React + Vite implementation of a Brain Workshop–aligned n-back trainer with Dual, Triple, and Quad modes.
 
@@ -29,30 +29,59 @@ Production: [nback.sinke.me](https://nback.sinke.me) (Vercel project `nback` onl
 - **J** — image match (Quad only)
 - **L** — audio match
 - Keys are case-insensitive; touch targets mirror the active modalities.
-- **Settings** — mode, audio pack, level, trials, ISI range, interference chance, variable N, center cell, haptics
+- **Settings** — player code (cloud sync), mode, audio pack, level, trials, ISI range, answer leeway, interference chance, variable N, Jaeggi match quotas, center cell / N in center, haptics
 - **↑↓←→** — level / trials when idle
 
 ### Settings
 
-- **Training path** — **Free-play** (manual level / interference / variable N) or **Adaptive** (ladder-driven)
-- **First-run free-play** — level **2**, center cell **off**, ISI **1.0–1.5 s**
+- **Training path** — **Free-play** (manual level / interference / variable N), **Adaptive** (Match% ladder), or **Cyclic** (dual-track curriculum)
+- **First-run free-play** — level **2**, center cell **off**, ISI **1.0–1.5 s**, Jaeggi match quotas **on**
 - **Audio pack** — `letters` (default) or `piano` (Brain Workshop C-scale samples)
-- **Interference** — BW-style near-miss chance (default **⅛**, steps of 1/8 through 1); Free-play only
-- **Variable N** — per-trial lag sampled from Beta(level/2, 1); current N shown in session status while playing; Free-play only
-- **ISI** — inter-stimulus interval between onsets; each trial samples uniformly in the range (free-play default **1.0–1.5 s**). The range randomizes **stimulus pacing**; **answer scoring / button feedback always uses the minimum ISI**, so every trial has the same time-to-score. Stimulus flash duration is fixed (~1 s) and separate from ISI. Adaptive drives ISI from the cyclic curriculum stage.
-- **Cross-modal quotas** — optional Adaptive-only block composition (default off)
+- **Interference** — BW-style near-miss chance (default **⅛**, steps of 1/8 through 1); Free-play manual, Adaptive / Cyclic ladder-driven
+- **Variable N** — lag schedule sampled with geometric **2×** weights (ceiling twice as likely as the next-lower lag, etc.; at n=2 → ⅓ / ⅔) and random hold stretches; current N shown while playing; Free-play manual, Adaptive / Cyclic ladder-driven. Stimulus order is preplanned: **N schedule → Jaeggi-density targets at each trial’s effective N → interference lures → clean fill**
+- **Variable N switch** — typical stretch before lag randomly resamples (**Every trial**, or ~every 2 / 3 / 5 / 10 trials via a geometric draw); applies whenever Variable N is on (including Adaptive / Cyclic ladder steps)
+- **N in center** — optional digit in the middle square for the current Variable N lag (default **off**); only available when **Center cell** is off; hides the center crosshair while enabled
+- **ISI** — inter-stimulus interval between onsets; each trial samples uniformly in the range (free-play default **1.0–1.5 s**). The range randomizes **stimulus pacing**; **answer scoring / button feedback always uses the minimum ISI**, so every trial has the same time-to-score. Stimulus flash duration is fixed (~1 s) and separate from ISI. Adaptive / Cyclic drive ISI from their ladders.
+- **Answer leeway** — extra press time after the scoring window (default **250 ms**, slider **0–500 ms**); extends the trial gap so fast ISIs stay hittable. Applies in Free-play, Adaptive, and Cyclic.
+- **Jaeggi match quotas** — optional Free-play fixed match counts (default **on**): scales classic **4 position + 4 audio + 2 simultaneous** from a 20-trial baseline (e.g. 6+6+3 at 30 trials). While Variable N is on, the Variable N planner uses the same target density (plus planned interference); Adaptive fixed-N steps still use Jaeggi when that toggle is on
+- **Instant match feedback** — optional; when on, match buttons turn green/red on press instead of waiting until the trial response window closes (default **off**)
+- **Cross-modal quotas** — optional Adaptive / Cyclic block composition (default off)
 
 ### Adaptive training
 
-Adaptive teaches **cyclic one-slot updating** on a dual-track curriculum: fixed-N teach → lure-sensitive verify → speed/jitter automate, then a **flexible-lag** track (variable N) after fixed mastery. Assessed blocks promote/hold/demote with **lure-sensitive d′ gates**, not Match % alone; **3** consecutive fails demote one stage.
+**Adaptive** climbs a discrete Match% ladder: start at **n=2**, **2.5 s** fixed ISI, **no interference**; promote at **≥80%** overall Match; demote one step after **3** fails in a row below 80%.
 
-Per-n shape (fixed track, variable N off): instruction → guided pointer → fade → clean → near lures → both lures → fast → jitter → mastery → flexible track → then N↑ and restart.
+Per-n recipe: interference on → tighten ISI to 1.0 s → variable ISI → reset with variable N → tighten again → raise n and repeat.
 
-Design rationale and stage table: [docs/adaptive-mode.md](docs/adaptive-mode.md).
+### Cyclic training
 
-Ladder state (`track`, `n`, `stage`, streaks) is persisted locally under `nback-adaptive-ladder` (schema **v3**) per mode, and optionally synced to the server when a **player code** is set. Older v2 Match-% ladders reset on load.
+**Cyclic** teaches **cyclic one-slot updating** on a dual-track curriculum: fixed-N teach → lure-sensitive verify → speed/jitter automate, then a **flexible-lag** track (variable N) after fixed mastery. Assessed blocks use **lure-sensitive d′ gates**, not Match % alone; **3** consecutive fails demote one stage.
 
-The system structures practice difficulty; it is **not** a claim of improved general intelligence, far transfer, or IQ gains.
+Per-n shape (fixed track, variable N off): teach walkthrough → decide-with-reveal → speed ramp → clean → near lures → both lures → fast → jitter → mastery → flexible track → then N↑ and restart.
+
+Design rationale and tables for both paths: [docs/adaptive-mode.md](docs/adaptive-mode.md).
+
+Ladder state is persisted per mode: Adaptive under `nback-adaptive-ladder` (schema **v2**), Cyclic under `nback-cyclic-ladder` (schema **v4**), optionally synced when a **player code** is set. A leftover v3 blob under the Adaptive key migrates into Cyclic on load.
+
+Trial settings and UI preferences are also cached in `localStorage` and included in that cloud document.
+
+These systems structure practice difficulty; they are **not** a claim of improved general intelligence, far transfer, or IQ gains.
+
+### Player code (cloud progress)
+
+Settings → **Player code**: type a passphrase (6–64 characters) and **Apply**.
+
+- If that code already has a save on the server, this device **loads** it (ladder + settings + UI prefs).
+- If not, the current local state is **uploaded** as the new save.
+- The code is the shared secret — anyone who knows it can read and overwrite that progress.
+- Offline play still works; changes queue and sync when the device is online again.
+
+Server: Vercel function `GET|PUT /api/progress` + Upstash Redis. Set these env vars on the Vercel `nback` project (and locally if using `vercel dev`):
+
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+Redis keys are `nback:v1:progress:{sha256(code)}` — plaintext codes are never stored as keys.
 
 ### Assets
 
@@ -103,4 +132,8 @@ React 19, Vite 6, TypeScript, Zustand, Howler, Sass, `vite-plugin-pwa` (injectMa
 
 ### Deploy notes
 
-Set Vite `base` to your GitHub Pages subpath (for example `/dual-n-back/`) before publishing. Manifest `start_url` / `scope` and the service worker assume site root (`/`) unless you adjust those to match.
+Production: [nback.sinke.me](https://nback.sinke.me) (Vercel project `nback` only).
+
+For cloud progress, configure Upstash Redis env vars on that project (see **Player code** above), then `pnpm dlx vercel deploy --prod --yes --scope falk-sinkes-projects`.
+
+Set Vite `base` to your GitHub Pages subpath (for example `/dual-n-back/`) before publishing elsewhere. Manifest `start_url` / `scope` and the service worker assume site root (`/`) unless you adjust those to match. The service worker navigation denylist already excludes `/api/`.

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { GameResult } from './GameResult';
+import { buildNBackDistribution, GameResult } from './GameResult';
 
 describe('GameResult', () => {
+    it('builds sorted N-back trial counts', () => {
+        expect(buildNBackDistribution([2, 2, 1, 1, 1, 2, 0, -1])).toEqual([
+            { n: 1, trials: 3 },
+            { n: 2, trials: 3 },
+        ]);
+    });
+
     it('computes match percentages for dual modalities', () => {
         const result = new GameResult(
             {

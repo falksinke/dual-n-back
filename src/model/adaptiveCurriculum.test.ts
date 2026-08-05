@@ -5,26 +5,46 @@ import {
     advanceAcquisition,
     createDefaultCurriculumLadder,
     demoteCurriculumStage,
+    enterTeachRamp,
     isAssessedStage,
+    migrateCurriculumStage,
     promoteCurriculumStage,
     settingsFromCurriculum,
 } from './adaptiveCurriculum';
 
+function advanceTowardAssessed(state: ReturnType<typeof createDefaultCurriculumLadder>) {
+    if (state.stage === 'teach_decide') {
+        return enterTeachRamp(state);
+    }
+    if (isAssessedStage(state.stage)) {
+        return promoteCurriculumStage(state);
+    }
+    return advanceAcquisition(state);
+}
+
 describe('adaptiveCurriculum', () => {
-    it('starts a new N at instruction / guided acquisition, not assessed lure or speed', () => {
+    it('starts a new N at teach_walkthrough, not assessed lure or speed', () => {
         const ladder = createDefaultCurriculumLadder();
         expect(ladder.track).toBe('fixed');
         expect(ladder.n).toBe(CURRICULUM_MIN_N);
-        expect(ladder.stage).toBe('instruction');
+        expect(ladder.stage).toBe('teach_walkthrough');
         expect(isAssessedStage(ladder.stage)).toBe(false);
 
-        const guided = advanceAcquisition(ladder);
-        expect(guided.stage).toBe('guided');
-        const guidedSettings = settingsFromCurriculum(guided);
-        expect(guidedSettings.assessed).toBe(false);
-        expect(guidedSettings.pointerMode).toBe('full');
-        expect(guidedSettings.variableN).toBe(false);
-        expect(guidedSettings.lureStage).toBe('A');
+        const decide = advanceAcquisition(ladder);
+        expect(decide.stage).toBe('teach_decide');
+        const decideSettings = settingsFromCurriculum(decide);
+        expect(decideSettings.assessed).toBe(false);
+        expect(decideSettings.pointerMode).toBe('full');
+        expect(decideSettings.variableN).toBe(false);
+        expect(decideSettings.lureStage).toBe('A');
+        expect(decideSettings.teachReveals).toBe(true);
+        expect(decideSettings.teachPacedOps).toBe(true);
+    });
+
+    it('maps legacy guided/fade/instruction stages', () => {
+        expect(migrateCurriculumStage('instruction')).toBe('teach_walkthrough');
+        expect(migrateCurriculumStage('guided')).toBe('teach_decide');
+        expect(migrateCurriculumStage('fade')).toBe('teach_ramp');
     });
 
     it('never sets variableN on any fixed-track stage', () => {
@@ -36,11 +56,7 @@ describe('adaptiveCurriculum', () => {
             if (state.track === 'fixed') {
                 expect(settings.variableN, state.stage).toBe(false);
             }
-            if (isAssessedStage(state.stage)) {
-                state = promoteCurriculumStage(state);
-            } else {
-                state = advanceAcquisition(state);
-            }
+            state = advanceTowardAssessed(state);
             if (state.track === 'flexible') break;
         }
         expect(seen.has('fixed:fixed_mastery')).toBe(true);
@@ -52,9 +68,7 @@ describe('adaptiveCurriculum', () => {
         while (state.track === 'fixed') {
             order.push(state.stage);
             if (state.stage === 'fixed_mastery') break;
-            state = isAssessedStage(state.stage)
-                ? promoteCurriculumStage(state)
-                : advanceAcquisition(state);
+            state = advanceTowardAssessed(state);
         }
         const near = order.indexOf('fixed_lure_near');
         const both = order.indexOf('fixed_lure_both');
@@ -69,9 +83,7 @@ describe('adaptiveCurriculum', () => {
     it('unlocks flexible lag at the same N after fixed mastery', () => {
         let state = createDefaultCurriculumLadder();
         while (!(state.track === 'fixed' && state.stage === 'fixed_mastery')) {
-            state = isAssessedStage(state.stage)
-                ? promoteCurriculumStage(state)
-                : advanceAcquisition(state);
+            state = advanceTowardAssessed(state);
         }
         const n = state.n;
         const unlocked = promoteCurriculumStage(state);
@@ -84,15 +96,13 @@ describe('adaptiveCurriculum', () => {
     it('increments N and returns to acquisition after flexible mastery', () => {
         let state = createDefaultCurriculumLadder();
         while (!(state.track === 'flexible' && state.stage === 'flex_mastery')) {
-            state = isAssessedStage(state.stage)
-                ? promoteCurriculumStage(state)
-                : advanceAcquisition(state);
+            state = advanceTowardAssessed(state);
         }
         const n = state.n;
         const next = promoteCurriculumStage(state);
         expect(next.track).toBe('fixed');
         expect(next.n).toBe(Math.min(CURRICULUM_MAX_N, n + 1));
-        expect(next.stage).toBe('instruction');
+        expect(next.stage).toBe('teach_walkthrough');
         expect(isAssessedStage(next.stage)).toBe(false);
     });
 
@@ -106,5 +116,21 @@ describe('adaptiveCurriculum', () => {
         expect(demoted.track).toBe('fixed');
         expect(demoted.stage).toBe('fixed_lure_both');
         expect(settingsFromCurriculum(demoted).variableN).toBe(false);
+    });
+
+    it('enterTeachRamp hides reveals and leaves assesseds off', () => {
+        const decide = {
+            ...createDefaultCurriculumLadder(),
+            stage: 'teach_decide' as const,
+        };
+        const ramp = enterTeachRamp(decide);
+        expect(ramp.stage).toBe('teach_ramp');
+        const settings = settingsFromCurriculum(ramp);
+        expect(settings.teachReveals).toBe(false);
+        expect(settings.pointerMode).toBe('fade');
+        expect(settings.isiMin).toBeGreaterThan(0);
+        const clean = advanceAcquisition(ramp);
+        expect(clean.stage).toBe('fixed_clean');
+        expect(settingsFromCurriculum(clean).assessed).toBe(true);
     });
 });

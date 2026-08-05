@@ -5,88 +5,148 @@
 
     position: absolute;
     left: 50%;
-    bottom: var(--frame-bottom);
-    z-index: 5;
+    bottom: calc(var(--frame-bottom) + var(--action-band, 0px));
+    z-index: 12;
     transform: translateX(-50%);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    min-width: min(280px, calc(100vw - 48px));
-    padding: 12px 16px;
+    align-items: stretch;
+    gap: 4px;
+    min-width: min(320px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    padding: 4px 6px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--background) 88%, transparent);
     pointer-events: none;
-    transition: opacity var(--settle), border-color var(--settle);
+    transition: opacity var(--settle), border-color var(--settle), bottom var(--settle);
 }
 
-.adaptive-hud-top {
+.adaptive-hud-row {
     display: flex;
-    align-items: baseline;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.adaptive-hud-step-host {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    pointer-events: auto;
+}
+
+.adaptive-hud-step {
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    gap: 12px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--textBackground);
+    font: inherit;
+    font-size: 1.35rem;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition: color var(--settle), border-color var(--settle), opacity var(--settle);
+
+    &:not(:disabled):active {
+        transform: scale(0.94);
+        color: var(--primary);
+    }
+
+    &:disabled {
+        opacity: 0.28;
+        cursor: default;
+    }
+
+    &:focus-visible {
+        outline: none;
+        border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+        color: var(--primary);
+    }
 }
 
 .adaptive-hud-code {
-    font-size: 1.5rem;
+    flex: 0 0 auto;
+    font-size: 1.35rem;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.03em;
     line-height: 1;
     color: var(--primary);
+    min-width: 2.1ch;
+    text-align: center;
 }
 
 .adaptive-hud-meta {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    justify-content: center;
+    gap: 1px;
+    flex: 1 1 auto;
     min-width: 0;
 }
 
 .adaptive-hud-flavor {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 500;
     color: var(--textForeground);
     letter-spacing: -0.01em;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .adaptive-hud-phase {
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     font-weight: 500;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--textBackground);
+    line-height: 1.2;
 }
 
 .adaptive-hud-stages {
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 3px;
+    flex: 0 0 auto;
+    padding: 2px 0;
 }
 
 .adaptive-hud-stage {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     gap: 4px;
-    min-width: 1.5rem;
 }
 
 .adaptive-hud-stage-mark {
-    width: 1.5rem;
-    height: 4px;
+    width: 10px;
+    height: 2px;
     border-radius: 999px;
     background: var(--border);
     transition: background-color var(--settle), transform var(--settle);
 }
 
 .adaptive-hud-stage-letter {
-    font-size: 0.65rem;
+    font-size: 0.55rem;
     font-weight: 500;
     letter-spacing: 0.04em;
     color: var(--textBackground);
     transition: color var(--settle);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    min-width: 0.75ch;
 }
 
 .adaptive-hud-stage.is-cleared .adaptive-hud-stage-mark {
@@ -99,57 +159,17 @@
 
 .adaptive-hud-stage.is-current .adaptive-hud-stage-mark {
     background: var(--primary);
-    transform: scaleY(1.35);
+    transform: scaleX(1.2);
 }
 
 .adaptive-hud-stage.is-current .adaptive-hud-stage-letter {
     color: var(--primary);
 }
 
-.adaptive-hud-blocks {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.adaptive-hud-blocks-label {
-    font-size: 0.65rem;
-    font-weight: 500;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--textBackground);
-}
-
-.adaptive-hud-blocks-track {
-    display: flex;
-    gap: 3px;
-}
-
-.adaptive-hud-block-tick {
-    width: 8px;
-    height: 8px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: transparent;
-    transition: background-color var(--settle), border-color var(--settle);
-}
-
-.adaptive-hud-block-tick.is-done {
-    border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
-    background: color-mix(in srgb, var(--primary) 55%, transparent);
-}
-
-.adaptive-hud-block-count {
-    font-size: 0.75rem;
-    font-variant-numeric: tabular-nums;
-    color: var(--textForeground);
-}
-
 @media (prefers-reduced-motion: reduce) {
     .adaptive-hud,
     .adaptive-hud-stage-mark,
-    .adaptive-hud-stage-letter,
-    .adaptive-hud-block-tick {
+    .adaptive-hud-stage-letter {
         transition: none;
     }
 }

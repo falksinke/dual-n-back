@@ -3,10 +3,8 @@ import Haptic from 'browser-haptic';
 export type HapticKind = 'selection' | 'light' | 'success' | 'warning';
 export type HapticCue = HapticKind;
 
-const minHapticGapMs = 42;
 const captureBridgeDebounceMs = 400;
 const iosSwitchGestureMs = 150;
-let lastHapticAt = 0;
 const iosSwitchGestureUntil = new WeakMap<Element, number>();
 
 export function isIOS(): boolean {
@@ -103,7 +101,17 @@ export function fireKind(kind: HapticKind): boolean {
         return true;
     }
     if (!hasVibrationAPI()) return false;
-    return navigator.vibrate(30);
+    // Short pulse — overlapping multi-target presses should each register.
+    return navigator.vibrate(12);
+}
+
+/**
+ * True when this control's host already owns an iOS switch overlay.
+ * Capture-bridge sync helpers must not steal dual-finger gestures from those overlays.
+ */
+export function hostOwnsIosHapticSwitch(element: Element): boolean {
+    const host = element.closest('.haptic-host');
+    return Boolean(host?.querySelector('.ios-haptic-switch'));
 }
 
 export function markIosSwitchGesture(element: Element): void {
@@ -144,6 +152,10 @@ export function installHapticCaptureBridge(isEnabled: () => boolean = () => true
         const target = eventTarget.closest('[data-haptic]');
         if (!target) return;
         if ((target as HTMLButtonElement).disabled) return;
+        // Dual-finger: leave Taptic to each host's native switch; sync helper
+        // would serialize and drop the second press.
+        if (isIOS() && hostOwnsIosHapticSwitch(target)) return;
+
         const kind = target.getAttribute('data-haptic') as HapticKind | null;
         if (!kind) return;
 
@@ -204,8 +216,6 @@ export function playHaptic(cue: HapticCue, enabled: boolean): void {
     if (!enabled || (typeof document !== 'undefined' && document.hidden)) return;
     if (isIOS()) return;
 
-    const now = performance.now();
-    if (now - lastHapticAt < minHapticGapMs) return;
-    lastHapticAt = now;
+    // Allow rapid multi-modality cues (e.g. dual claim) — no global coalesce.
     fireKind(cue);
 }

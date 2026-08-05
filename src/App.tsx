@@ -14,13 +14,13 @@ import { DefaultLightTheme } from './themes/DefaultLight';
 import type { ThemeMode } from './themes/config';
 import AdaptiveProgressHud from './components/AdaptiveProgressHud';
 import VariableNHud from './components/VariableNHud';
-import SlotPointerHud from './components/SlotPointerHud';
 import StrategyInstruction from './components/StrategyInstruction';
+import TeachOptOutWarn from './components/TeachOptOutWarn';
 import InstallNudge from './components/InstallNudge';
 import SessionExitButton from './components/SessionExitButton';
 import { useHaptics } from './haptics/useHaptics';
 import { HapticsEnabledProvider } from './haptics/HapticsEnabledContext';
-import { settingsFromCurriculum } from './model/adaptiveCurriculum';
+import { isLadderPlayMode } from './store/gameStore';
 import { loadUiPreferences } from './model/uiPreferences';
 import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
 import { shouldApplyWaitingUpdate } from './pwa/updateGate';
@@ -44,12 +44,16 @@ const App = () => {
     const configuredTrials = useGameStore((state) => state.settings.trials);
     const currentTrials = useGameStore((state) => state.boardState.currentTrials);
     const nForTrial = useGameStore((state) => state.boardState.nForTrial);
-    const stimulusEpoch = useGameStore((state) => state.boardState.stimulusEpoch);
-    const ladder = useGameStore((state) => state.ladder[mode]);
+    const matchLadder = useGameStore((state) => state.ladder[mode]);
+    const cyclicLadder = useGameStore((state) => state.cyclicLadder[mode]);
     const adaptiveSession = useGameStore((state) => state.adaptiveSession);
     const acknowledgeStrategyInstruction = useGameStore(
         (state) => state.acknowledgeStrategyInstruction
     );
+    const teachIntroDismissed = useGameStore((state) => state.teachIntroDismissed);
+    const teachOptOutWarnShown = useGameStore((state) => state.teachOptOutWarnShown);
+    const confirmTeachOptOut = useGameStore((state) => state.confirmTeachOptOut);
+    const dismissTeachOptOutWarn = useGameStore((state) => state.dismissTeachOptOutWarn);
     const activeModalities = useGameStore((state) => state.activeModalities);
     const blocksCompletedSignal = useGameStore((state) => state.results.all.length);
     const trialsShown = game !== null ? currentTrials : configuredTrials;
@@ -61,6 +65,10 @@ const App = () => {
     const showingResults = lastResult != null;
     const chromeHidden = inSession || countingDown || pendingContinue;
     const flowBusy = chromeHidden;
+    const ladderRevision =
+        playMode === 'cyclic'
+            ? `${cyclicLadder.track}:${cyclicLadder.n}:${cyclicLadder.stage}`
+            : `L${matchLadder.levelIndex}:${matchLadder.failStreak}`;
     const uiRevision = [
         playMode,
         mode,
@@ -70,7 +78,7 @@ const App = () => {
         activeModalities.join(','),
         blocksCompletedSignal,
         hapticsEnabled ? 'h1' : 'h0',
-        `${ladder.track}:${ladder.n}:${ladder.stage}`,
+        ladderRevision,
     ].join('|');
     useHaptics({ rootRef: appRef, enabled: hapticsEnabled, uiRevision });
     const canApplySwUpdate = shouldApplyWaitingUpdate({
@@ -95,20 +103,23 @@ const App = () => {
             }
         });
     }, []);
-    const isAdaptive = playMode === 'adaptive';
+    const isMatchAdaptive = playMode === 'adaptive';
+    const isCyclic = playMode === 'cyclic';
+    const isLadderMode = isLadderPlayMode(playMode);
     const showStrategyInstruction =
-        isAdaptive &&
-        ladder.stage === 'instruction' &&
+        isCyclic &&
+        cyclicLadder.stage === 'teach_walkthrough' &&
+        !teachIntroDismissed &&
         !inSession &&
         !countingDown &&
-        !pendingContinue &&
-        !showingResults;
-    const curriculumSettings = settingsFromCurriculum(ladder);
-    const showSlotPointer =
-        isAdaptive &&
-        (inSession || countingDown) &&
-        curriculumSettings.pointerMode !== 'off';
-    // Per-trial N must stay visible in Adaptive too — recipe "var N" alone is not enough.
+        !pendingContinue;
+
+    useEffect(() => {
+        if (showStrategyInstruction) {
+            setSettingsOpen(false);
+        }
+    }, [showStrategyInstruction]);
+    // Per-trial N must stay visible in ladder modes too — recipe "var N" alone is not enough.
     const showVariableN = variableN && (inSession || countingDown);
     const variableNValue = nForTrial > 0 ? nForTrial : level;
     const showSessionStatus = !showingResults;
@@ -116,7 +127,7 @@ const App = () => {
     const appContainerClass = [
         'app-container',
         chromeHidden ? 'playing' : '',
-        isAdaptive ? 'adaptive' : '',
+        isLadderMode ? 'adaptive' : '',
         inSession ? 'in-session' : '',
         pendingContinue ? 'pending-continue' : '',
         showingResults ? 'showing-results' : '',
@@ -136,7 +147,7 @@ const App = () => {
                     <SessionExitButton />
                     {showSessionStatus && (
                         <div className="session-status" aria-live="polite">
-                            {!isAdaptive && !showVariableN && (
+                            {!isLadderMode && !showVariableN && (
                                 <div className="session-status-item">
                                     <span className="session-status-label">Level</span>
                                     <span className="session-status-value">{level}</span>
@@ -149,23 +160,32 @@ const App = () => {
                         </div>
                     )}
                     {showVariableN && <VariableNHud n={variableNValue} />}
-                    {showSlotPointer && (
-                        <SlotPointerHud
-                            n={level}
-                            trialIndex={Math.max(0, currentTrials - 1)}
-                            pointerMode={curriculumSettings.pointerMode}
-                            stimulusEpoch={stimulusEpoch}
+                    {teachOptOutWarnShown && (
+                        <TeachOptOutWarn
+                            onKeepPracticing={dismissTeachOptOutWarn}
+                            onConfirm={confirmTeachOptOut}
                         />
                     )}
                     <Board />
                     {showStrategyInstruction && (
                         <StrategyInstruction
-                            n={ladder.n}
+                            n={cyclicLadder.n}
                             onContinue={acknowledgeStrategyInstruction}
                         />
                     )}
-                    {isAdaptive && (
-                        <AdaptiveProgressHud ladder={ladder} session={adaptiveSession} />
+                    {isMatchAdaptive && (
+                        <AdaptiveProgressHud
+                            path="adaptive"
+                            ladder={matchLadder}
+                            session={adaptiveSession}
+                        />
+                    )}
+                    {isCyclic && (
+                        <AdaptiveProgressHud
+                            path="cyclic"
+                            ladder={cyclicLadder}
+                            session={adaptiveSession}
+                        />
                     )}
                     <Footer
                         themeMode={themeMode}

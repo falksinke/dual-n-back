@@ -1,7 +1,7 @@
 {
-  "name": "Dual N Back",
+  "name": "N-Back",
   "short_name": "N-Back",
-  "description": "Dual n-back trainer for working memory practice.",
+  "description": "N-back trainer for working memory practice.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

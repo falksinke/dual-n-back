@@ -1,12 +1,22 @@
 .strategy-instruction {
+    --settle: 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    --backdrop: 180ms cubic-bezier(0.22, 1, 0.36, 1);
+
     position: absolute;
     inset: 0;
-    z-index: 20;
+    /* Above settings (z-index 40) so Cyclic → teach intro is never buried. */
+    z-index: 50;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
     background: color-mix(in srgb, var(--background) 92%, transparent);
+    animation: strategy-backdrop-in var(--backdrop) both;
+}
+
+.strategy-instruction.is-leaving {
+    animation: strategy-backdrop-out var(--backdrop) both;
+    pointer-events: none;
 }
 
 .strategy-instruction__panel {
@@ -17,6 +27,12 @@
     border-radius: 10px;
     background: var(--surface, var(--background));
     color: var(--textForeground);
+    transform-origin: center;
+    animation: strategy-panel-in var(--settle) both;
+}
+
+.strategy-instruction.is-leaving .strategy-instruction__panel {
+    animation: strategy-panel-out var(--settle) both;
 }
 
 .strategy-instruction__title {
@@ -39,6 +55,8 @@
 }
 
 .strategy-instruction__cta {
+    --press: 140ms cubic-bezier(0.22, 1, 0.36, 1);
+
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -50,4 +68,63 @@
     color: var(--background);
     font-weight: 600;
     cursor: pointer;
+    transform: translateZ(0);
+    transition: transform var(--press);
+
+    &:active {
+        transform: scale(0.96);
+    }
+}
+
+@keyframes strategy-backdrop-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes strategy-backdrop-out {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes strategy-panel-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes strategy-panel-out {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .strategy-instruction,
+    .strategy-instruction.is-leaving,
+    .strategy-instruction__panel,
+    .strategy-instruction.is-leaving .strategy-instruction__panel {
+        animation: none;
+    }
+
+    .strategy-instruction__cta {
+        transition: none;
+    }
 }

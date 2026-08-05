@@ -10,7 +10,12 @@ import {
     FREE_PLAY_DEFAULT_ISI_MAX_MS,
     FREE_PLAY_DEFAULT_ISI_MIN_MS,
 } from '../model/isi';
-import { createDefaultLadderByMode, LADDER_STORAGE_KEY } from '../model/ladderPersistence';
+import {
+    ADAPTIVE_LADDER_STORAGE_KEY,
+    CYCLIC_LADDER_STORAGE_KEY,
+    createDefaultCyclicLadderByMode,
+    createDefaultMatchLadderByMode,
+} from '../model/ladderPersistence';
 import { GameResult } from '../model/GameResult';
 import { createInitialAdaptiveSession } from './adaptiveSession';
 
@@ -37,12 +42,20 @@ describe('gameStore', () => {
                 stimulusEpoch: 0,
             },
             btns: { audio: ButtonState.None, position: ButtonState.None },
-            ladder: createDefaultLadderByMode(),
+            ladder: createDefaultMatchLadderByMode(),
+            cyclicLadder: createDefaultCyclicLadderByMode(),
             adaptiveSession: null,
             lastBlockRole: null,
             lastControllerAction: null,
             blockModalities: null,
             freePlaySettingsSnapshot: null,
+            teachIntroDismissed: false,
+            teachOptOutWarnShown: false,
+            teachDecideTrialCount: 0,
+            teachOpStep: null,
+            teachOpEpoch: 0,
+            teachRevealPositionIndex: null,
+            teachRevealLetter: null,
             settings: {
                 level: 2,
                 trials: 1,
@@ -52,6 +65,7 @@ describe('gameStore', () => {
                 displayTrials: true,
                 displayTarget: true,
                 allowCenterStimulus: true,
+                positionGrid: '3x3',
                 displayVariableNCenter: false,
                 answerGraceMs: 250,
                 useFullScreen: false,
@@ -174,12 +188,13 @@ describe('gameStore', () => {
         useGameStore.getState().cancelGame();
     });
 
-    it('defaults playMode to free and keeps ladder separate from manual settings', () => {
+    it('defaults playMode to free and keeps ladders separate from manual settings', () => {
         expect(useGameStore.getState().settings.playMode).toBe('free');
-        expect(useGameStore.getState().ladder.dual).toMatchObject({
+        expect(useGameStore.getState().ladder.dual).toEqual({ levelIndex: 0, failStreak: 0 });
+        expect(useGameStore.getState().cyclicLadder.dual).toMatchObject({
             track: 'fixed',
             n: 2,
-            stage: 'instruction',
+            stage: 'teach_walkthrough',
             failStreak: 0,
         });
     });
@@ -188,6 +203,7 @@ describe('gameStore', () => {
         const defaults = createDefaultFreePlaySettings();
         expect(defaults.level).toBe(2);
         expect(defaults.allowCenterStimulus).toBe(false);
+        expect(defaults.positionGrid).toBe('3x3');
         expect(defaults.displayVariableNCenter).toBe(false);
         expect(defaults.isiMin).toBe(FREE_PLAY_DEFAULT_ISI_MIN_MS);
         expect(defaults.isiMax).toBe(FREE_PLAY_DEFAULT_ISI_MAX_MS);
@@ -222,10 +238,52 @@ describe('gameStore', () => {
         expect(useGameStore.getState().settings.displayVariableNCenter).toBe(false);
     });
 
-    it('applies adaptive ladder to settings when switching playMode while idle', () => {
+    it('switches free-play board to 2x2 and clears N-in-center', () => {
+        useGameStore.setState({
+            settings: {
+                ...createDefaultFreePlaySettings(),
+                displayVariableNCenter: true,
+            },
+        });
+
+        useGameStore.getState().setPositionGrid('2x2');
+        expect(useGameStore.getState().settings.positionGrid).toBe('2x2');
+        expect(useGameStore.getState().settings.displayVariableNCenter).toBe(false);
+
+        useGameStore.getState().setDisplayVariableNCenter(true);
+        expect(useGameStore.getState().settings.displayVariableNCenter).toBe(false);
+    });
+
+    it('applies Match% adaptive ladder to settings when switching playMode while idle', () => {
         useGameStore.setState((state) => ({
             ladder: {
                 ...state.ladder,
+                dual: { levelIndex: 6, failStreak: 1 },
+            },
+            settings: {
+                ...state.settings,
+                level: 5,
+                variableN: false,
+                interferenceChance: 0.5,
+            },
+        }));
+
+        useGameStore.getState().setPlayMode('adaptive');
+
+        const { settings } = useGameStore.getState();
+        expect(settings.playMode).toBe('adaptive');
+        expect(settings.level).toBe(2);
+        expect(settings.lureStage).toBeUndefined();
+        expect(settings.variableN).toBe(true);
+        expect(settings.isiMin).toBe(2000);
+        expect(settings.isiMax).toBe(2000);
+        expect(settings.interferenceChance).toBe(0.125);
+    });
+
+    it('applies cyclic ladder to settings when switching to cyclic', () => {
+        useGameStore.setState((state) => ({
+            cyclicLadder: {
+                ...state.cyclicLadder,
                 dual: {
                     track: 'flexible',
                     n: 2,
@@ -244,26 +302,132 @@ describe('gameStore', () => {
             },
         }));
 
-        useGameStore.getState().setPlayMode('adaptive');
+        useGameStore.getState().setPlayMode('cyclic');
 
         const { settings } = useGameStore.getState();
-        expect(settings.playMode).toBe('adaptive');
+        expect(settings.playMode).toBe('cyclic');
         expect(settings.level).toBe(2);
         expect(settings.lureStage).toBe('E');
         expect(settings.variableN).toBe(true);
         expect(settings.isiMin).toBe(2500);
         expect(settings.isiMax).toBe(2500);
-        expect(settings.interferenceChance).toBe(0.125);
     });
 
-    it('acknowledges strategy instruction into guided practice', () => {
+    it('setIsiMax below isiMin pulls min down so the max thumb can leave the ceiling', () => {
         useGameStore.setState((state) => ({
-            ladder: {
-                ...state.ladder,
+            settings: { ...state.settings, playMode: 'free', isiMin: 5000, isiMax: 5000 },
+        }));
+        useGameStore.getState().setIsiMax(4000);
+        const { isiMin, isiMax } = useGameStore.getState().settings;
+        expect(isiMax).toBe(4000);
+        expect(isiMin).toBe(4000);
+    });
+
+    it('setIsiBoth sets min and max to the same clamped value', () => {
+        useGameStore.setState((state) => ({
+            settings: { ...state.settings, playMode: 'free', isiMin: 1000, isiMax: 2000 },
+        }));
+        useGameStore.getState().setIsiBoth(3500);
+        const { isiMin, isiMax } = useGameStore.getState().settings;
+        expect(isiMin).toBe(3500);
+        expect(isiMax).toBe(3500);
+    });
+
+    it('retreatTeachOp steps NEXT → REPLACE → COMPARE and stops', () => {
+        useGameStore.setState({ teachOpStep: 'NEXT', teachOpEpoch: 0 });
+        useGameStore.getState().retreatTeachOp();
+        expect(useGameStore.getState().teachOpStep).toBe('REPLACE');
+        useGameStore.getState().retreatTeachOp();
+        expect(useGameStore.getState().teachOpStep).toBe('COMPARE');
+        useGameStore.getState().retreatTeachOp();
+        expect(useGameStore.getState().teachOpStep).toBe('COMPARE');
+    });
+
+    it('resetCyclicLearningProgress restores teach walkthrough for all modes', () => {
+        useGameStore.setState((state) => ({
+            settings: { ...state.settings, playMode: 'cyclic', mode: 'dual' },
+            teachIntroDismissed: true,
+            cyclicLadder: {
+                ...state.cyclicLadder,
+                dual: {
+                    track: 'fixed',
+                    n: 4,
+                    stage: 'fixed_fast',
+                    lureStage: 'E',
+                    isiTier: 2,
+                    failStreak: 2,
+                    promoteStreak: 1,
+                },
+                triple: {
+                    track: 'flexible',
+                    n: 3,
+                    stage: 'flex_base',
+                    lureStage: 'E',
+                    isiTier: 0,
+                    failStreak: 0,
+                    promoteStreak: 0,
+                },
+            },
+            results: {
+                all: state.results.all,
+                last: { generalMatchPercentage: 40 } as never,
+            },
+        }));
+
+        useGameStore.getState().resetCyclicLearningProgress();
+
+        const next = useGameStore.getState();
+        expect(next.settings.playMode).toBe('cyclic');
+        expect(next.cyclicLadder.dual).toMatchObject({
+            track: 'fixed',
+            n: 2,
+            stage: 'teach_walkthrough',
+            failStreak: 0,
+        });
+        expect(next.cyclicLadder.triple.stage).toBe('teach_walkthrough');
+        expect(next.teachIntroDismissed).toBe(false);
+        expect(next.results.last).toBeNull();
+        expect(next.settings.level).toBe(2);
+    });
+
+    it('clears last result and resets teach intro when entering cyclic walkthrough', () => {
+        useGameStore.setState((state) => ({
+            cyclicLadder: {
+                ...state.cyclicLadder,
                 dual: {
                     track: 'fixed',
                     n: 2,
-                    stage: 'instruction',
+                    stage: 'teach_walkthrough',
+                    lureStage: 'A',
+                    isiTier: 0,
+                    failStreak: 0,
+                    promoteStreak: 0,
+                },
+            },
+            settings: { ...state.settings, playMode: 'free', mode: 'dual' },
+            teachIntroDismissed: true,
+            results: {
+                all: state.results.all,
+                last: { generalMatchPercentage: 50 } as never,
+            },
+        }));
+
+        useGameStore.getState().setPlayMode('cyclic');
+
+        const next = useGameStore.getState();
+        expect(next.settings.playMode).toBe('cyclic');
+        expect(next.teachIntroDismissed).toBe(false);
+        expect(next.results.last).toBeNull();
+    });
+
+    it('acknowledges walkthrough intro without advancing stage on cyclic', () => {
+        useGameStore.setState((state) => ({
+            cyclicLadder: {
+                ...state.cyclicLadder,
+                dual: {
+                    track: 'fixed',
+                    n: 2,
+                    stage: 'teach_walkthrough',
                     lureStage: 'A',
                     isiTier: 0,
                     failStreak: 0,
@@ -272,34 +436,27 @@ describe('gameStore', () => {
             },
             settings: {
                 ...state.settings,
-                playMode: 'adaptive',
+                playMode: 'cyclic',
                 mode: 'dual',
             },
             game: null,
             countdown: null,
+            teachIntroDismissed: false,
         }));
 
         useGameStore.getState().acknowledgeStrategyInstruction();
 
-        expect(useGameStore.getState().ladder.dual.stage).toBe('guided');
+        expect(useGameStore.getState().cyclicLadder.dual.stage).toBe('teach_walkthrough');
+        expect(useGameStore.getState().teachIntroDismissed).toBe(true);
         expect(useGameStore.getState().settings.level).toBe(2);
         expect(useGameStore.getState().settings.variableN).toBe(false);
-        expect(useGameStore.getState().settings.lureStage).toBe('A');
     });
 
-    it('manually steps the adaptive ladder and clears fail streak', () => {
+    it('manually steps Match% and cyclic ladders and clears fail streak', () => {
         useGameStore.setState((state) => ({
             ladder: {
                 ...state.ladder,
-                dual: {
-                    track: 'fixed',
-                    n: 2,
-                    stage: 'guided',
-                    lureStage: 'A',
-                    isiTier: 0,
-                    failStreak: 2,
-                    promoteStreak: 0,
-                },
+                dual: { levelIndex: 2, failStreak: 2 },
             },
             settings: {
                 ...state.settings,
@@ -311,13 +468,31 @@ describe('gameStore', () => {
         }));
 
         useGameStore.getState().increaseLadderStep();
-        expect(useGameStore.getState().ladder.dual.stage).toBe('fade');
+        expect(useGameStore.getState().ladder.dual.levelIndex).toBe(3);
         expect(useGameStore.getState().ladder.dual.failStreak).toBe(0);
-        expect(useGameStore.getState().settings.level).toBe(2);
 
         useGameStore.setState((state) => ({
-            ladder: {
-                ...state.ladder,
+            cyclicLadder: {
+                ...state.cyclicLadder,
+                dual: {
+                    track: 'fixed',
+                    n: 2,
+                    stage: 'teach_decide',
+                    lureStage: 'A',
+                    isiTier: 0,
+                    failStreak: 2,
+                    promoteStreak: 0,
+                },
+            },
+            settings: { ...state.settings, playMode: 'cyclic' },
+        }));
+        useGameStore.getState().increaseLadderStep();
+        expect(useGameStore.getState().cyclicLadder.dual.stage).toBe('teach_ramp');
+        expect(useGameStore.getState().cyclicLadder.dual.failStreak).toBe(0);
+
+        useGameStore.setState((state) => ({
+            cyclicLadder: {
+                ...state.cyclicLadder,
                 dual: {
                     track: 'fixed',
                     n: 2,
@@ -330,8 +505,8 @@ describe('gameStore', () => {
             },
         }));
         useGameStore.getState().decreaseLadderStep();
-        expect(useGameStore.getState().ladder.dual.stage).toBe('fixed_lure_both');
-        expect(useGameStore.getState().ladder.dual.failStreak).toBe(0);
+        expect(useGameStore.getState().cyclicLadder.dual.stage).toBe('fixed_lure_both');
+        expect(useGameStore.getState().cyclicLadder.dual.failStreak).toBe(0);
     });
 
     it('rejects playMode changes during countdown or active session', async () => {
@@ -347,28 +522,12 @@ describe('gameStore', () => {
         useGameStore.getState().cancelGame();
     });
 
-    it('applies mode ladder when switching mode in adaptive playMode while idle', () => {
+    it('applies mode ladder when switching mode in Match% adaptive while idle', () => {
         useGameStore.setState((state) => ({
             ladder: {
                 ...state.ladder,
-                dual: {
-                    track: 'fixed',
-                    n: 2,
-                    stage: 'fixed_clean',
-                    lureStage: 'A',
-                    isiTier: 0,
-                    failStreak: 0,
-                    promoteStreak: 0,
-                },
-                triple: {
-                    track: 'fixed',
-                    n: 3,
-                    stage: 'instruction',
-                    lureStage: 'A',
-                    isiTier: 0,
-                    failStreak: 0,
-                    promoteStreak: 0,
-                },
+                dual: { levelIndex: 0, failStreak: 0 },
+                triple: { levelIndex: 10, failStreak: 0 },
             },
             settings: { ...state.settings, playMode: 'adaptive', mode: 'dual', level: 2 },
         }));
@@ -381,10 +540,10 @@ describe('gameStore', () => {
         expect(settings.isiMin).toBe(2500);
         expect(settings.isiMax).toBe(2500);
         expect(settings.interferenceChance).toBe(0);
-        expect(settings.lureStage).toBe('A');
+        expect(settings.lureStage).toBeUndefined();
     });
 
-    it('persists ladder state via saveLadder', () => {
+    it('persists Match% and cyclic ladders separately', () => {
         const storage = {
             data: {} as Record<string, string>,
             getItem(key: string) {
@@ -399,6 +558,10 @@ describe('gameStore', () => {
         useGameStore.setState((state) => ({
             ladder: {
                 ...state.ladder,
+                quad: { levelIndex: 4, failStreak: 2 },
+            },
+            cyclicLadder: {
+                ...state.cyclicLadder,
                 quad: {
                     track: 'flexible',
                     n: 2,
@@ -412,22 +575,28 @@ describe('gameStore', () => {
         }));
 
         useGameStore.getState().saveLadder();
+        useGameStore.getState().saveCyclicLadder();
 
-        const raw = storage.getItem(LADDER_STORAGE_KEY);
-        expect(raw).not.toBeNull();
-        const parsed = JSON.parse(raw!);
-        expect(parsed.version).toBe(3);
-        expect(parsed.byMode.quad).toMatchObject({
+        const adaptiveRaw = storage.getItem(ADAPTIVE_LADDER_STORAGE_KEY);
+        expect(adaptiveRaw).not.toBeNull();
+        const adaptiveParsed = JSON.parse(adaptiveRaw!);
+        expect(adaptiveParsed.version).toBe(2);
+        expect(adaptiveParsed.byMode.quad).toEqual({ levelIndex: 4, failStreak: 2 });
+
+        const cyclicRaw = storage.getItem(CYCLIC_LADDER_STORAGE_KEY);
+        expect(cyclicRaw).not.toBeNull();
+        const cyclicParsed = JSON.parse(cyclicRaw!);
+        expect(cyclicParsed.version).toBe(4);
+        expect(cyclicParsed.byMode.quad).toMatchObject({
             track: 'flexible',
             stage: 'flex_base',
             failStreak: 2,
         });
-        expect(parsed.byMode.dual.stage).toBe('instruction');
 
         vi.unstubAllGlobals();
     });
 
-    it('starts adaptive session in playing after countdown', async () => {
+    it('starts Match% adaptive session without lureStage after countdown', async () => {
         useGameStore.getState().setPlayMode('adaptive');
         useGameStore.getState().startGame();
         expect(useGameStore.getState().adaptiveSession?.phase).toBe('playing');
@@ -436,7 +605,7 @@ describe('gameStore', () => {
         expect(useGameStore.getState().adaptiveSession?.phase).toBe('playing');
         expect(useGameStore.getState().game).not.toBeNull();
         expect(useGameStore.getState().settings.variableN).toBe(false);
-        expect(useGameStore.getState().settings.lureStage).toBe('A');
+        expect(useGameStore.getState().settings.lureStage).toBeUndefined();
         expect(useGameStore.getState().settings.isiMin).toBe(2500);
         expect(useGameStore.getState().settings.interferenceChance).toBe(0);
 
@@ -525,8 +694,8 @@ describe('gameStore', () => {
         expect(useGameStore.getState().results.last).toBe(result);
     });
 
-    it('advances acquisition after guided block then continues on next startGame', async () => {
-        useGameStore.getState().setPlayMode('adaptive');
+    it('advances cyclic acquisition after walkthrough block then continues on next startGame', async () => {
+        useGameStore.getState().setPlayMode('cyclic');
         useGameStore.getState().startGame();
         await finishCountdown();
 
@@ -548,9 +717,9 @@ describe('gameStore', () => {
 
         expect(useGameStore.getState().adaptiveSession?.phase).toBe('interstitial');
         expect(useGameStore.getState().adaptiveSession?.pendingContinue).toBe(true);
-        expect(useGameStore.getState().ladder.dual.stage).toBe('fade');
+        expect(useGameStore.getState().cyclicLadder.dual.stage).toBe('teach_decide');
         expect(useGameStore.getState().lastControllerAction?.action).toBe('advance_acquisition');
-        expect(useGameStore.getState().lastBlockRole).toBe('guided');
+        expect(useGameStore.getState().lastBlockRole).toBe('teach_walkthrough');
 
         useGameStore.getState().startGame();
         expect(useGameStore.getState().countdown).toBe(3);
@@ -558,10 +727,43 @@ describe('gameStore', () => {
         useGameStore.getState().cancelGame();
     });
 
-    it('holds assessed stage when SDT samples are sparse', async () => {
+    it('promotes Match% adaptive on high Match% after a block', async () => {
         useGameStore.setState((state) => ({
             ladder: {
                 ...state.ladder,
+                dual: { levelIndex: 2, failStreak: 1 },
+            },
+        }));
+        useGameStore.getState().setPlayMode('adaptive');
+
+        const ok = new GameResult(
+            {
+                audio: { success: 8, failed: 0 },
+                position: { success: 8, failed: 0 },
+            },
+            ['position', 'audio']
+        );
+
+        useGameStore.setState({
+            adaptiveSession: {
+                ...createInitialAdaptiveSession(),
+                phase: 'playing',
+            },
+            game: null,
+            countdown: null,
+        });
+        useGameStore.getState().pushGameResult(ok);
+
+        expect(useGameStore.getState().ladder.dual.levelIndex).toBe(3);
+        expect(useGameStore.getState().ladder.dual.failStreak).toBe(0);
+        expect(useGameStore.getState().lastControllerAction?.action).toBe('promote');
+        expect(useGameStore.getState().lastBlockRole).toBe('match');
+    });
+
+    it('holds cyclic assessed stage when SDT samples are sparse', async () => {
+        useGameStore.setState((state) => ({
+            cyclicLadder: {
+                ...state.cyclicLadder,
                 dual: {
                     track: 'fixed',
                     n: 2,
@@ -573,7 +775,7 @@ describe('gameStore', () => {
                 },
             },
         }));
-        useGameStore.getState().setPlayMode('adaptive');
+        useGameStore.getState().setPlayMode('cyclic');
 
         const fail = new GameResult(
             {
@@ -594,7 +796,7 @@ describe('gameStore', () => {
         });
         useGameStore.getState().pushGameResult(fail);
 
-        expect(useGameStore.getState().ladder.dual.stage).toBe('fixed_fast');
+        expect(useGameStore.getState().cyclicLadder.dual.stage).toBe('fixed_fast');
         expect(useGameStore.getState().lastControllerAction?.action).toBe('hold');
     });
 });

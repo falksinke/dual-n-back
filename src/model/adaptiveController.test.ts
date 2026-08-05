@@ -73,20 +73,35 @@ const assessedFixed = (): CurriculumLadderState => ({
 });
 
 describe('decideCurriculumProgression', () => {
-    it('advances acquisition on guided blocks without SDT promote of assessed stage', () => {
+    it('advances acquisition on walkthrough blocks without SDT promote', () => {
         const ladder: CurriculumLadderState = {
             ...createDefaultCurriculumLadder(),
-            stage: 'guided',
+            stage: 'teach_walkthrough',
         };
         const decision = decideCurriculumProgression({
             ladder,
-            blockRole: 'guided',
+            blockRole: 'teach_walkthrough',
             sdt: report([modality('position'), modality('audio')]),
             matchPct: 95,
         });
         expect(decision.action).toBe('advance_acquisition');
-        expect(decision.ladder.stage).toBe('fade');
+        expect(decision.ladder.stage).toBe('teach_decide');
         expect(decision.ladder.n).toBe(ladder.n);
+    });
+
+    it('holds on teach_decide so I’ve got it remains user-driven', () => {
+        const ladder: CurriculumLadderState = {
+            ...createDefaultCurriculumLadder(),
+            stage: 'teach_decide',
+        };
+        const decision = decideCurriculumProgression({
+            ladder,
+            blockRole: 'teach_decide',
+            sdt: report([modality('position'), modality('audio')]),
+            matchPct: 95,
+        });
+        expect(decision.action).toBe('hold');
+        expect(decision.ladder.stage).toBe('teach_decide');
     });
 
     it('holds when samples are sparse', () => {

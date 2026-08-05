@@ -46,17 +46,19 @@ describe('adaptiveSession helpers', () => {
         expect(session.pendingContinue).toBe(false);
     });
 
-    it('nextBlockConfig maps curriculum stage to block knobs (instruction → guided playable)', () => {
+    it('nextBlockConfig maps teach_walkthrough to reveal-first block knobs', () => {
         const session = createInitialAdaptiveSession();
         const ladder = createDefaultModeLadder();
         const block = nextBlockConfig(session, ladder, 'dual', 20);
-        expect(block.blockRole).toBe('guided');
+        expect(block.blockRole).toBe('teach_walkthrough');
         expect(block.n).toBe(2);
         expect(block.isiMin).toBe(2500);
         expect(block.isiMax).toBe(2500);
         expect(block.variableN).toBe(false);
         expect(block.lureStage).toBe('A');
         expect(block.pointerMode).toBe('full');
+        expect(block.teachReveals).toBe(true);
+        expect(block.teachPacedOps).toBe(true);
         expect(block.trials).toBe(20);
     });
 
@@ -72,12 +74,12 @@ describe('adaptiveSession helpers', () => {
         ).toBe(true);
     });
 
-    it('processAdaptiveBlockEnd advances acquisition on guided, ignoring Match %', () => {
+    it('processAdaptiveBlockEnd advances walkthrough to decide, ignoring Match %', () => {
         const session = createInitialAdaptiveSession();
         const ladder = createDefaultModeLadder();
         const end = processAdaptiveBlockEnd(session, ladder, goodReport(), 10);
         expect(end.action.action).toBe('advance_acquisition');
-        expect(end.ladder.stage).toBe('fade');
+        expect(end.ladder.stage).toBe('teach_decide');
         expect(end.session.pendingContinue).toBe(true);
         expect(end.session.phase).toBe('interstitial');
         expect(end.session.blocksDone).toBe(1);

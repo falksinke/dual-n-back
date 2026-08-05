@@ -99,6 +99,23 @@ describe('playHaptic / fireKind gating', () => {
         expect(fireKind('light')).toBe(true);
         expect(Haptic.light).toHaveBeenCalled();
     });
+
+    it('fires light haptic for two targets in quick succession', async () => {
+        const Haptic = (await import('browser-haptic')).default;
+        vi.mocked(Haptic.light).mockClear();
+        const uninstall = installHapticCaptureBridge(() => true);
+        const a = document.createElement('button');
+        const b = document.createElement('button');
+        a.setAttribute('data-haptic', 'light');
+        b.setAttribute('data-haptic', 'light');
+        document.body.append(a, b);
+
+        a.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        b.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+
+        expect(Haptic.light).toHaveBeenCalledTimes(2);
+        uninstall();
+    });
 });
 
 describe('installHapticCaptureBridge', () => {

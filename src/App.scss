@@ -9,6 +9,11 @@
     --frame-right: max(var(--pad-frame-x), var(--safe-right));
     --frame-bottom: max(var(--pad-frame-y), var(--safe-bottom));
     --frame-left: max(var(--pad-frame-x), var(--safe-left));
+    /* Bottom band reserved for Start / Continue / match buttons when Adaptive HUD is up.
+       Idle start band stays modest so the level dial sits near the footer, not under the grid. */
+    /* Idle adaptive: reserve strip for the HUD only (Start sits above the board). */
+    --action-band-hud: 56px;
+    --action-band-match: 88px;
 }
 
 html {
@@ -34,11 +39,15 @@ html,
 body,
 #root {
     height: 100%;
+    overflow: hidden;
 }
 
 body {
     margin: 0;
     background-color: var(--background);
+    /* App shell owns the viewport — no document rubber-band scroll. */
+    overscroll-behavior: none;
+    touch-action: manipulation;
 }
 
 .app-container {
@@ -50,15 +59,23 @@ body {
     min-height: 100dvh;
     display: flex;
     justify-content: center;
+    overflow: hidden;
 
     &.playing {
-        cursor: none;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: manipulation;
 
         // Overlay chrome stays mounted so the board (and crosshair) never reflow.
         .topbar,
         .footer {
             visibility: hidden;
             pointer-events: none;
+        }
+
+        .app {
+            overflow: hidden;
+            overscroll-behavior: none;
         }
     }
 
@@ -72,7 +89,31 @@ body {
         justify-content: center;
         align-items: center;
         flex: 1;
+        min-height: 0;
         padding: var(--frame-top) var(--frame-right) var(--frame-bottom) var(--frame-left);
+        overflow: hidden;
+        --action-band: 0px;
+    }
+
+    &.adaptive .app {
+        --action-band: 0px;
+        padding-bottom: calc(var(--frame-bottom) + var(--action-band-hud));
+    }
+
+    &.adaptive.in-session .app {
+        --action-band: var(--action-band-match);
+        padding-bottom: calc(var(--frame-bottom) + var(--action-band));
+    }
+
+    &.adaptive.pending-continue .app {
+        --action-band: 0px;
+        padding-bottom: calc(var(--frame-bottom) + var(--action-band-hud));
+    }
+
+    &.showing-results .app {
+        justify-content: flex-start;
+        /* Clear top chrome (logo / exit / trials band): 44px control + gap. */
+        padding-top: calc(var(--frame-top) + 44px + 16px);
     }
 }
 

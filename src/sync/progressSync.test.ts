@@ -92,7 +92,8 @@ describe('progressSync', () => {
         const remote = createDefaultProgressDocument('2026-07-31T11:00:00.000Z');
         remote.settings.mode = 'triple';
         remote.settings.level = 5;
-        remote.ladder.byMode.dual = {
+        remote.ladder.byMode.dual = { levelIndex: 7, failStreak: 1 };
+        remote.cyclicLadder.byMode.dual = {
             track: 'fixed',
             n: 3,
             stage: 'fixed_clean',
@@ -111,8 +112,9 @@ describe('progressSync', () => {
 
         expect(useGameStore.getState().settings.mode).toBe('triple');
         expect(useGameStore.getState().settings.level).toBe(5);
-        expect(useGameStore.getState().ladder.dual.n).toBe(3);
-        expect(useGameStore.getState().ladder.dual.stage).toBe('fixed_clean');
+        expect(useGameStore.getState().ladder.dual).toEqual({ levelIndex: 7, failStreak: 1 });
+        expect(useGameStore.getState().cyclicLadder.dual.n).toBe(3);
+        expect(useGameStore.getState().cyclicLadder.dual.stage).toBe('fixed_clean');
         expect(getSyncStatus().kind).toBe('linked');
     });
 

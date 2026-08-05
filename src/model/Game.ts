@@ -1,36 +1,39 @@
 import { GameHistory, ModalityStrata } from './GameHistory';
 import { Match } from './Match';
-import { GameResult } from './GameResult';
+import { buildNBackDistribution, GameResult } from './GameResult';
 import { AudioPackId, getRandomAudioToken } from './audioPacks';
 import { getRandomColorId } from './colorSet';
 import { getRandomImageId } from './imageSet';
 import { ModalityId, getModalitiesForMode, ModeId } from './modalities';
 import { ModalityPlan, planBlockStimuli, TrialPlanEntry } from './blockQuotas';
+import { planJaeggiStimuli } from './jaeggiQuotas';
 import { getLureStagePolicy, lureOffsetsForStage, LureStageId } from './lureStages';
 import { buildBlockSdtReport, classifySdtCell } from './sdtMetrics';
+import {
+    BUTTON_FEEDBACK_MS,
+    BUTTON_FEEDBACK_RESERVE_MS,
+    clampAnswerGraceMs,
+    MIN_CLAIM_MS_FOR_FEEDBACK_RESERVE,
+} from './isi';
 import { BoardState, GameDeps, getModalityValue } from './types';
+import { clampVariableNHoldTrials, makeVariableNList } from './variableN';
+import { buildEffectiveNs, planVariableNStimuli } from './variableNQuotas';
 
 export type ResultMatch = Partial<Record<ModalityId, 'success' | 'failed'>>;
 
+export type TeachRevealPayload = {
+    revealPositionIndex: number | null;
+    revealLetter: string | null;
+};
+export {
+    VARIABLE_N_HOLD_OPTIONS,
+    clampVariableNHoldTrials,
+    makeVariableNList,
+    type VariableNHoldTrials,
+} from './variableN';
+
 const DEFAULT_GUARANTEED_MATCH_CHANCE = 0.125;
 const DEFAULT_INTERFERENCE_CHANCE = 0.125;
-
-/** BW-shaped variable N list: length trials - level, Beta(level/2, 1) samples. */
-export function makeVariableNList(
-    trials: number,
-    level: number,
-    random: () => number
-): number[] {
-    const length = Math.max(0, trials - level);
-    const beta = level / 2;
-    const list: number[] = [];
-    for (let i = 0; i < length; i++) {
-        const sample = Math.pow(random(), 1 / beta);
-        const n = Math.max(1, Math.min(level, Math.round(sample * level)));
-        list.push(n);
-    }
-    return list;
-}
 
 export class Game {
     private readonly sessionLevel: number;
@@ -39,15 +42,19 @@ export class Game {
     private readonly isiMin: number;
     private readonly isiMax: number;
     private readonly random: () => number;
+    private readonly positionGrid: '3x3' | '2x2';
     private readonly allowCenterStimulus: boolean;
     private readonly activeModalities: ModalityId[];
     private readonly interferenceChance: number;
     private readonly guaranteedMatchChance: number;
     private readonly variableN: boolean;
+    private readonly activeFeedback: boolean;
+    private readonly answerGraceMs: number;
     private readonly variableNList: number[];
     private readonly audioPack: AudioPackId;
     private readonly lureStage: LureStageId | null;
     private readonly useBlockQuotas: boolean;
+    private readonly useJaeggiQuotas: boolean;
     private readonly trialPlan: TrialPlanEntry[] | null;
 
     private _isGameInProgress: boolean;
@@ -59,9 +66,12 @@ export class Game {
     private _pendingLureLags: Partial<Record<ModalityId, number>>;
     private _trialOnsetMs: number | null;
     private _claimRtMs: Partial<Record<ModalityId, number>>;
+    /** False after scoring until the next onset — blocks late claims from attaching to the next trial. */
+    private _claimsOpen: boolean;
+    private _feedbackMs: number;
 
     private onStateChanged: (boardState: BoardState) => void;
-    private onPlayerChoiceValidated: (match: ResultMatch) => void;
+    private onPlayerChoiceValidated: (match: ResultMatch, feedbackMs: number) => void;
     private onGameEnded: (gameResult: GameResult) => void;
 
     get currentState(): BoardState | null {
@@ -77,6 +87,7 @@ export class Game {
         this._pendingLureLags = {};
         this._trialOnsetMs = Date.now();
         this._claimRtMs = {};
+        this._claimsOpen = true;
     }
 
     get currentMatch(): ResultMatch | null {
@@ -86,7 +97,7 @@ export class Game {
     set currentMatch(match: ResultMatch | null) {
         if (match === null) return;
         this._currentMatch = match;
-        this.onPlayerChoiceValidated(match);
+        this.onPlayerChoiceValidated(match, this._feedbackMs);
 
         for (const modality of this.activeModalities) {
             const result = match[modality];
@@ -104,13 +115,38 @@ export class Game {
         return this.activeModalities;
     }
 
+    /** Stored slot values for reveal-first teach (n-back target at trial onset). */
+    getTeachRevealForTrial(trialIndex: number): TeachRevealPayload {
+        const effectiveN = this.getEffectiveN(trialIndex);
+        if (trialIndex < effectiveN) {
+            return { revealPositionIndex: null, revealLetter: null };
+        }
+        const prior = this.gameHistory.boardStates[trialIndex - effectiveN];
+        if (prior == null) {
+            return { revealPositionIndex: null, revealLetter: null };
+        }
+        return {
+            revealPositionIndex: this.activeModalities.includes('position')
+                ? prior.positionIndex
+                : null,
+            revealLetter: this.activeModalities.includes('audio') ? prior.audioToken : null,
+        };
+    }
+
+    getTeachReveal(): TeachRevealPayload {
+        return this.getTeachRevealForTrial(this.gameHistory.boardStates.length);
+    }
+
     constructor(
         n: number,
         gameLength: number,
         isiMin: number,
         isiMax: number,
         onStateChanged: (boardState: BoardState) => void = () => undefined,
-        onPlayerChoiceValidated: (match: ResultMatch) => void = () => undefined,
+        onPlayerChoiceValidated: (
+            match: ResultMatch,
+            _feedbackMs?: number
+        ) => void = () => undefined,
         onGameEnded: (gameResult: GameResult) => void = () => undefined,
         deps: GameDeps = {}
     ) {
@@ -122,26 +158,59 @@ export class Game {
         this.isiMin = Math.min(isiMin, isiMax);
         this.isiMax = Math.max(isiMin, isiMax);
         this.random = deps.random ?? Math.random;
+        this.positionGrid = deps.positionGrid === '2x2' ? '2x2' : '3x3';
         this.allowCenterStimulus = deps.allowCenterStimulus ?? false;
         this.interferenceChance = deps.interferenceChance ?? DEFAULT_INTERFERENCE_CHANCE;
         this.guaranteedMatchChance = deps.guaranteedMatchChance ?? DEFAULT_GUARANTEED_MATCH_CHANCE;
         this.variableN = deps.variableN ?? false;
+        this.activeFeedback = deps.activeFeedback ?? false;
+        // Default 0 so unit tests keep tight timers; GameSession passes settings.
+        this.answerGraceMs = clampAnswerGraceMs(deps.answerGraceMs ?? 0);
         this.audioPack = deps.audioPack ?? 'letters';
         this.lureStage = deps.lureStage ?? null;
         this.useBlockQuotas = deps.useBlockQuotas ?? false;
-        this.trialPlan =
-            this.useBlockQuotas && this.lureStage != null
-                ? planBlockStimuli({
-                      gameLength,
-                      sessionN: n,
-                      modalities: this.activeModalities,
-                      lureStage: this.lureStage,
-                      random: this.random,
-                  }).trials
-                : null;
+        this.useJaeggiQuotas = deps.useJaeggiQuotas ?? false;
+        // N schedule first so targets/lures can respect per-trial effective N.
         this.variableNList = this.variableN
-            ? makeVariableNList(gameLength, n, this.random)
+            ? makeVariableNList(
+                  gameLength,
+                  n,
+                  this.random,
+                  clampVariableNHoldTrials(deps.variableNHoldTrials ?? 1)
+              )
             : [];
+        this.trialPlan = (() => {
+            if (this.variableN) {
+                const effectiveNs = buildEffectiveNs(gameLength, n, this.variableNList);
+                return planVariableNStimuli({
+                    gameLength,
+                    sessionN: n,
+                    effectiveNs,
+                    modalities: this.activeModalities,
+                    interferenceChance: this.interferenceChance,
+                    random: this.random,
+                }).trials;
+            }
+            if (this.useBlockQuotas && this.lureStage != null) {
+                return planBlockStimuli({
+                    gameLength,
+                    sessionN: n,
+                    modalities: this.activeModalities,
+                    lureStage: this.lureStage,
+                    random: this.random,
+                }).trials;
+            }
+            // Jaeggi fixed counts: free-play / Adaptive fixed-N (no lure stage).
+            if (this.useJaeggiQuotas && this.lureStage == null) {
+                return planJaeggiStimuli({
+                    gameLength,
+                    sessionN: n,
+                    modalities: this.activeModalities,
+                    random: this.random,
+                }).trials;
+            }
+            return null;
+        })();
         this.onStateChanged = onStateChanged;
         this.onPlayerChoiceValidated = onPlayerChoiceValidated;
         this.onGameEnded = onGameEnded;
@@ -155,15 +224,24 @@ export class Game {
         this._pendingLureLags = {};
         this._trialOnsetMs = null;
         this._claimRtMs = {};
+        this._claimsOpen = false;
+        this._feedbackMs = 0;
         this.delayTimeout = null;
         this.delayResolve = null;
     }
 
     private delayTimeout: ReturnType<typeof setTimeout> | null = null;
     private delayResolve: (() => void) | null = null;
+    private delayDeadlineMs: number | null = null;
+    private delayRemainingMs: number | null = null;
+    private _paused = false;
+    /** When true, {@link pause} also blocks {@link addChoice} (default). */
+    private _pauseBlocksClaims = true;
 
     public async start(): Promise<void> {
         this._isGameInProgress = true;
+        this._paused = false;
+        this._pauseBlocksClaims = true;
         this.resetChoice();
         this.gameHistory.reset();
 
@@ -173,14 +251,44 @@ export class Game {
             if (!this._isGameInProgress) break;
 
             const isi = this.sampleIsi();
-            // Fixed answer/feedback deadline = isiMin; onset-to-onset still uses sampled ISI.
-            const responseMs = Math.min(this.isiMin, isi);
+            // Prefer scoring at isiMin; onset-to-onset still uses sampled ISI.
+            let responseMs = Math.min(this.isiMin, isi);
+            let remainder = isi - responseMs;
+
+            // Extra press time (settings slider) — extends this trial’s onset gap.
+            if (this.answerGraceMs > 0) {
+                responseMs += this.answerGraceMs;
+            }
+
+            // Single/fixed ISI leaves no gap after score — carve a short feedback
+            // slice from the answer window so the next onset does not wipe colors
+            // in the same turn. Total onset spacing = responseMs + remainder.
+            // Never shrink the claim window below MIN_CLAIM_MS_FOR_FEEDBACK_RESERVE
+            // (fixed 1.0s must stay fully pressable).
+            if (
+                remainder === 0 &&
+                !this.activeFeedback &&
+                responseMs - BUTTON_FEEDBACK_RESERVE_MS >= MIN_CLAIM_MS_FOR_FEEDBACK_RESERVE
+            ) {
+                responseMs -= BUTTON_FEEDBACK_RESERVE_MS;
+                remainder = BUTTON_FEEDBACK_RESERVE_MS;
+            }
 
             await this.delay(responseMs);
             if (!this._isGameInProgress) break;
+
+            // End-of-trial colors need a non-zero flash. When there is a remainder
+            // gap, show during that gap. When carve was skipped (short fixed ISI),
+            // still request a reserve flash — GameSession carries it across onset
+            // so claim time stays full and pacing stays ISI (no extra delay).
+            this._feedbackMs = !this.activeFeedback
+                ? remainder > 0
+                    ? Math.min(BUTTON_FEEDBACK_MS, remainder)
+                    : BUTTON_FEEDBACK_RESERVE_MS
+                : 0;
+            this._claimsOpen = false;
             this.processChoice();
 
-            const remainder = isi - responseMs;
             if (remainder > 0) {
                 await this.delay(remainder);
                 if (!this._isGameInProgress) break;
@@ -197,17 +305,52 @@ export class Game {
 
     public stop(): void {
         this._isGameInProgress = false;
-        this.clearDelay();
+        this._paused = false;
+        this._pauseBlocksClaims = true;
+        this.clearDelay(true);
     }
 
-    public addChoice(modality: ModalityId) {
+    /**
+     * Freeze the trial clock (e.g. app backgrounded, or teach Continue gate).
+     * Does not end the session.
+     * @param options.allowClaims - if true, match claims stay open while paused (teach).
+     */
+    public pause(options?: { allowClaims?: boolean }): void {
+        if (!this._isGameInProgress || this._paused) return;
+        this._paused = true;
+        this._pauseBlocksClaims = options?.allowClaims !== true;
+        if (this.delayTimeout !== null && this.delayDeadlineMs != null) {
+            this.delayRemainingMs = Math.max(0, this.delayDeadlineMs - Date.now());
+            clearTimeout(this.delayTimeout);
+            this.delayTimeout = null;
+            this.delayDeadlineMs = null;
+        }
+    }
+
+    /** Continue after {@link pause}. */
+    public resume(): void {
+        if (!this._paused || !this._isGameInProgress) return;
+        this._paused = false;
+        this._pauseBlocksClaims = true;
+        if (this.delayResolve != null) {
+            this.armCurrentDelay();
+        }
+    }
+
+    get isPaused(): boolean {
+        return this._paused;
+    }
+
+    public addChoice(modality: ModalityId): boolean {
         if (
             !this._isGameInProgress ||
+            (this._paused && this._pauseBlocksClaims) ||
+            !this._claimsOpen ||
             !this.activeModalities.includes(modality) ||
             this.gameHistory.boardStates.length < 1 ||
             this.gameHistory.boardStates.length > this.gameLength
         ) {
-            return;
+            return false;
         }
 
         if (this._playerChoice == null) {
@@ -219,6 +362,19 @@ export class Game {
         }
 
         this._playerChoice.claim(modality);
+        return true;
+    }
+
+    /**
+     * Live match outcome for a claim on the current trial (for instant button feedback).
+     * Does not record SDT or Match-% — scoring still happens at the response window close.
+     */
+    public getClaimFeedback(modality: ModalityId): 'success' | 'failed' {
+        const trialIndex = this.gameHistory.boardStates.length - 1;
+        if (trialIndex < 0) return 'failed';
+        const effectiveN = this.getEffectiveN(trialIndex);
+        if (trialIndex < effectiveN) return 'failed';
+        return this.isModalityMatch(modality, effectiveN) ? 'success' : 'failed';
     }
 
     /** Uniform sample of inter-stimulus interval (stimulus onset → next onset). */
@@ -229,27 +385,40 @@ export class Game {
         return Math.round(this.isiMin + this.random() * (this.isiMax - this.isiMin));
     }
 
-    private clearDelay(): void {
+    private clearDelay(resolvePending = true): void {
         if (this.delayTimeout !== null) {
             clearTimeout(this.delayTimeout);
             this.delayTimeout = null;
         }
-        if (this.delayResolve != null) {
+        this.delayDeadlineMs = null;
+        if (resolvePending && this.delayResolve != null) {
             const resolve = this.delayResolve;
             this.delayResolve = null;
+            this.delayRemainingMs = null;
             resolve();
         }
     }
 
+    private armCurrentDelay(): void {
+        const ms = this.delayRemainingMs ?? 0;
+        this.delayDeadlineMs = Date.now() + ms;
+        this.delayTimeout = setTimeout(() => {
+            this.delayTimeout = null;
+            this.delayDeadlineMs = null;
+            this.delayRemainingMs = null;
+            const resolve = this.delayResolve;
+            this.delayResolve = null;
+            resolve?.();
+        }, ms);
+    }
+
     private delay(milliseconds: number): Promise<void> {
         return new Promise((resolve) => {
-            this.clearDelay();
+            this.clearDelay(true);
             this.delayResolve = resolve;
-            this.delayTimeout = setTimeout(() => {
-                this.delayTimeout = null;
-                this.delayResolve = null;
-                resolve();
-            }, milliseconds);
+            this.delayRemainingMs = milliseconds;
+            if (this._paused) return;
+            this.armCurrentDelay();
         });
     }
 
@@ -326,7 +495,12 @@ export class Game {
             recaps[modality] = this.gameHistory.matches[modality] ?? { success: 0, failed: 0 };
         }
         const sdt = buildBlockSdtReport(this.gameHistory.sdtEvents, this.activeModalities);
-        return new GameResult(recaps, this.activeModalities, sdt);
+        const nBackDistribution = this.variableN
+            ? buildNBackDistribution(
+                  this.gameHistory.boardStates.map((state) => state.nForTrial)
+              )
+            : null;
+        return new GameResult(recaps, this.activeModalities, sdt, nBackDistribution);
     }
 
     private resetChoice() {
@@ -417,7 +591,7 @@ export class Game {
                     return lure.value;
                 }
             }
-            return this.getRandomModalityValue(modality);
+            return this.getRandomNonMatch(modality, trueMatchValue);
         }
 
         if (r2 < this.interferenceChance && this.sessionLevel > 1) {
@@ -431,7 +605,7 @@ export class Game {
             }
         }
 
-        return this.getRandomModalityValue(modality);
+        return this.getRandomNonMatch(modality, trueMatchValue);
     }
 
     private generateFromPlan(
@@ -514,6 +688,9 @@ export class Game {
     }
 
     private getRandomPosition(): number {
+        if (this.positionGrid === '2x2') {
+            return Math.floor(this.random() * 4);
+        }
         if (this.allowCenterStimulus) {
             return Math.floor(this.random() * 9);
         }

@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultCurriculumLadder } from './adaptiveCurriculum';
+import { createDefaultMatchLadder } from './ladderPersistence';
 import {
-    LADDER_STORAGE_KEY,
-    LADDER_SCHEMA_VERSION,
-    createDefaultLadderStorage,
-    loadLadder,
-    parseLadderStorage,
-    saveLadder,
+    ADAPTIVE_LADDER_STORAGE_KEY,
+    CYCLIC_LADDER_STORAGE_KEY,
+    createDefaultAdaptiveLadderStorage,
+    createDefaultCyclicLadderStorage,
+    loadAdaptiveLadder,
+    loadCyclicLadder,
+    parseAdaptiveLadderStorage,
+    parseCyclicLadderStorage,
+    saveAdaptiveLadder,
+    saveCyclicLadder,
     type StorageLike,
 } from './ladderPersistence';
 
@@ -21,82 +26,101 @@ function createMemoryStorage(initial: Record<string, string> = {}): StorageLike 
 }
 
 describe('ladderPersistence', () => {
-    it('returns v3 curriculum defaults when storage is empty', () => {
+    it('returns Match% v2 and cyclic v4 defaults when storage is empty', () => {
         const storage = createMemoryStorage();
-        const ladder = loadLadder(storage);
-        expect(ladder.version).toBe(LADDER_SCHEMA_VERSION);
-        expect(ladder.byMode.dual).toEqual(createDefaultCurriculumLadder());
-        expect(ladder.byMode.triple).toEqual(createDefaultCurriculumLadder());
-        expect(ladder.byMode.quad).toEqual(createDefaultCurriculumLadder());
+        expect(loadAdaptiveLadder(storage)).toEqual(createDefaultAdaptiveLadderStorage());
+        expect(loadCyclicLadder(storage)).toEqual(createDefaultCyclicLadderStorage());
     });
 
-    it('round-trips save and load through mock storage', () => {
+    it('round-trips Match% and cyclic ladders independently', () => {
         const storage = createMemoryStorage();
-        const saved = createDefaultLadderStorage();
-        saved.byMode.dual = {
+        const adaptive = createDefaultAdaptiveLadderStorage();
+        adaptive.byMode.dual = { levelIndex: 5, failStreak: 2 };
+        const cyclic = createDefaultCyclicLadderStorage();
+        cyclic.byMode.dual = {
             ...createDefaultCurriculumLadder(),
             stage: 'fixed_fast',
             lureStage: 'E',
             isiTier: 1,
-            failStreak: 2,
+            failStreak: 1,
         };
-        saved.byMode.triple = {
+
+        saveAdaptiveLadder(adaptive, storage);
+        saveCyclicLadder(cyclic, storage);
+
+        expect(loadAdaptiveLadder(storage)).toEqual(adaptive);
+        expect(loadCyclicLadder(storage)).toEqual(cyclic);
+        expect(storage.getItem(ADAPTIVE_LADDER_STORAGE_KEY)).not.toBeNull();
+        expect(storage.getItem(CYCLIC_LADDER_STORAGE_KEY)).not.toBeNull();
+    });
+
+    it('migrates a v3 blob under the adaptive key into the cyclic key', () => {
+        const curriculum = createDefaultCyclicLadderStorage();
+        curriculum.byMode.dual = {
             ...createDefaultCurriculumLadder(),
-            track: 'flexible',
-            stage: 'flex_base',
-            n: 3,
-            lureStage: 'E',
+            stage: 'fixed_clean',
+            failStreak: 1,
         };
+        const storage = createMemoryStorage({
+            [ADAPTIVE_LADDER_STORAGE_KEY]: JSON.stringify(curriculum),
+        });
 
-        saveLadder(saved, storage);
-        const loaded = loadLadder(storage);
+        const adaptive = loadAdaptiveLadder(storage);
+        expect(adaptive).toEqual(createDefaultAdaptiveLadderStorage());
+        expect(loadCyclicLadder(storage).byMode.dual.stage).toBe('fixed_clean');
+        expect(JSON.parse(storage.getItem(ADAPTIVE_LADDER_STORAGE_KEY)!).version).toBe(2);
+    });
 
-        expect(loaded).toEqual(saved);
-        expect(storage.getItem(LADDER_STORAGE_KEY)).not.toBeNull();
+    it('parses classic Match% v2 storage', () => {
+        const raw = JSON.stringify({
+            version: 2,
+            byMode: { dual: { levelIndex: 5, failStreak: 1 } },
+        });
+        expect(parseAdaptiveLadderStorage(raw).byMode.dual).toEqual({
+            levelIndex: 5,
+            failStreak: 1,
+        });
+        expect(parseAdaptiveLadderStorage(raw).byMode.triple).toEqual(createDefaultMatchLadder());
+    });
+
+    it('ignores curriculum-shaped adaptive key without writing cyclic when already present', () => {
+        const existing = createDefaultCyclicLadderStorage();
+        existing.byMode.dual = {
+            ...createDefaultCurriculumLadder(),
+            stage: 'fade',
+        };
+        const storage = createMemoryStorage({
+            [ADAPTIVE_LADDER_STORAGE_KEY]: JSON.stringify(createDefaultCyclicLadderStorage()),
+            [CYCLIC_LADDER_STORAGE_KEY]: JSON.stringify(existing),
+        });
+        loadAdaptiveLadder(storage);
+        expect(loadCyclicLadder(storage).byMode.dual.stage).toBe('teach_ramp');
+    });
+
+    it('migrates legacy fade stage to teach_ramp on load', () => {
+        const storage = createMemoryStorage({
+            [CYCLIC_LADDER_STORAGE_KEY]: JSON.stringify({
+                version: 3,
+                byMode: {
+                    dual: {
+                        track: 'fixed',
+                        n: 2,
+                        stage: 'fade',
+                        lureStage: 'A',
+                        isiTier: 0,
+                        failStreak: 0,
+                        promoteStreak: 0,
+                    },
+                },
+            }),
+        });
+        expect(loadCyclicLadder(storage).byMode.dual.stage).toBe('teach_ramp');
+        expect(loadCyclicLadder(storage).version).toBe(4);
     });
 
     it('returns defaults for corrupt JSON without throwing', () => {
-        const storage = createMemoryStorage({ [LADDER_STORAGE_KEY]: '{not json' });
-        expect(loadLadder(storage)).toEqual(createDefaultLadderStorage());
-    });
-
-    it('returns defaults for v2 Match-% schema (clean break)', () => {
-        const storage = createMemoryStorage({
-            [LADDER_STORAGE_KEY]: JSON.stringify({
-                version: 2,
-                byMode: { dual: { levelIndex: 5, failStreak: 1 } },
-            }),
-        });
-        expect(loadLadder(storage)).toEqual(createDefaultLadderStorage());
-    });
-
-    it('merges partial byMode with defaults per mode', () => {
-        const dual = {
-            ...createDefaultCurriculumLadder(),
-            stage: 'fixed_clean' as const,
-            failStreak: 1,
-        };
-        const raw = JSON.stringify({
-            version: LADDER_SCHEMA_VERSION,
-            byMode: { dual },
-        });
-        const parsed = parseLadderStorage(raw);
-        expect(parsed.byMode.dual).toEqual(dual);
-        expect(parsed.byMode.triple).toEqual(createDefaultCurriculumLadder());
-        expect(parsed.byMode.quad).toEqual(createDefaultCurriculumLadder());
-    });
-
-    it('normalizes invalid mode ladder fields to defaults', () => {
-        const raw = JSON.stringify({
-            version: LADDER_SCHEMA_VERSION,
-            byMode: {
-                dual: { track: 'nope', n: -3, stage: '???', failStreak: -1 },
-            },
-        });
-        const parsed = parseLadderStorage(raw);
-        expect(parsed.byMode.dual.track).toBe('fixed');
-        expect(parsed.byMode.dual.n).toBe(2);
-        expect(parsed.byMode.dual.stage).toBe('instruction');
-        expect(parsed.byMode.dual.failStreak).toBe(0);
+        const storage = createMemoryStorage({ [CYCLIC_LADDER_STORAGE_KEY]: '{not json' });
+        expect(loadCyclicLadder(storage)).toEqual(createDefaultCyclicLadderStorage());
+        expect(parseCyclicLadderStorage('{')).toEqual(createDefaultCyclicLadderStorage());
     });
 });

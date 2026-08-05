@@ -33,7 +33,10 @@ export const useKeyboardControls = () => {
             const countingDown = countdown !== null;
             const interstitialContinue = adaptiveSession?.pendingContinue === true;
             const busy = inSession || countingDown;
-            const adaptiveIdle = settings.playMode === 'adaptive' && !busy && !interstitialContinue;
+            const adaptiveIdle =
+                (settings.playMode === 'adaptive' || settings.playMode === 'cyclic') &&
+                !busy &&
+                !interstitialContinue;
 
             const modality = modalityFromKey(e.key, activeModalities);
             if (modality && inSession) {

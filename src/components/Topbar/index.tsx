@@ -1,29 +1,49 @@
-import { useState } from 'react';
 import SettingsPanel from '../SettingsPanel';
 import './Topbar.scss';
 
 const GearIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+        className="settings-gear"
+    >
         <path
-            fill="currentColor"
-            d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.14 3.05-1.1-.64a6.9 6.9 0 0 0-.1-1l1.05-.75a.75.75 0 0 0 .17-1.03l-1.2-2.08a.75.75 0 0 0-.96-.3l-1.22.5a7.1 7.1 0 0 0-.86-.5l-.18-1.3A.75.75 0 0 0 14.99 3h-2.4a.75.75 0 0 0-.74.64l-.18 1.3c-.3.12-.59.28-.86.46l-1.22-.5a.75.75 0 0 0-.96.3L7.43 7.28a.75.75 0 0 0 .17 1.03l1.05.75c-.05.33-.08.66-.08.99 0 .34.03.67.09 1l-1.06.64a.75.75 0 0 0-.28.99l1.2 2.08c.2.35.64.48 1.01.3l1.18-.55c.27.2.56.37.87.5l.18 1.31c.06.37.38.64.75.64h2.4c.37 0 .69-.27.75-.64l.18-1.31c.31-.13.6-.3.87-.5l1.18.55c.37.18.81.05 1.01-.3l1.2-2.08a.75.75 0 0 0-.28-.99Z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.9 6.9 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.5 6.5 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.5 6.5 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.9 6.9 0 0 1 0-.255c.007-.378-.138-.75-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"
+        />
+        <path
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
         />
     </svg>
 );
 
 interface TopbarProps {
+    settingsOpen: boolean;
+    onSettingsOpenChange: (open: boolean) => void;
     onHapticsEnabledChange?: (enabled: boolean) => void;
 }
 
-const Topbar = ({ onHapticsEnabledChange }: TopbarProps) => {
-    const [settingsOpen, setSettingsOpen] = useState(false);
-
+const Topbar = ({
+    settingsOpen,
+    onSettingsOpenChange,
+    onHapticsEnabledChange,
+}: TopbarProps) => {
     return (
         <>
             <header className="topbar">
                 <div className="brand">
                     <span className="brand-mark" aria-hidden="true" />
-                    <h1 className="title">Dual N Back</h1>
+                    <h1 className="title">N-Back</h1>
                 </div>
 
                 <button
@@ -32,7 +52,7 @@ const Topbar = ({ onHapticsEnabledChange }: TopbarProps) => {
                     aria-label="Settings"
                     aria-haspopup="dialog"
                     aria-expanded={settingsOpen}
-                    onClick={() => setSettingsOpen(true)}
+                    onClick={() => onSettingsOpenChange(true)}
                 >
                     <GearIcon />
                 </button>
@@ -40,7 +60,7 @@ const Topbar = ({ onHapticsEnabledChange }: TopbarProps) => {
 
             <SettingsPanel
                 open={settingsOpen}
-                onClose={() => setSettingsOpen(false)}
+                onClose={() => onSettingsOpenChange(false)}
                 onHapticsEnabledChange={onHapticsEnabledChange}
             />
         </>

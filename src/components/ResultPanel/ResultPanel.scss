@@ -1,26 +1,133 @@
 .result-panel {
-    font-size: 18px;
+    --result-pad: 18px;
+    --result-gap: 11px;
+    --result-gap-section: 18px;
+
     width: min(560px, 100%);
-    margin-left: auto;
-    margin-right: auto;
-    margin-top: 40px;
-    margin-bottom: 45px;
+    max-height: min(78dvh, 100%);
+    margin: 0 auto;
+    padding: var(--result-pad);
+    padding-bottom: max(var(--result-pad), env(safe-area-inset-bottom, 0px));
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     background-color: var(--resultBackground);
     color: var(--colorForeground);
-    padding: 30px;
-    border-radius: 5px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+
+    &.result-panel--interstitial {
+        /* Clear absolute session-exit (44px) + gap from the left edge of the card. */
+        padding-left: max(var(--result-pad), 56px);
+    }
 
     .result-block-role {
-        margin: 0 0 12px;
+        margin: 0 0 var(--result-gap);
         font-size: 0.75rem;
         font-weight: 500;
         letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--textBackground);
+    }
+
+    .result-overall {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            'label value'
+            'counts value';
+        align-items: baseline;
+        column-gap: var(--result-gap);
+        row-gap: 4px;
+        margin-bottom: var(--result-gap-section);
+    }
+
+    .result-overall-label {
+        grid-area: label;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--textBackground);
+    }
+
+    .result-overall-value {
+        grid-area: value;
+        font-size: clamp(1.75rem, 6vw, 2.25rem);
+        font-weight: 600;
+        line-height: 1;
+        color: var(--primary);
+        justify-self: end;
+        align-self: center;
+    }
+
+    .result-overall-counts {
+        grid-area: counts;
+        font-size: 0.85rem;
+        color: var(--textBackground);
+    }
+
+    .result-modality-grid {
+        display: grid;
+        grid-template-columns: repeat(var(--result-modality-count, 2), minmax(0, 1fr));
+        gap: var(--result-gap);
+    }
+
+    .result-modality-card {
+        min-width: 0;
+        padding: 11px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--background) 55%, transparent);
+    }
+
+    .result-modality-title {
+        margin: 0;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--textBackground);
+    }
+
+    .result-modality-pct {
+        margin: 6px 0 11px;
+        font-size: clamp(1.15rem, 4vw, 1.35rem);
+        font-weight: 600;
+        line-height: 1.1;
+        color: var(--textForeground);
+    }
+
+    .result-modality-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin: 0;
+
+        div {
+            min-width: 0;
+        }
+
+        dt {
+            margin: 0;
+            font-size: 0.7rem;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            color: var(--textBackground);
+        }
+
+        dd {
+            margin: 2px 0 0;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--textForeground);
+        }
     }
 
     .result-section-label {
-        margin: 18px 0 8px;
+        margin: 0 0 8px;
         font-size: 0.75rem;
         font-weight: 500;
         letter-spacing: 0.06em;
@@ -28,63 +135,161 @@
         color: var(--textBackground);
     }
 
-    .result-sdt {
+    .result-nback {
+        margin-top: var(--result-gap-section);
+        padding-top: var(--result-gap);
         border-top: 1px solid var(--border);
-        padding-top: 8px;
-        font-size: 0.95rem;
+    }
+
+    .result-nback-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .result-nback-row {
+        display: grid;
+        grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .result-nback-label {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--textForeground);
+    }
+
+    .result-nback-bar {
+        display: block;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--border);
+        overflow: hidden;
+    }
+
+    .result-nback-fill {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--primary);
+    }
+
+    .result-nback-count {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--textForeground);
+        white-space: nowrap;
+        text-align: right;
+    }
+
+    .result-nback-pct {
+        color: var(--textBackground);
+        font-weight: 400;
+    }
+
+    .result-sdt {
+        margin-top: var(--result-gap-section);
+        padding-top: var(--result-gap);
+        border-top: 1px solid var(--border);
+    }
+
+    .result-sdt-scroll {
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -4px;
+        padding: 0 4px;
+    }
+
+    .result-sdt-table {
+        display: grid;
+        grid-template-columns: minmax(4.75rem, max-content) repeat(
+                var(--result-modality-count, 2),
+                minmax(4.25rem, 1fr)
+            );
+        min-width: 100%;
+        width: max-content;
+        font-size: 0.9rem;
+    }
+
+    .result-sdt-row {
+        display: contents;
+    }
+
+    .result-sdt-cell {
+        padding: 7px 8px;
+        text-align: center;
+        white-space: nowrap;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    }
+
+    .result-sdt-head .result-sdt-cell {
+        font-size: 0.7rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--textBackground);
+        border-bottom-color: var(--border);
+    }
+
+    .result-sdt-sticky {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        text-align: left;
+        background: var(--resultBackground);
+        box-shadow: 1px 0 0 color-mix(in srgb, var(--border) 70%, transparent);
+    }
+
+    .result-sdt-metric {
+        color: var(--textBackground);
+        font-size: 0.85rem;
     }
 
     .result-next-hint {
-        margin: 16px 0 0;
+        margin: var(--result-gap-section) 0 0;
         font-size: 0.85rem;
         line-height: 1.4;
         color: var(--textBackground);
     }
 
     .result-continue-actions {
-        margin: 18px 0 0;
+        position: sticky;
+        bottom: 0;
+        margin: var(--result-gap-section) 0 0;
+        padding-top: var(--result-gap);
         display: flex;
         justify-content: center;
+        background: var(--resultBackground);
+    }
+}
+
+@media (max-width: 480px) {
+    .result-panel {
+        --result-pad: 14px;
+        --result-gap: 10px;
+        width: 100%;
+        max-height: min(82dvh, 100%);
+        font-size: 0.95rem;
     }
 
-    .result-continue-hint {
-        color: var(--textForeground);
-
-        .key-space {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 1.4rem;
-            padding: 0 6px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            background: color-mix(in srgb, var(--background) 75%, #000 25%);
-            color: var(--textForeground);
-            font: inherit;
-            font-size: 0.75rem;
-            letter-spacing: 0.04em;
-        }
+    .result-panel .result-modality-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .row {
-        display: flex;
+    /* Tri/quad: keep readable cards instead of 3–4 skinny columns */
+    .result-panel[data-modality-count='3'] .result-modality-grid,
+    .result-panel[data-modality-count='4'] .result-modality-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+}
 
-    .cell {
-        width: 120px;
-        padding: 5px;
-        text-align: center;
-
-        &.left {
-            text-align: left;
-        }
-    }
-
-    .label {
-        line-height: 24px;
-
-        &.bold {
-            font-weight: bold;
-        }
+@media (max-width: 360px) {
+    .result-panel .result-modality-grid {
+        grid-template-columns: 1fr;
     }
 }

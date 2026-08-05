@@ -6,12 +6,22 @@ export const CURRICULUM_MIN_N = 2;
 /** Highest session N on the Adaptive curriculum. */
 export const CURRICULUM_MAX_N = 9;
 
+/** Walkthrough length: max(3, n) trials (plan A1). */
+export function teachWalkthroughTrialCount(n: number): number {
+    return Math.max(3, clampCurriculumN(n));
+}
+
+/** Soft-warn if decide trials below walkthroughLength + 3 (plan A2). */
+export function teachSoftWarnDecideThreshold(n: number): number {
+    return teachWalkthroughTrialCount(n) + 3;
+}
+
 export type AdaptiveTrack = 'fixed' | 'flexible';
 
 export type FixedCurriculumStage =
-    | 'instruction'
-    | 'guided'
-    | 'fade'
+    | 'teach_walkthrough'
+    | 'teach_decide'
+    | 'teach_ramp'
     | 'fixed_clean'
     | 'fixed_lure_near'
     | 'fixed_lure_both'
@@ -29,7 +39,11 @@ export type CurriculumStage = FixedCurriculumStage | FlexibleCurriculumStage;
 
 export type PointerMode = 'off' | 'full' | 'fade';
 
-export type CurriculumBlockRole = 'instruction' | 'guided' | 'fade' | 'assessed';
+export type CurriculumBlockRole =
+    | 'teach_walkthrough'
+    | 'teach_decide'
+    | 'teach_ramp'
+    | 'assessed';
 
 export type CurriculumLadderState = {
     track: AdaptiveTrack;
@@ -52,12 +66,16 @@ export type CurriculumBlockSettings = {
     pointerMode: PointerMode;
     blockRole: CurriculumBlockRole;
     assessed: boolean;
+    /** True during reveal-first teach stages (walkthrough / decide). */
+    teachReveals: boolean;
+    /** Learner-paced COMPARE → REPLACE → NEXT Continues. */
+    teachPacedOps: boolean;
 };
 
 const FIXED_STAGES: readonly FixedCurriculumStage[] = [
-    'instruction',
-    'guided',
-    'fade',
+    'teach_walkthrough',
+    'teach_decide',
+    'teach_ramp',
     'fixed_clean',
     'fixed_lure_near',
     'fixed_lure_both',
@@ -76,6 +94,21 @@ const FLEXIBLE_STAGES: readonly FlexibleCurriculumStage[] = [
 /** Comfortable / fast / jitter base onsets (ms). */
 const ISI_TIER_BASE_MS = [2500, 1500, 1000] as const;
 
+/** Map legacy v3 acquisition stages into reveal-first stages. */
+export function migrateCurriculumStage(stage: string): CurriculumStage | null {
+    switch (stage) {
+        case 'instruction':
+            return 'teach_walkthrough';
+        case 'guided':
+            return 'teach_decide';
+        case 'fade':
+            return 'teach_ramp';
+        default:
+            if (isCurriculumStage(stage)) return stage;
+            return null;
+    }
+}
+
 export function clampCurriculumN(n: number): number {
     if (!Number.isFinite(n)) return CURRICULUM_MIN_N;
     return Math.max(CURRICULUM_MIN_N, Math.min(CURRICULUM_MAX_N, Math.floor(n)));
@@ -85,7 +118,7 @@ export function createDefaultCurriculumLadder(): CurriculumLadderState {
     return {
         track: 'fixed',
         n: CURRICULUM_MIN_N,
-        stage: 'instruction',
+        stage: 'teach_walkthrough',
         lureStage: 'A',
         isiTier: 0,
         failStreak: 0,
@@ -99,6 +132,12 @@ export function isFixedStage(stage: CurriculumStage): stage is FixedCurriculumSt
 
 export function isFlexibleStage(stage: CurriculumStage): stage is FlexibleCurriculumStage {
     return (FLEXIBLE_STAGES as readonly string[]).includes(stage);
+}
+
+export function isTeachStage(stage: CurriculumStage): boolean {
+    return (
+        stage === 'teach_walkthrough' || stage === 'teach_decide' || stage === 'teach_ramp'
+    );
 }
 
 export function isAssessedStage(stage: CurriculumStage): boolean {
@@ -128,9 +167,9 @@ function isiRangeForTier(tier: number, jitter: boolean): { isiMin: number; isiMa
 
 function lureForStage(stage: CurriculumStage): LureStageId {
     switch (stage) {
-        case 'instruction':
-        case 'guided':
-        case 'fade':
+        case 'teach_walkthrough':
+        case 'teach_decide':
+        case 'teach_ramp':
         case 'fixed_clean':
             return 'A';
         case 'fixed_lure_near':
@@ -151,6 +190,8 @@ function lureForStage(stage: CurriculumStage): LureStageId {
 
 function isiTierForStage(stage: CurriculumStage): { isiTier: number; jitter: boolean } {
     switch (stage) {
+        case 'teach_ramp':
+            return { isiTier: 1, jitter: false };
         case 'fixed_fast':
         case 'flex_fast':
             return { isiTier: 1, jitter: false };
@@ -166,15 +207,15 @@ function isiTierForStage(stage: CurriculumStage): { isiTier: number; jitter: boo
 }
 
 function pointerModeForStage(stage: CurriculumStage): PointerMode {
-    if (stage === 'guided') return 'full';
-    if (stage === 'fade') return 'fade';
+    if (stage === 'teach_walkthrough' || stage === 'teach_decide') return 'full';
+    if (stage === 'teach_ramp') return 'fade';
     return 'off';
 }
 
 function blockRoleForStage(stage: CurriculumStage): CurriculumBlockRole {
-    if (stage === 'instruction') return 'instruction';
-    if (stage === 'guided') return 'guided';
-    if (stage === 'fade') return 'fade';
+    if (stage === 'teach_walkthrough') return 'teach_walkthrough';
+    if (stage === 'teach_decide') return 'teach_decide';
+    if (stage === 'teach_ramp') return 'teach_ramp';
     return 'assessed';
 }
 
@@ -186,6 +227,8 @@ export function settingsFromCurriculum(state: CurriculumLadderState): Curriculum
     const { isiMin, isiMax } = isiRangeForTier(isiTier, jitter);
     const assessed = isAssessedStage(stage);
     const variableN = state.track === 'flexible';
+    const teachReveals = stage === 'teach_walkthrough' || stage === 'teach_decide';
+    const teachPacedOps = teachReveals;
 
     return {
         n,
@@ -197,6 +240,8 @@ export function settingsFromCurriculum(state: CurriculumLadderState): Curriculum
         pointerMode: pointerModeForStage(stage),
         blockRole: blockRoleForStage(stage),
         assessed,
+        teachReveals,
+        teachPacedOps,
     };
 }
 
@@ -211,21 +256,48 @@ function withSyncedMeta(state: CurriculumLadderState): CurriculumLadderState {
     };
 }
 
-/** Advance non-assessed acquisition (instruction → guided → fade → first assessed). */
+/**
+ * Advance acquisition where block-end auto-advance applies:
+ * walkthrough → decide, ramp → fixed_clean.
+ * decide → ramp is user opt-out via enterTeachRamp (not here).
+ */
 export function advanceAcquisition(state: CurriculumLadderState): CurriculumLadderState {
     if (state.track !== 'fixed') {
         return withSyncedMeta(state);
     }
-    if (state.stage === 'instruction') {
-        return withSyncedMeta({ ...state, stage: 'guided', failStreak: 0, promoteStreak: 0 });
+    if (state.stage === 'teach_walkthrough') {
+        return withSyncedMeta({
+            ...state,
+            stage: 'teach_decide',
+            failStreak: 0,
+            promoteStreak: 0,
+        });
     }
-    if (state.stage === 'guided') {
-        return withSyncedMeta({ ...state, stage: 'fade', failStreak: 0, promoteStreak: 0 });
-    }
-    if (state.stage === 'fade') {
-        return withSyncedMeta({ ...state, stage: 'fixed_clean', failStreak: 0, promoteStreak: 0 });
+    if (state.stage === 'teach_ramp') {
+        return withSyncedMeta({
+            ...state,
+            stage: 'fixed_clean',
+            failStreak: 0,
+            promoteStreak: 0,
+        });
     }
     return withSyncedMeta(state);
+}
+
+/** Subjective opt-out: hide reveals and enter speed ramp. */
+export function enterTeachRamp(state: CurriculumLadderState): CurriculumLadderState {
+    if (state.track !== 'fixed') {
+        return withSyncedMeta(state);
+    }
+    if (state.stage !== 'teach_decide' && state.stage !== 'teach_walkthrough') {
+        return withSyncedMeta(state);
+    }
+    return withSyncedMeta({
+        ...state,
+        stage: 'teach_ramp',
+        failStreak: 0,
+        promoteStreak: 0,
+    });
 }
 
 export function promoteCurriculumStage(state: CurriculumLadderState): CurriculumLadderState {
@@ -243,6 +315,9 @@ export function promoteCurriculumStage(state: CurriculumLadderState): Curriculum
             });
         }
         if (!isAssessedStage(state.stage)) {
+            if (state.stage === 'teach_decide') {
+                return enterTeachRamp(state);
+            }
             return advanceAcquisition(state);
         }
         const idx = FIXED_STAGES.indexOf(state.stage);
@@ -266,7 +341,7 @@ export function promoteCurriculumStage(state: CurriculumLadderState): Curriculum
         return withSyncedMeta({
             track: 'fixed',
             n: nextN,
-            stage: 'instruction',
+            stage: 'teach_walkthrough',
             lureStage: 'A',
             isiTier: 0,
             failStreak: 0,

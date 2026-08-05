@@ -127,12 +127,29 @@ export function decideCurriculumProgression(input: {
 }): CurriculumProgressionDecision {
     const { ladder, blockRole, sdt } = input;
 
-    if (blockRole === 'instruction' || blockRole === 'guided' || blockRole === 'fade') {
+    if (blockRole === 'teach_walkthrough') {
         const next = advanceAcquisition(ladder);
         return {
             action: 'advance_acquisition',
             ladder: next,
-            reason: `Acquisition ${blockRole} → ${next.stage}`,
+            reason: `Acquisition walkthrough → ${next.stage}`,
+        };
+    }
+
+    if (blockRole === 'teach_decide') {
+        return hold(
+            ladder,
+            ladder.failStreak,
+            'Teach decide — wait for I’ve got it (no auto-advance)'
+        );
+    }
+
+    if (blockRole === 'teach_ramp') {
+        const next = advanceAcquisition(ladder);
+        return {
+            action: 'advance_acquisition',
+            ladder: next,
+            reason: `Acquisition ramp → ${next.stage}`,
         };
     }
 

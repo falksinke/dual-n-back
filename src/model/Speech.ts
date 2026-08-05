@@ -1,5 +1,5 @@
 import { Howl } from 'howler';
-import { ensureAudioReady } from '../audio/unlockAudio';
+import { ensureAudioReady, isAudioSuspendedForBackground } from '../audio/unlockAudio';
 import { AudioPackId, getSoundSrc, getTokensForPack } from './audioPacks';
 
 export class Speech {
@@ -13,12 +13,20 @@ export class Speech {
     }
 
     public play(token: string) {
+        // Start / Continue are user gestures; recover if background-mute got stuck.
+        void ensureAudioReady();
+        if (isAudioSuspendedForBackground()) return;
         const sound = this.sounds.get(token);
         if (!sound) return;
 
-        // AirPods / iOS: context may be interrupted after route change; resume then play.
+        // Play immediately so HTML5 Audio stays inside the user-gesture window when
+        // onset follows Start/Continue. Also retry after context resume for AirPods.
+        sound.play();
         void ensureAudioReady().then(() => {
-            sound.play();
+            if (isAudioSuspendedForBackground()) return;
+            if (!sound.playing()) {
+                sound.play();
+            }
         });
     }
 

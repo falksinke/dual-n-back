@@ -23,11 +23,15 @@ interface InstallNudgeProps {
     blocksCompletedSignal: number;
 }
 
+const EXIT_MS = 220;
+
 const InstallNudge = ({ flowBusy, blocksCompletedSignal }: InstallNudgeProps) => {
     const [prefs, setPrefs] = useState<UiPreferencesV1>(() => loadUiPreferences());
     const [deferred, setDeferred] = useState<BeforeInstallPromptEventLike | null>(null);
     const [standalone] = useState(() => isStandaloneDisplay());
     const [iosSafari] = useState(() => isIosSafari());
+    const [mounted, setMounted] = useState(false);
+    const [leaving, setLeaving] = useState(false);
 
     useEffect(() => {
         return subscribeDeferredInstallPrompt(setDeferred);
@@ -52,7 +56,22 @@ const InstallNudge = ({ flowBusy, blocksCompletedSignal }: InstallNudgeProps) =>
             }
         );
 
-    if (!visible) return null;
+    useEffect(() => {
+        if (visible) {
+            setMounted(true);
+            setLeaving(false);
+            return;
+        }
+        if (!mounted) return;
+        setLeaving(true);
+        const id = window.setTimeout(() => {
+            setMounted(false);
+            setLeaving(false);
+        }, EXIT_MS);
+        return () => window.clearTimeout(id);
+    }, [visible, mounted]);
+
+    if (!mounted) return null;
 
     const onInstall = async () => {
         const event = takeDeferredInstallPrompt();
@@ -68,7 +87,11 @@ const InstallNudge = ({ flowBusy, blocksCompletedSignal }: InstallNudgeProps) =>
     };
 
     return (
-        <aside className="install-nudge" role="region" aria-label="Install app">
+        <aside
+            className={`install-nudge${leaving ? ' is-leaving' : ''}`}
+            role="region"
+            aria-label="Install app"
+        >
             <div className="install-nudge-copy">
                 <p className="install-nudge-title">Install N-Back</p>
                 {iosSafari && deferred == null ? (
@@ -83,7 +106,11 @@ const InstallNudge = ({ flowBusy, blocksCompletedSignal }: InstallNudgeProps) =>
             </div>
             <div className="install-nudge-actions">
                 {deferred != null && (
-                    <button type="button" className="install-nudge-primary" onClick={() => void onInstall()}>
+                    <button
+                        type="button"
+                        className="install-nudge-primary"
+                        onClick={() => void onInstall()}
+                    >
                         Install
                     </button>
                 )}

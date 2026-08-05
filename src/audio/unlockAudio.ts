@@ -4,6 +4,8 @@ type AudioSessionNavigator = Navigator & {
     audioSession?: { type: string };
 };
 
+let audioSuspendedForBackground = false;
+
 /**
  * iOS / AirPods: Web Audio often stays silent after route changes or backgrounding
  * even when Spotify (native AVAudioSession) works. Prefer playback session + resume.
@@ -30,11 +32,57 @@ export function resumeHowlerContext(): Promise<void> {
     );
 }
 
+/**
+ * Clear a stuck background-mute flag when the document is clearly foreground.
+ * pagehide / visibility races can leave audio muted after the tab is visible again.
+ */
+export function clearStuckBackgroundAudioMute(): boolean {
+    if (
+        !audioSuspendedForBackground ||
+        typeof document === 'undefined' ||
+        document.visibilityState !== 'visible'
+    ) {
+        return false;
+    }
+    audioSuspendedForBackground = false;
+    return true;
+}
+
 /** Call from a user gesture and before each SFX play. */
 export function ensureAudioReady(): Promise<void> {
+    clearStuckBackgroundAudioMute();
+    if (audioSuspendedForBackground) return Promise.resolve();
     preferPlaybackAudioSession();
     Howler.mute(false);
     return resumeHowlerContext();
+}
+
+/** Mute + stop playback when the app is backgrounded (iPhone Home / app switcher). */
+export function suspendAudioForBackground(): void {
+    audioSuspendedForBackground = true;
+    try {
+        Howler.stop();
+    } catch {
+        // Howler may not be fully initialized yet.
+    }
+    Howler.mute(true);
+    const ctx = Howler.ctx as AudioContext | null | undefined;
+    if (ctx && ctx.state === 'running' && typeof ctx.suspend === 'function') {
+        void ctx.suspend().then(
+            () => undefined,
+            () => undefined
+        );
+    }
+}
+
+/** Undo {@link suspendAudioForBackground} when returning to the foreground. */
+export function resumeAudioFromBackground(): void {
+    audioSuspendedForBackground = false;
+    void ensureAudioReady();
+}
+
+export function isAudioSuspendedForBackground(): boolean {
+    return audioSuspendedForBackground;
 }
 
 let listenersBound = false;
@@ -45,6 +93,8 @@ export function bindAudioLifecycleResume(): void {
     listenersBound = true;
 
     const wake = () => {
+        if (audioSuspendedForBackground) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
         void ensureAudioReady();
     };
 
@@ -56,17 +106,19 @@ export function bindAudioLifecycleResume(): void {
 
     const ctx = Howler.ctx as AudioContext | null | undefined;
     ctx?.addEventListener?.('statechange', () => {
+        if (audioSuspendedForBackground) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
         if (Howler.ctx && Howler.ctx.state !== 'running') {
             void resumeHowlerContext();
         }
     });
 
     // First gesture unlocks Web Audio / HTML5 pool on iOS.
-    const unlockOnce = () => {
+    // Keep listening — a single early gesture during a stuck mute would otherwise
+    // remove the unlock handler before audio can actually arm.
+    const unlockOnGesture = () => {
         void ensureAudioReady();
-        document.removeEventListener('pointerdown', unlockOnce, true);
-        document.removeEventListener('keydown', unlockOnce, true);
     };
-    document.addEventListener('pointerdown', unlockOnce, { capture: true, passive: true });
-    document.addEventListener('keydown', unlockOnce, { capture: true });
+    document.addEventListener('pointerdown', unlockOnGesture, { capture: true, passive: true });
+    document.addEventListener('keydown', unlockOnGesture, { capture: true });
 }

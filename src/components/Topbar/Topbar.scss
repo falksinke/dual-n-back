@@ -50,25 +50,35 @@
         width: 44px;
         height: 44px;
         padding: 0;
-        border: 0;
+        border: 1px solid transparent;
         border-radius: var(--radius-sm);
         background: transparent;
-        color: #fff;
+        color: var(--textBackground);
         cursor: pointer;
-        transition: opacity var(--settle), transform var(--settle);
+        transition:
+            color var(--settle),
+            background-color var(--settle),
+            border-color var(--settle),
+            transform var(--settle);
 
-        &:hover,
+        .settings-gear {
+            display: block;
+        }
+
+        &:hover {
+            color: var(--textForeground);
+            background: color-mix(in srgb, var(--textForeground) 6%, transparent);
+        }
+
         &:focus-visible {
-            opacity: 0.75;
             outline: none;
+            color: var(--textForeground);
+            border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
         }
 
         &:active {
             transform: scale(0.96);
+            color: var(--primary);
         }
     }
-}
-
-html[data-theme='light'] .settings-trigger {
-    color: var(--textForeground);
 }

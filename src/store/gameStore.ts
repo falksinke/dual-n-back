@@ -14,17 +14,27 @@ import { AudioPackId } from '../model/audioPacks';
 import { ColorId } from '../model/colorSet';
 import { ImageId } from '../model/imageSet';
 import {
-    advanceAcquisition,
     demoteCurriculumStage,
+    enterTeachRamp,
     promoteCurriculumStage,
     settingsFromCurriculum,
+    teachSoftWarnDecideThreshold,
 } from '../model/adaptiveCurriculum';
-import type { CurriculumProgressionDecision } from '../model/adaptiveController';
 import {
-    loadLadder,
-    ModeLadderSnapshot,
-    saveLadder as persistLadder,
-    type LadderStorageV3,
+    clampLevelIndex,
+    maxLevelIndex,
+    settingsFromLevel,
+} from '../model/adaptiveLevels';
+import {
+    createDefaultCyclicLadderByMode,
+    loadAdaptiveLadder,
+    loadCyclicLadder,
+    saveAdaptiveLadder as persistAdaptiveLadder,
+    saveCyclicLadder as persistCyclicLadder,
+    type AdaptiveLadderStorageV2,
+    type CurriculumModeLadderSnapshot,
+    type CyclicLadderStorageV3,
+    type MatchLadderSnapshot,
 } from '../model/ladderPersistence';
 import {
     loadSettings,
@@ -41,17 +51,27 @@ import {
     BlockRole,
     blockRoleFromPhase,
     createInitialAdaptiveSession,
-    nextBlockConfig,
+    nextCyclicBlockConfig,
+    nextMatchBlockConfig,
     playingPhaseForBlockRole,
-    processAdaptiveBlockEnd,
+    processCyclicBlockEnd,
+    processMatchBlockEnd,
+    type LadderControllerAction,
 } from './adaptiveSession';
 import {
     VARIABLE_N_HOLD_OPTIONS,
     type VariableNHoldTrials,
 } from '../model/variableN';
+import type { PositionGrid } from '../model/positionGrid';
 import { GameSession } from './GameSession';
 
-export type PlayMode = 'free' | 'adaptive';
+export type TeachOpStep = 'COMPARE' | 'REPLACE' | 'NEXT';
+
+export type PlayMode = 'free' | 'adaptive' | 'cyclic';
+
+export function isLadderPlayMode(playMode: PlayMode): playMode is 'adaptive' | 'cyclic' {
+    return playMode === 'adaptive' || playMode === 'cyclic';
+}
 
 /** BW-style interference fractions: 0, 1/8 … 1, default 1/8. */
 export const INTERFERENCE_OPTIONS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1] as const;
@@ -84,8 +104,10 @@ export interface GameStoreState {
     /** Seconds remaining in start countdown; null when idle or in-session. */
     countdown: number | null;
     game: GameSession | null;
-    /** Adaptive ladder snapshot per mode (persisted separately from free-play settings). */
-    ladder: Record<ModeId, ModeLadderSnapshot>;
+    /** Classic Match% Adaptive ladder per mode. */
+    ladder: Record<ModeId, MatchLadderSnapshot>;
+    /** Cyclic curriculum ladder per mode. */
+    cyclicLadder: Record<ModeId, CurriculumModeLadderSnapshot>;
     boardState: {
         positionIndex: number;
         audioToken: string | null;
@@ -105,6 +127,8 @@ export interface GameStoreState {
         displayTrials: boolean;
         displayTarget: boolean;
         allowCenterStimulus: boolean;
+        /** Free-play spatial board (`2x2` = 4 squares). Ladder modes ignore this. */
+        positionGrid: PositionGrid;
         /** Current Variable N lag in the center square (requires center cell off). */
         displayVariableNCenter: boolean;
         /** Extra claim time (ms) beyond the ISI scoring window. */
@@ -117,24 +141,38 @@ export interface GameStoreState {
         /** Mean stretch (trials) before Variable N randomly resamples the lag. */
         variableNHoldTrials: VariableNHoldTrials;
         playMode: PlayMode;
-        /** When set (Adaptive), Game uses lure-stage generation instead of interferenceChance. */
+        /** When set (Cyclic), Game uses lure-stage generation instead of interferenceChance. */
         lureStage?: LureStageId;
-        /** Cross-modal match/lure quotas (Adaptive only; default off). */
+        /** Cross-modal match/lure quotas (Adaptive/Cyclic; default off). */
         useBlockQuotas: boolean;
         /**
          * Jaeggi-style fixed match counts in free-play (default on).
-         * Skipped automatically when Variable N or Adaptive lure stages are active.
+         * Skipped automatically when Variable N or Cyclic lure stages are active.
          */
         useJaeggiQuotas: boolean;
     };
-    /** Multi-block Adaptive session FSM; null in free-play or when idle. */
+    /** Multi-block ladder session FSM; null in free-play or when idle. */
     adaptiveSession: AdaptiveSessionState | null;
     lastBlockRole: BlockRole | null;
-    lastControllerAction: CurriculumProgressionDecision | null;
+    lastControllerAction: LadderControllerAction | null;
     /** Subset modalities for remediation blocks; null uses full mode preset. */
     blockModalities: ModalityId[] | null;
-    /** Free-play settings saved when entering adaptive mode. */
+    /** Free-play settings saved when entering Adaptive or Cyclic. */
     freePlaySettingsSnapshot: FreePlaySettingsSnapshot | null;
+    /** Cyclic teach_walkthrough intro dismissed for this N. */
+    teachIntroDismissed: boolean;
+    /** Soft-warn dialog before early I’ve got it opt-out. */
+    teachOptOutWarnShown: boolean;
+    /** Completed decide-phase trials in the current block. */
+    teachDecideTrialCount: number;
+    /** Learner-paced micro-step during reveal-first teach. */
+    teachOpStep: TeachOpStep | null;
+    /** Bumps when teachOpStep advances (animation key). */
+    teachOpEpoch: number;
+    /** Position index revealed during teach (active slot memory). */
+    teachRevealPositionIndex: number | null;
+    /** Letter/audio token revealed during teach. */
+    teachRevealLetter: string | null;
 }
 
 export interface GameStoreActions {
@@ -153,14 +191,25 @@ export interface GameStoreActions {
     increaseLevel: () => void;
     decreaseLadderStep: () => void;
     increaseLadderStep: () => void;
-    /** Dismiss strategy instruction and enter guided practice. */
+    /** Reset all modes’ Cyclic ladder to teach walkthrough and clear teach UI flags. */
+    resetCyclicLearningProgress: () => void;
+    /** Dismiss walkthrough intro without advancing curriculum stage. */
     acknowledgeStrategyInstruction: () => void;
+    requestTeachOptOut: () => void;
+    confirmTeachOptOut: () => void;
+    dismissTeachOptOutWarn: () => void;
+    advanceTeachOp: () => void;
+    /** Step back COMPARE ← REPLACE ← NEXT while the teach trial is still paused. */
+    retreatTeachOp: () => void;
     decreaseTrials: () => void;
     increaseTrials: () => void;
     setIsiMin: (ms: number) => void;
     setIsiMax: (ms: number) => void;
+    /** Set both ISI bounds to the same value (linked dual-thumb drag). */
+    setIsiBoth: (ms: number) => void;
     setAnswerGraceMs: (ms: number) => void;
     setAllowCenterStimulus: (allow: boolean) => void;
+    setPositionGrid: (grid: PositionGrid) => void;
     setDisplayVariableNCenter: (enabled: boolean) => void;
     setMode: (mode: ModeId) => void;
     setAudioPack: (pack: AudioPackId) => void;
@@ -172,6 +221,7 @@ export interface GameStoreActions {
     setUseJaeggiQuotas: (enabled: boolean) => void;
     setActiveFeedback: (enabled: boolean) => void;
     saveLadder: () => void;
+    saveCyclicLadder: () => void;
 }
 
 export type GameStore = GameStoreState & GameStoreActions;
@@ -284,12 +334,25 @@ function asInterferenceChance(value: number): InterferenceChance {
     return match ?? 0.125;
 }
 
-function applyAdaptiveLadderToSettings<
+function applyMatchLadderToSettings<
     T extends GameStoreState['settings'],
->(settings: T, modeLadder: ModeLadderSnapshot): T {
-    const level = settingsFromCurriculum(
-        modeLadder.stage === 'instruction' ? { ...modeLadder, stage: 'guided' } : modeLadder
-    );
+>(settings: T, modeLadder: MatchLadderSnapshot): T {
+    const level = settingsFromLevel(modeLadder.levelIndex);
+    const { lureStage: _drop, ...rest } = settings;
+    return {
+        ...rest,
+        level: level.n,
+        variableN: level.variableN,
+        interferenceChance: asInterferenceChance(level.interferenceChance),
+        isiMin: level.isiMin,
+        isiMax: level.isiMax,
+    } as T;
+}
+
+function applyCyclicLadderToSettings<
+    T extends GameStoreState['settings'],
+>(settings: T, modeLadder: CurriculumModeLadderSnapshot): T {
+    const level = settingsFromCurriculum(modeLadder);
     return {
         ...settings,
         level: level.n,
@@ -301,10 +364,51 @@ function applyAdaptiveLadderToSettings<
     };
 }
 
+function resetTeachUiFlags(): Pick<
+    GameStoreState,
+    | 'teachIntroDismissed'
+    | 'teachOptOutWarnShown'
+    | 'teachDecideTrialCount'
+    | 'teachOpStep'
+    | 'teachOpEpoch'
+    | 'teachRevealPositionIndex'
+    | 'teachRevealLetter'
+> {
+    return {
+        teachIntroDismissed: false,
+        teachOptOutWarnShown: false,
+        teachDecideTrialCount: 0,
+        teachOpStep: null,
+        teachOpEpoch: 0,
+        teachRevealPositionIndex: null,
+        teachRevealLetter: null,
+    };
+}
+
+function enterTeachRampInStore(
+    get: StoreGet,
+    set: StoreSet,
+    mode: ModeId,
+    current: CurriculumModeLadderSnapshot
+): void {
+    const nextModeLadder = enterTeachRamp(current);
+    const nextLadder = { ...get().cyclicLadder, [mode]: nextModeLadder };
+    const settings = applyCyclicLadderToSettings(get().settings, nextModeLadder);
+    set({
+        cyclicLadder: nextLadder,
+        settings,
+        teachOptOutWarnShown: false,
+        teachDecideTrialCount: 0,
+        teachOpStep: null,
+    });
+    get().saveCyclicLadder();
+    persistSettingsSnapshot(settings);
+}
+
 function applyBlockConfigToSettings<
     T extends GameStoreState['settings'],
 >(settings: T, block: BlockConfig): T {
-    return {
+    const next: T = {
         ...settings,
         level: block.n,
         trials: block.trials,
@@ -312,8 +416,12 @@ function applyBlockConfigToSettings<
         interferenceChance: asInterferenceChance(block.interferenceChance),
         isiMin: block.isiMin,
         isiMax: block.isiMax,
-        lureStage: block.lureStage,
     };
+    if (block.lureStage != null) {
+        return { ...next, lureStage: block.lureStage };
+    }
+    const { lureStage: _removed, ...rest } = next;
+    return rest as T;
 }
 
 function beginCountdown(get: StoreGet, set: StoreSet, clearLastResult: boolean) {
@@ -335,8 +443,9 @@ function finalizeGameEnd(
 ) {
     const state = get();
     const modalities = getModalitiesForMode(state.settings.mode);
+    const playMode = state.settings.playMode;
 
-    if (state.settings.playMode !== 'adaptive' || state.adaptiveSession == null) {
+    if (!isLadderPlayMode(playMode) || state.adaptiveSession == null) {
         set({
             results: {
                 all: [...state.results.all, result],
@@ -346,7 +455,7 @@ function finalizeGameEnd(
             activeModalities: modalities,
             btns: createEmptyButtons(modalities),
             boardState: { ...defaultBoardState },
-            lastBlockRole: state.settings.playMode === 'free' ? 'free' : null,
+            lastBlockRole: playMode === 'free' ? 'free' : null,
             lastControllerAction: null,
         });
         recordBlockCompleted();
@@ -354,23 +463,57 @@ function finalizeGameEnd(
     }
 
     if (blockRoleFromPhase(state.adaptiveSession.phase) == null) {
-        throw new Error('Adaptive block ended outside a playing phase');
+        throw new Error('Ladder block ended outside a playing phase');
     }
 
     const mode = state.settings.mode;
-    const modeLadder = state.ladder[mode];
-    const endResult = processAdaptiveBlockEnd(
+
+    if (playMode === 'adaptive') {
+        const endResult = processMatchBlockEnd(
+            state.adaptiveSession,
+            state.ladder[mode],
+            result.generalMatchPercentage
+        );
+        const nextLadderByMode = {
+            ...state.ladder,
+            [mode]: endResult.ladder,
+        };
+        set({
+            results: {
+                all: [...state.results.all, result],
+                last: result,
+            },
+            game: null,
+            activeModalities: modalities,
+            btns: createEmptyButtons(modalities),
+            boardState: { ...defaultBoardState },
+            ladder: nextLadderByMode,
+            adaptiveSession: endResult.session,
+            lastBlockRole: endResult.blockRole,
+            lastControllerAction: endResult.action,
+            settings: applyMatchLadderToSettings(state.settings, endResult.ladder),
+        });
+        get().saveLadder();
+        recordBlockCompleted();
+        return;
+    }
+
+    const endResult = processCyclicBlockEnd(
         state.adaptiveSession,
-        modeLadder,
+        state.cyclicLadder[mode],
         result.sdt,
         result.generalMatchPercentage
     );
-
-    const nextLadderByMode = {
-        ...state.ladder,
+    const nextCyclicByMode = {
+        ...state.cyclicLadder,
         [mode]: endResult.ladder,
     };
-
+    const teachReset =
+        endResult.ladder.stage === 'teach_decide'
+            ? { teachDecideTrialCount: 0, teachOptOutWarnShown: false, teachOpStep: null }
+            : endResult.ladder.stage === 'teach_walkthrough'
+              ? { ...resetTeachUiFlags(), teachIntroDismissed: false }
+              : {};
     set({
         results: {
             all: [...state.results.all, result],
@@ -380,19 +523,22 @@ function finalizeGameEnd(
         activeModalities: modalities,
         btns: createEmptyButtons(modalities),
         boardState: { ...defaultBoardState },
-        ladder: nextLadderByMode,
+        cyclicLadder: nextCyclicByMode,
         adaptiveSession: endResult.session,
         lastBlockRole: endResult.blockRole,
         lastControllerAction: endResult.action,
-        settings: applyAdaptiveLadderToSettings(state.settings, endResult.ladder),
+        settings: applyCyclicLadderToSettings(state.settings, endResult.ladder),
+        ...teachReset,
     });
-    get().saveLadder();
+    get().saveCyclicLadder();
     recordBlockCompleted();
 }
 
-function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): LadderStorageV3 {
+function matchLadderStorageFromState(
+    ladder: Record<ModeId, MatchLadderSnapshot>
+): AdaptiveLadderStorageV2 {
     return {
-        version: 3,
+        version: 2,
         byMode: {
             dual: { ...ladder.dual },
             triple: { ...ladder.triple },
@@ -401,7 +547,21 @@ function ladderStorageFromState(ladder: Record<ModeId, ModeLadderSnapshot>): Lad
     };
 }
 
-const initialLadderStorage = loadLadder();
+function cyclicLadderStorageFromState(
+    ladder: Record<ModeId, CurriculumModeLadderSnapshot>
+): CyclicLadderStorageV3 {
+    return {
+        version: 4,
+        byMode: {
+            dual: { ...ladder.dual },
+            triple: { ...ladder.triple },
+            quad: { ...ladder.quad },
+        },
+    };
+}
+
+const initialAdaptiveLadderStorage = loadAdaptiveLadder();
+const initialCyclicLadderStorage = loadCyclicLadder();
 const initialPersistedSettings = loadSettings();
 
 /** First-run free-play settings (also used when resetting fixture expectations in tests). */
@@ -414,6 +574,7 @@ export const createDefaultFreePlaySettings = (): GameStoreState['settings'] => (
     displayTrials: true,
     displayTarget: true,
     allowCenterStimulus: false,
+    positionGrid: '3x3',
     displayVariableNCenter: false,
     answerGraceMs: ANSWER_GRACE_DEFAULT_MS,
     useFullScreen: false,
@@ -438,6 +599,7 @@ function settingsFromPersisted(): GameStoreState['settings'] {
         displayTrials: s.displayTrials,
         displayTarget: s.displayTarget,
         allowCenterStimulus: s.allowCenterStimulus,
+        positionGrid: s.positionGrid,
         displayVariableNCenter: s.displayVariableNCenter,
         answerGraceMs: s.answerGraceMs,
         useFullScreen: s.useFullScreen,
@@ -494,7 +656,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     activeModalities: getModalitiesForMode(initialPersistedSettings.mode),
     countdown: null,
     game: null,
-    ladder: initialLadderStorage.byMode,
+    ladder: initialAdaptiveLadderStorage.byMode,
+    cyclicLadder: initialCyclicLadderStorage.byMode,
     boardState: { ...defaultBoardState },
     settings: settingsFromPersisted(),
     adaptiveSession: null,
@@ -502,6 +665,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     lastControllerAction: null,
     blockModalities: null,
     freePlaySettingsSnapshot: null,
+    ...resetTeachUiFlags(),
     startGame: () => {
         if (get().game !== null) {
             throw new Error('Game is already defined');
@@ -510,6 +674,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             throw new Error('Countdown is already in progress');
         }
 
+        // Start is a user gesture — force unmute/resume even after a stuck pagehide mute.
         void ensureAudioReady();
 
         const state = get();
@@ -520,12 +685,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 ...state.adaptiveSession,
                 pendingContinue: false,
             };
-            const block = nextBlockConfig(
-                session,
-                state.ladder[mode],
-                mode,
-                state.settings.trials
-            );
+            const block =
+                playMode === 'adaptive'
+                    ? nextMatchBlockConfig(state.ladder[mode], state.settings.trials)
+                    : nextCyclicBlockConfig(
+                          session,
+                          state.cyclicLadder[mode],
+                          mode,
+                          state.settings.trials
+                      );
             const applied = applyBlockConfigToStore(state.settings, block);
             set({
                 adaptiveSession: {
@@ -539,32 +707,56 @@ export const useGameStore = create<GameStore>((set, get) => ({
             return;
         }
 
-        if (playMode === 'adaptive') {
+        if (isLadderPlayMode(playMode)) {
             const needsNewSession =
                 state.adaptiveSession == null ||
                 state.adaptiveSession.phase === 'summary';
             if (needsNewSession) {
                 const session = createInitialAdaptiveSession();
-                const block = nextBlockConfig(
-                    session,
-                    state.ladder[mode],
-                    mode,
-                    state.settings.trials
-                );
-                const applied = applyBlockConfigToStore(
-                    applyAdaptiveLadderToSettings(state.settings, state.ladder[mode]),
-                    block
-                );
-                set({
-                    adaptiveSession: {
-                        ...session,
-                        phase: playingPhaseForBlockRole(block.blockRole),
-                    },
-                    lastBlockRole: null,
-                    lastControllerAction: null,
-                    settings: applied.settings,
-                    blockModalities: applied.blockModalities,
-                });
+                if (playMode === 'adaptive') {
+                    const block = nextMatchBlockConfig(
+                        state.ladder[mode],
+                        state.settings.trials
+                    );
+                    const applied = applyBlockConfigToStore(
+                        applyMatchLadderToSettings(state.settings, state.ladder[mode]),
+                        block
+                    );
+                    set({
+                        adaptiveSession: {
+                            ...session,
+                            phase: playingPhaseForBlockRole(block.blockRole),
+                        },
+                        lastBlockRole: null,
+                        lastControllerAction: null,
+                        settings: applied.settings,
+                        blockModalities: applied.blockModalities,
+                    });
+                } else {
+                    const block = nextCyclicBlockConfig(
+                        session,
+                        state.cyclicLadder[mode],
+                        mode,
+                        state.settings.trials
+                    );
+                    const applied = applyBlockConfigToStore(
+                        applyCyclicLadderToSettings(
+                            state.settings,
+                            state.cyclicLadder[mode]
+                        ),
+                        block
+                    );
+                    set({
+                        adaptiveSession: {
+                            ...session,
+                            phase: playingPhaseForBlockRole(block.blockRole),
+                        },
+                        lastBlockRole: null,
+                        lastControllerAction: null,
+                        settings: applied.settings,
+                        blockModalities: applied.blockModalities,
+                    });
+                }
             }
         } else {
             set({
@@ -594,6 +786,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             adaptiveSession: null,
             lastBlockRole: null,
             lastControllerAction: null,
+            ...resetTeachUiFlags(),
         });
     },
     selectModality: (modality) => {
@@ -652,7 +845,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
             return;
         }
         const mode = state.settings.mode;
-        const current = state.ladder[mode];
+        const playMode = state.settings.playMode;
+
+        if (playMode === 'adaptive') {
+            const current = state.ladder[mode];
+            if (current.levelIndex <= 0 && current.failStreak === 0) {
+                return;
+            }
+            const nextModeLadder: MatchLadderSnapshot = {
+                levelIndex: clampLevelIndex(current.levelIndex - 1),
+                failStreak: 0,
+            };
+            const nextLadder = { ...state.ladder, [mode]: nextModeLadder };
+            set({
+                ladder: nextLadder,
+                settings: applyMatchLadderToSettings(state.settings, nextModeLadder),
+            });
+            get().saveLadder();
+            persistSettingsSnapshot(get().settings);
+            return;
+        }
+
+        if (playMode !== 'cyclic') {
+            return;
+        }
+
+        const current = state.cyclicLadder[mode];
         const nextModeLadder = { ...demoteCurriculumStage(current), failStreak: 0 };
         if (
             nextModeLadder.stage === current.stage &&
@@ -662,16 +880,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
         ) {
             return;
         }
-        const nextLadder = { ...state.ladder, [mode]: nextModeLadder };
-        let settings = state.settings;
-        if (settings.playMode === 'adaptive') {
-            settings = applyAdaptiveLadderToSettings(settings, nextModeLadder);
-        }
-        set({ ladder: nextLadder, settings });
-        get().saveLadder();
-        if (settings.playMode === 'adaptive') {
-            persistSettingsSnapshot(get().settings);
-        }
+        const nextLadder = { ...state.cyclicLadder, [mode]: nextModeLadder };
+        set({
+            cyclicLadder: nextLadder,
+            settings: applyCyclicLadderToSettings(state.settings, nextModeLadder),
+        });
+        get().saveCyclicLadder();
+        persistSettingsSnapshot(get().settings);
     },
     increaseLadderStep: () => {
         const state = get();
@@ -679,7 +894,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
             return;
         }
         const mode = state.settings.mode;
-        const current = state.ladder[mode];
+        const playMode = state.settings.playMode;
+
+        if (playMode === 'adaptive') {
+            const current = state.ladder[mode];
+            const ceiling = maxLevelIndex();
+            if (current.levelIndex >= ceiling && current.failStreak === 0) {
+                return;
+            }
+            const nextModeLadder: MatchLadderSnapshot = {
+                levelIndex: clampLevelIndex(current.levelIndex + 1),
+                failStreak: 0,
+            };
+            const nextLadder = { ...state.ladder, [mode]: nextModeLadder };
+            set({
+                ladder: nextLadder,
+                settings: applyMatchLadderToSettings(state.settings, nextModeLadder),
+            });
+            get().saveLadder();
+            persistSettingsSnapshot(get().settings);
+            return;
+        }
+
+        if (playMode !== 'cyclic') {
+            return;
+        }
+
+        const current = state.cyclicLadder[mode];
         const nextModeLadder = { ...promoteCurriculumStage(current), failStreak: 0 };
         if (
             nextModeLadder.stage === current.stage &&
@@ -689,36 +930,127 @@ export const useGameStore = create<GameStore>((set, get) => ({
         ) {
             return;
         }
-        const nextLadder = { ...state.ladder, [mode]: nextModeLadder };
-        let settings = state.settings;
-        if (settings.playMode === 'adaptive') {
-            settings = applyAdaptiveLadderToSettings(settings, nextModeLadder);
+        const nextLadder = { ...state.cyclicLadder, [mode]: nextModeLadder };
+        set({
+            cyclicLadder: nextLadder,
+            settings: applyCyclicLadderToSettings(state.settings, nextModeLadder),
+        });
+        get().saveCyclicLadder();
+        persistSettingsSnapshot(get().settings);
+    },
+    resetCyclicLearningProgress: () => {
+        const state = get();
+        if (state.game !== null || state.countdown !== null) {
+            return;
         }
-        set({ ladder: nextLadder, settings });
-        get().saveLadder();
-        if (settings.playMode === 'adaptive') {
-            persistSettingsSnapshot(get().settings);
-        }
+        const byMode = createDefaultCyclicLadderByMode();
+        const mode = state.settings.mode;
+        const nextModeLadder = byMode[mode];
+        const withMode = {
+            ...state.settings,
+            playMode: 'cyclic' as const,
+        };
+        set({
+            cyclicLadder: byMode,
+            settings: applyCyclicLadderToSettings(withMode, nextModeLadder),
+            adaptiveSession: null,
+            lastBlockRole: null,
+            lastControllerAction: null,
+            blockModalities: null,
+            results: { ...state.results, last: null },
+            ...resetTeachUiFlags(),
+        });
+        get().saveCyclicLadder();
+        persistSettingsSnapshot(get().settings);
     },
     acknowledgeStrategyInstruction: () => {
         const state = get();
         if (state.game !== null || state.countdown !== null) {
             return;
         }
-        if (state.settings.playMode !== 'adaptive') {
+        if (state.settings.playMode !== 'cyclic') {
             return;
         }
         const mode = state.settings.mode;
-        const current = state.ladder[mode];
-        if (current.stage !== 'instruction') {
+        const current = state.cyclicLadder[mode];
+        if (current.stage !== 'teach_walkthrough') {
             return;
         }
-        const nextModeLadder = advanceAcquisition(current);
-        const nextLadder = { ...state.ladder, [mode]: nextModeLadder };
-        const settings = applyAdaptiveLadderToSettings(state.settings, nextModeLadder);
-        set({ ladder: nextLadder, settings });
-        get().saveLadder();
-        persistSettingsSnapshot(get().settings);
+        set({ teachIntroDismissed: true });
+    },
+    requestTeachOptOut: () => {
+        const state = get();
+        if (state.settings.playMode !== 'cyclic') {
+            return;
+        }
+        const mode = state.settings.mode;
+        const current = state.cyclicLadder[mode];
+        if (current.stage !== 'teach_decide' && current.stage !== 'teach_walkthrough') {
+            return;
+        }
+        const threshold = teachSoftWarnDecideThreshold(current.n);
+        if (
+            current.stage === 'teach_decide' &&
+            state.teachDecideTrialCount < threshold &&
+            !state.teachOptOutWarnShown
+        ) {
+            set({ teachOptOutWarnShown: true });
+            return;
+        }
+        enterTeachRampInStore(get, set, mode, current);
+    },
+    confirmTeachOptOut: () => {
+        const state = get();
+        if (state.settings.playMode !== 'cyclic') {
+            return;
+        }
+        const mode = state.settings.mode;
+        const current = state.cyclicLadder[mode];
+        if (current.stage !== 'teach_decide' && current.stage !== 'teach_walkthrough') {
+            return;
+        }
+        enterTeachRampInStore(get, set, mode, current);
+    },
+    dismissTeachOptOutWarn: () => {
+        set({ teachOptOutWarnShown: false });
+    },
+    advanceTeachOp: () => {
+        const state = get();
+        const current = state.teachOpStep;
+        if (current === null) return;
+        let next: TeachOpStep | null;
+        if (current === 'COMPARE') next = 'REPLACE';
+        else if (current === 'REPLACE') next = 'NEXT';
+        else next = null;
+        set({
+            teachOpStep: next,
+            teachOpEpoch: state.teachOpEpoch + 1,
+            ...(next === null
+                ? {
+                      boardState: {
+                          ...state.boardState,
+                          positionIndex: -1,
+                          colorId: null,
+                          imageId: null,
+                      },
+                      teachRevealPositionIndex: null,
+                      teachRevealLetter: null,
+                  }
+                : {}),
+        });
+        if (next === null) {
+            state.game?.resume();
+        }
+    },
+    retreatTeachOp: () => {
+        const state = get();
+        const current = state.teachOpStep;
+        if (current === null || current === 'COMPARE') return;
+        const prev: TeachOpStep = current === 'NEXT' ? 'REPLACE' : 'COMPARE';
+        set({
+            teachOpStep: prev,
+            teachOpEpoch: state.teachOpEpoch + 1,
+        });
     },
     decreaseTrials: () => {
         set((state) => ({
@@ -767,6 +1099,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
         });
         persistSettingsSnapshot(get().settings);
     },
+    setIsiBoth: (ms) => {
+        const value = clampIsiMs(ms);
+        set((state) => ({
+            settings: {
+                ...state.settings,
+                isiMin: value,
+                isiMax: value,
+            },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
     setAnswerGraceMs: (ms) => {
         set((state) => ({
             settings: {
@@ -787,9 +1130,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }));
         persistSettingsSnapshot(get().settings);
     },
+    setPositionGrid: (grid) => {
+        set((state) => ({
+            settings: {
+                ...state.settings,
+                positionGrid: grid,
+                // 2×2 has no middle cell for center stimulus / N digit.
+                displayVariableNCenter:
+                    grid === '2x2' ? false : state.settings.displayVariableNCenter,
+            },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
     setDisplayVariableNCenter: (enabled) => {
         set((state) => {
-            if (enabled && state.settings.allowCenterStimulus) {
+            if (
+                enabled &&
+                (state.settings.allowCenterStimulus || state.settings.positionGrid === '2x2')
+            ) {
                 return state;
             }
             return {
@@ -810,15 +1168,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const modalities = getModalitiesForMode(mode);
             let settings = { ...state.settings, mode };
             if (
-                settings.playMode === 'adaptive' &&
+                isLadderPlayMode(settings.playMode) &&
                 state.countdown === null
             ) {
-                settings = applyAdaptiveLadderToSettings(settings, state.ladder[mode]);
+                settings =
+                    settings.playMode === 'adaptive'
+                        ? applyMatchLadderToSettings(settings, state.ladder[mode])
+                        : applyCyclicLadderToSettings(settings, state.cyclicLadder[mode]);
             }
             return {
                 settings,
                 activeModalities: modalities,
                 btns: createEmptyButtons(modalities),
+                ...resetTeachUiFlags(),
             };
         });
         persistSettingsSnapshot(get().settings);
@@ -883,24 +1245,44 @@ export const useGameStore = create<GameStore>((set, get) => ({
             return;
         }
         set((current) => {
-            if (playMode === 'adaptive') {
-                const modeLadder = current.ladder[current.settings.mode];
+            if (isLadderPlayMode(playMode)) {
                 const enteringFromFree = current.settings.playMode === 'free';
+                const snapshot = enteringFromFree
+                    ? {
+                          level: current.settings.level,
+                          isiMin: current.settings.isiMin,
+                          isiMax: current.settings.isiMax,
+                          variableN: current.settings.variableN,
+                          variableNHoldTrials: current.settings.variableNHoldTrials,
+                          interferenceChance: current.settings.interferenceChance,
+                      }
+                    : current.freePlaySettingsSnapshot;
+                const withMode = { ...current.settings, playMode };
+                const settings =
+                    playMode === 'adaptive'
+                        ? applyMatchLadderToSettings(
+                              withMode,
+                              current.ladder[current.settings.mode]
+                          )
+                        : applyCyclicLadderToSettings(
+                              withMode,
+                              current.cyclicLadder[current.settings.mode]
+                          );
+                const teachIntroPending =
+                    playMode === 'cyclic' &&
+                    current.cyclicLadder[current.settings.mode].stage === 'teach_walkthrough';
                 return {
-                    freePlaySettingsSnapshot: enteringFromFree
-                        ? {
-                              level: current.settings.level,
-                              isiMin: current.settings.isiMin,
-                              isiMax: current.settings.isiMax,
-                              variableN: current.settings.variableN,
-                              variableNHoldTrials: current.settings.variableNHoldTrials,
-                              interferenceChance: current.settings.interferenceChance,
-                          }
-                        : current.freePlaySettingsSnapshot,
-                    settings: applyAdaptiveLadderToSettings(
-                        { ...current.settings, playMode },
-                        modeLadder
-                    ),
+                    freePlaySettingsSnapshot: snapshot,
+                    settings,
+                    adaptiveSession: null,
+                    lastBlockRole: null,
+                    lastControllerAction: null,
+                    blockModalities: null,
+                    // Results panel was blocking the teach intro after a prior block.
+                    ...(teachIntroPending
+                        ? { results: { ...current.results, last: null } }
+                        : {}),
+                    ...resetTeachUiFlags(),
                 };
             }
 
@@ -927,12 +1309,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 lastBlockRole: null,
                 lastControllerAction: null,
                 blockModalities: null,
+                ...resetTeachUiFlags(),
             };
         });
         persistSettingsSnapshot(get().settings);
     },
     saveLadder: () => {
-        persistLadder(ladderStorageFromState(get().ladder));
+        persistAdaptiveLadder(matchLadderStorageFromState(get().ladder));
+        noteLocalProgressChanged();
+    },
+    saveCyclicLadder: () => {
+        persistCyclicLadder(cyclicLadderStorageFromState(get().cyclicLadder));
         noteLocalProgressChanged();
     },
 }));

@@ -26,11 +26,18 @@ describe('useKeyboardControls', () => {
                 displayTrials: true,
                 displayTarget: true,
                 allowCenterStimulus: true,
+                positionGrid: '3x3',
+                displayVariableNCenter: false,
+                answerGraceMs: 250,
                 useFullScreen: false,
                 mode: 'dual',
                 audioPack: 'letters',
                 interferenceChance: 0.125,
                 variableN: false,
+                variableNHoldTrials: 1,
+                playMode: 'free',
+                useBlockQuotas: false,
+                useJaeggiQuotas: true,
             },
             btns: { audio: ButtonState.None, position: ButtonState.None },
         });
@@ -123,10 +130,9 @@ describe('useKeyboardControls', () => {
     it('continues adaptive interstitial on space', () => {
         useGameStore.setState({
             adaptiveSession: {
-                ...createInitialAdaptiveSession({ adaptiveTarget: 3 }),
+                ...createInitialAdaptiveSession(),
                 phase: 'interstitial',
                 pendingContinue: true,
-                openAnchorsDone: 1,
             },
             settings: {
                 ...useGameStore.getState().settings,
@@ -146,10 +152,9 @@ describe('useKeyboardControls', () => {
     it('ends adaptive interstitial on Escape', () => {
         useGameStore.setState({
             adaptiveSession: {
-                ...createInitialAdaptiveSession({ adaptiveTarget: 3 }),
+                ...createInitialAdaptiveSession(),
                 phase: 'interstitial',
                 pendingContinue: true,
-                openAnchorsDone: 1,
             },
             settings: {
                 ...useGameStore.getState().settings,

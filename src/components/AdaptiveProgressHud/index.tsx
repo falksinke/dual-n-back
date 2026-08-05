@@ -2,10 +2,16 @@ import { useRef } from 'react';
 import {
     adaptiveConditionCode,
     adaptivePhaseLabel,
+    matchConditionCode,
+    matchProgressFlavor,
     progressLevelFlavor,
 } from '../adaptiveDisplay';
 import { CURRICULUM_MAX_N, CURRICULUM_MIN_N } from '../../model/adaptiveCurriculum';
-import type { ModeLadderSnapshot } from '../../model/ladderPersistence';
+import { maxLevelIndex } from '../../model/adaptiveLevels';
+import type {
+    CurriculumModeLadderSnapshot,
+    MatchLadderSnapshot,
+} from '../../model/ladderPersistence';
 import { AdaptiveSessionState } from '../../store/adaptiveSession';
 import { useGameStore } from '../../store/gameStore';
 import { useHapticsEnabled } from '../../haptics/HapticsEnabledContext';
@@ -16,10 +22,17 @@ import {
 } from '../../haptics/haptics';
 import './AdaptiveProgressHud.scss';
 
-interface AdaptiveProgressHudProps {
-    ladder: ModeLadderSnapshot;
-    session: AdaptiveSessionState | null;
-}
+type AdaptiveProgressHudProps =
+    | {
+          path: 'cyclic';
+          ladder: CurriculumModeLadderSnapshot;
+          session: AdaptiveSessionState | null;
+      }
+    | {
+          path: 'adaptive';
+          ladder: MatchLadderSnapshot;
+          session: AdaptiveSessionState | null;
+      };
 
 interface LadderStepButtonProps {
     label: string;
@@ -68,30 +81,39 @@ const LadderStepButton = ({ label, disabled, onStep, children }: LadderStepButto
     );
 };
 
-const AdaptiveProgressHud = ({ ladder, session }: AdaptiveProgressHudProps) => {
+const AdaptiveProgressHud = (props: AdaptiveProgressHudProps) => {
+    const { path, ladder, session } = props;
     const phase =
-        session != null && session.phase !== 'idle' ? adaptivePhaseLabel(session.phase) : 'Ready';
-    const code = adaptiveConditionCode(ladder);
-    const flavor = progressLevelFlavor(ladder);
+        session != null && session.phase !== 'idle'
+            ? adaptivePhaseLabel(session.phase, path)
+            : 'Ready';
+    const code =
+        path === 'cyclic' ? adaptiveConditionCode(ladder) : matchConditionCode(ladder);
+    const flavor =
+        path === 'cyclic' ? progressLevelFlavor(ladder) : matchProgressFlavor(ladder);
     const decreaseLadderStep = useGameStore((state) => state.decreaseLadderStep);
     const increaseLadderStep = useGameStore((state) => state.increaseLadderStep);
     const busy = useGameStore(
         (state) => state.game !== null || state.countdown !== null
     );
     const atMin =
-        ladder.track === 'fixed' &&
-        ladder.n <= CURRICULUM_MIN_N &&
-        (ladder.stage === 'instruction' || ladder.stage === 'guided');
+        path === 'cyclic'
+            ? ladder.track === 'fixed' &&
+              ladder.n <= CURRICULUM_MIN_N &&
+              (ladder.stage === 'teach_walkthrough' || ladder.stage === 'teach_decide')
+            : ladder.levelIndex <= 0;
     const atMax =
-        ladder.track === 'flexible' &&
-        ladder.n >= CURRICULUM_MAX_N &&
-        ladder.stage === 'flex_mastery';
+        path === 'cyclic'
+            ? ladder.track === 'flexible' &&
+              ladder.n >= CURRICULUM_MAX_N &&
+              ladder.stage === 'flex_mastery'
+            : ladder.levelIndex >= maxLevelIndex();
 
     return (
         <div
             className="adaptive-hud"
             aria-live="polite"
-            aria-label={`Adaptive condition ${code}, ${flavor}`}
+            aria-label={`${path === 'cyclic' ? 'Cyclic' : 'Adaptive'} condition ${code}, ${flavor}`}
         >
             <div className="adaptive-hud-row">
                 <LadderStepButton

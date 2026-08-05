@@ -1,3 +1,5 @@
+import { noteLocalProgressChanged } from '../sync/noteLocal';
+
 export const UI_PREFERENCES_STORAGE_KEY = 'nback-ui-preferences';
 export const UI_PREFERENCES_SCHEMA_VERSION = 2 as const;
 
@@ -110,10 +112,15 @@ export function saveUiPreferences(data: UiPreferencesV1, storage?: StorageLike):
     }
 }
 
+function noteUiPrefsChanged(): void {
+    noteLocalProgressChanged();
+}
+
 export function recordVisit(storage?: StorageLike): UiPreferencesV1 {
     const current = loadUiPreferences(storage);
     const next = { ...current, visitCount: current.visitCount + 1 };
     saveUiPreferences(next, storage);
+    noteUiPrefsChanged();
     return next;
 }
 
@@ -121,6 +128,7 @@ export function recordBlockCompleted(storage?: StorageLike): UiPreferencesV1 {
     const current = loadUiPreferences(storage);
     const next = { ...current, blocksCompleted: current.blocksCompleted + 1 };
     saveUiPreferences(next, storage);
+    noteUiPrefsChanged();
     return next;
 }
 
@@ -128,6 +136,7 @@ export function dismissInstallNudge(now = Date.now(), storage?: StorageLike): Ui
     const current = loadUiPreferences(storage);
     const next = { ...current, installNudgeDismissedAt: now };
     saveUiPreferences(next, storage);
+    noteUiPrefsChanged();
     return next;
 }
 
@@ -138,5 +147,7 @@ export function setHapticFeedbackEnabled(
     const current = loadUiPreferences(storage);
     const next = { ...current, hapticFeedbackEnabled: enabled };
     saveUiPreferences(next, storage);
+    noteUiPrefsChanged();
     return next;
 }
+

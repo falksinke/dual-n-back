@@ -8,19 +8,29 @@ import {
     type CurriculumLadderState,
     type PointerMode,
 } from '../model/adaptiveCurriculum';
+import {
+    decideProgression,
+    settingsFromLevel,
+    type ProgressionDecision,
+} from '../model/adaptiveLevels';
 import type { LureStageId } from '../model/lureStages';
-import type { ModeLadderSnapshot } from '../model/ladderPersistence';
+import type {
+    CurriculumModeLadderSnapshot,
+    MatchLadderSnapshot,
+} from '../model/ladderPersistence';
 import type { BlockSdtReport } from '../model/sdtMetrics';
 
 export type AdaptivePhase = 'idle' | 'playing' | 'interstitial' | 'summary';
 
-/** Playable Adaptive block roles (instruction is UI-only before countdown). */
-export type BlockRole = CurriculumBlockRole | 'free';
+/** Playable block roles (teach stages are in-session; assessed is lure/speed path). */
+export type BlockRole = CurriculumBlockRole | 'match' | 'free';
+
+export type LadderControllerAction = CurriculumProgressionDecision | ProgressionDecision;
 
 export interface AdaptiveSessionState {
     phase: AdaptivePhase;
     blocksDone: number;
-    lastAction: CurriculumProgressionDecision | null;
+    lastAction: LadderControllerAction | null;
     pendingContinue: boolean;
 }
 
@@ -37,17 +47,12 @@ export interface BlockConfig {
     variableN: boolean;
     trials: number;
     blockRole: BlockRole;
-    lureStage: LureStageId;
+    /** Cyclic path only — omit on Match% Adaptive so Game uses interferenceChance. */
+    lureStage?: LureStageId;
     pointerMode: PointerMode;
-    curriculumStage: CurriculumLadderState['stage'];
-}
-
-/** Instruction is a pre-play screen; first playable stage is guided. */
-function playableLadder(ladder: ModeLadderSnapshot): ModeLadderSnapshot {
-    if (ladder.stage === 'instruction') {
-        return { ...ladder, stage: 'guided' };
-    }
-    return ladder;
+    curriculumStage?: CurriculumLadderState['stage'];
+    teachReveals?: boolean;
+    teachPacedOps?: boolean;
 }
 
 export function createInitialAdaptiveSession(
@@ -74,14 +79,13 @@ export function shouldStartNextBlock(session: AdaptiveSessionState): boolean {
     return session.pendingContinue === true && session.phase === 'interstitial';
 }
 
-export function nextBlockConfig(
+export function nextCyclicBlockConfig(
     _session: AdaptiveSessionState,
-    ladder: ModeLadderSnapshot,
+    ladder: CurriculumModeLadderSnapshot,
     _mode: string,
     trials: number
 ): BlockConfig {
-    const playable = playableLadder(ladder);
-    const level = settingsFromCurriculum(playable);
+    const level = settingsFromCurriculum(ladder);
     return {
         n: level.n,
         isiMin: level.isiMin,
@@ -92,29 +96,65 @@ export function nextBlockConfig(
         blockRole: level.blockRole,
         lureStage: level.lureStage,
         pointerMode: level.pointerMode,
-        curriculumStage: playable.stage,
+        curriculumStage: ladder.stage,
+        teachReveals: level.teachReveals,
+        teachPacedOps: level.teachPacedOps,
     };
 }
 
-export interface AdaptiveBlockEndResult {
+/** @deprecated Prefer nextCyclicBlockConfig. */
+export function nextBlockConfig(
+    session: AdaptiveSessionState,
+    ladder: CurriculumModeLadderSnapshot,
+    mode: string,
+    trials: number
+): BlockConfig {
+    return nextCyclicBlockConfig(session, ladder, mode, trials);
+}
+
+export function nextMatchBlockConfig(
+    ladder: MatchLadderSnapshot,
+    trials: number
+): BlockConfig {
+    const level = settingsFromLevel(ladder.levelIndex);
+    return {
+        n: level.n,
+        isiMin: level.isiMin,
+        isiMax: level.isiMax,
+        interferenceChance: level.interferenceChance,
+        variableN: level.variableN,
+        trials,
+        blockRole: 'match',
+        pointerMode: 'off',
+    };
+}
+
+export interface CyclicBlockEndResult {
     session: AdaptiveSessionState;
-    ladder: ModeLadderSnapshot;
+    ladder: CurriculumModeLadderSnapshot;
     action: CurriculumProgressionDecision;
     blockRole: BlockRole;
     sessionComplete: boolean;
 }
 
-export function processAdaptiveBlockEnd(
+export interface MatchBlockEndResult {
+    session: AdaptiveSessionState;
+    ladder: MatchLadderSnapshot;
+    action: ProgressionDecision;
+    blockRole: BlockRole;
+    sessionComplete: boolean;
+}
+
+export function processCyclicBlockEnd(
     session: AdaptiveSessionState,
-    ladder: ModeLadderSnapshot,
+    ladder: CurriculumModeLadderSnapshot,
     sdt: BlockSdtReport | null,
     matchPct = 0,
     blockRole?: CurriculumBlockRole
-): AdaptiveBlockEndResult {
-    const playable = playableLadder(ladder);
-    const role = blockRole ?? settingsFromCurriculum(playable).blockRole;
+): CyclicBlockEndResult {
+    const role = blockRole ?? settingsFromCurriculum(ladder).blockRole;
     const action = decideCurriculumProgression({
-        ladder: playable,
+        ladder,
         blockRole: role,
         sdt,
         matchPct,
@@ -132,6 +172,47 @@ export function processAdaptiveBlockEnd(
         ladder: action.ladder,
         action,
         blockRole: role,
+        sessionComplete: false,
+    };
+}
+
+/** @deprecated Prefer processCyclicBlockEnd. */
+export function processAdaptiveBlockEnd(
+    session: AdaptiveSessionState,
+    ladder: CurriculumModeLadderSnapshot,
+    sdt: BlockSdtReport | null,
+    matchPct = 0,
+    blockRole?: CurriculumBlockRole
+): CyclicBlockEndResult {
+    return processCyclicBlockEnd(session, ladder, sdt, matchPct, blockRole);
+}
+
+export function processMatchBlockEnd(
+    session: AdaptiveSessionState,
+    ladder: MatchLadderSnapshot,
+    matchPct: number
+): MatchBlockEndResult {
+    const action = decideProgression({
+        levelIndex: ladder.levelIndex,
+        failStreak: ladder.failStreak,
+        matchPct,
+    });
+
+    const nextSession: AdaptiveSessionState = {
+        phase: 'interstitial',
+        blocksDone: session.blocksDone + 1,
+        lastAction: action,
+        pendingContinue: true,
+    };
+
+    return {
+        session: nextSession,
+        ladder: {
+            levelIndex: action.levelIndex,
+            failStreak: action.failStreak,
+        },
+        action,
+        blockRole: 'match',
         sessionComplete: false,
     };
 }

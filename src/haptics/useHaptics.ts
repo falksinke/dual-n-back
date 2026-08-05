@@ -47,7 +47,12 @@ export function useHaptics({ rootRef, enabled, uiRevision }: UseHapticsOptions):
         };
 
         const observer = new MutationObserver(schedule);
-        observer.observe(root, { childList: true, subtree: true });
+        observer.observe(root, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['aria-hidden', 'disabled'],
+        });
 
         return () => {
             observer.disconnect();

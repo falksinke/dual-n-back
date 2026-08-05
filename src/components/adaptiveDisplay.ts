@@ -4,7 +4,15 @@ import {
     type CurriculumLadderState,
 } from '../model/adaptiveCurriculum';
 import { FAILS_TO_DEMOTE_STAGE } from '../model/adaptiveController';
-import { AdaptivePhase, BlockRole } from '../store/adaptiveSession';
+import {
+    FAILS_TO_DEMOTE,
+    PROMOTE_MATCH_PCT,
+    settingsFromLevel,
+    stepWithinN,
+    type ProgressionDecision,
+} from '../model/adaptiveLevels';
+import type { MatchLadderSnapshot } from '../model/ladderPersistence';
+import { AdaptivePhase, BlockRole, type LadderControllerAction } from '../store/adaptiveSession';
 import { msToSecondsLabel } from '../model/isi';
 
 export function formatSdtMetric(value: number): string {
@@ -14,14 +22,16 @@ export function formatSdtMetric(value: number): string {
 
 export function blockRoleLabel(role: BlockRole | null): string | null {
     switch (role) {
-        case 'guided':
-            return 'Guided block';
-        case 'fade':
-            return 'Pointer fade';
+        case 'teach_walkthrough':
+            return 'Teach walkthrough';
+        case 'teach_decide':
+            return 'Teach decide';
+        case 'teach_ramp':
+            return 'Teach ramp';
         case 'assessed':
+            return 'Cyclic block';
+        case 'match':
             return 'Adaptive block';
-        case 'instruction':
-            return 'Strategy instruction';
         case 'free':
             return null;
         default:
@@ -29,25 +39,42 @@ export function blockRoleLabel(role: BlockRole | null): string | null {
     }
 }
 
-const ACTION_VERB: Record<CurriculumProgressionDecision['action'], string> = {
+const CURRICULUM_ACTION_VERB: Record<CurriculumProgressionDecision['action'], string> = {
     hold: 'Hold',
     promote: 'Advance',
     demote: 'Step back',
     advance_acquisition: 'Next scaffold',
 };
 
-export function controllerActionHint(
-    action: CurriculumProgressionDecision | null
-): string | null {
+const MATCH_ACTION_VERB: Record<ProgressionDecision['action'], string> = {
+    hold: 'Hold',
+    promote: 'Advance',
+    demote: 'Step back',
+};
+
+function isCurriculumAction(
+    action: LadderControllerAction
+): action is CurriculumProgressionDecision {
+    return 'ladder' in action;
+}
+
+export function controllerActionHint(action: LadderControllerAction | null): string | null {
     if (action == null) return null;
-    const verb = ACTION_VERB[action.action];
+    if (isCurriculumAction(action)) {
+        const verb = CURRICULUM_ACTION_VERB[action.action];
+        return action.reason ? `${verb}: ${action.reason}` : verb;
+    }
+    const verb = MATCH_ACTION_VERB[action.action];
     return action.reason ? `${verb}: ${action.reason}` : verb;
 }
 
-export function adaptivePhaseLabel(phase: AdaptivePhase): string {
+export function adaptivePhaseLabel(
+    phase: AdaptivePhase,
+    path: 'adaptive' | 'cyclic' = 'cyclic'
+): string {
     switch (phase) {
         case 'playing':
-            return 'Adaptive';
+            return path === 'adaptive' ? 'Adaptive' : 'Cyclic';
         case 'interstitial':
             return 'Break';
         case 'summary':
@@ -57,16 +84,19 @@ export function adaptivePhaseLabel(phase: AdaptivePhase): string {
     }
 }
 
-/** Compact condition id used as the Adaptive badge, e.g. C2-fixed_clean. */
+/** Compact condition id used as the Cyclic badge, e.g. C2. */
 export function adaptiveConditionCode(ladder: CurriculumLadderState): string {
     const track = ladder.track === 'flexible' ? 'F' : 'C';
     return `${track}${ladder.n}`;
 }
 
+/** Compact Match% Adaptive badge, e.g. L12. */
+export function matchConditionCode(ladder: MatchLadderSnapshot): string {
+    return `L${ladder.levelIndex}`;
+}
+
 export function progressLevelFlavor(ladder: CurriculumLadderState): string {
-    const level = settingsFromCurriculum(
-        ladder.stage === 'instruction' ? { ...ladder, stage: 'guided' } : ladder
-    );
+    const level = settingsFromCurriculum(ladder);
     const parts: string[] = [ladder.stage.replace(/_/g, ' '), `n=${level.n}`];
     if (level.isiMin === level.isiMax) {
         parts.push(`${msToSecondsLabel(level.isiMin)}s`);
@@ -85,14 +115,40 @@ export function progressLevelSummary(ladder: CurriculumLadderState): string {
     return `${track} · ${progressLevelFlavor(ladder)}`;
 }
 
+export function matchProgressFlavor(ladder: MatchLadderSnapshot): string {
+    const level = settingsFromLevel(ladder.levelIndex);
+    const step = stepWithinN(ladder.levelIndex);
+    const parts: string[] = [`step ${step}/9`, `n=${level.n}`];
+    if (level.isiMin === level.isiMax) {
+        parts.push(`${msToSecondsLabel(level.isiMin)}s`);
+    } else {
+        parts.push(`${msToSecondsLabel(level.isiMin)}–${msToSecondsLabel(level.isiMax)}s`);
+    }
+    if (level.interferenceChance > 0) {
+        parts.push('interference');
+    }
+    if (level.variableN) {
+        parts.push('var N');
+    }
+    return parts.join(' · ');
+}
+
+export function matchProgressSummary(ladder: MatchLadderSnapshot): string {
+    return `Match% ladder · ${matchProgressFlavor(ladder)}`;
+}
+
 export function adaptiveBlockProgress(
-    session: { blocksDone: number; phase: AdaptivePhase } | null
+    session: { blocksDone: number; phase: AdaptivePhase } | null,
+    path: 'adaptive' | 'cyclic' = 'cyclic'
 ): { done: number; failHint: string } | null {
     if (session == null) return null;
     if (session.phase === 'playing' || session.phase === 'interstitial') {
         return {
             done: session.blocksDone,
-            failHint: `Lure-sensitive gates · demote after ${FAILS_TO_DEMOTE_STAGE} fails`,
+            failHint:
+                path === 'adaptive'
+                    ? `Promote ≥${PROMOTE_MATCH_PCT}% · demote after ${FAILS_TO_DEMOTE} fails`
+                    : `Lure-sensitive gates · demote after ${FAILS_TO_DEMOTE_STAGE} fails`,
         };
     }
     return null;

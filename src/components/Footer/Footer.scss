@@ -9,7 +9,8 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 16px;
-    padding: 0 var(--frame-right) var(--frame-bottom) var(--frame-left);
+    /* Sit on the home-indicator edge; don't inherit the larger frame pad. */
+    padding: 0 var(--frame-right) max(4px, var(--safe-bottom)) var(--frame-left);
     color: var(--textBackground);
 
     .footer-hints {
@@ -52,12 +53,20 @@
 
     .footer-meta {
         display: flex;
-        align-items: center;
+        align-items: flex-end;
         gap: 8px;
+        margin-left: auto;
         font-size: 0.7rem;
         letter-spacing: 0.06em;
         text-transform: lowercase;
         opacity: 0.85;
+    }
+
+    /* Keyboard shortcut chrome is for pointer/keyboard machines, not phones. */
+    @media (pointer: coarse), (hover: none) {
+        .footer-hints {
+            display: none;
+        }
     }
 
     .meta-theme {
@@ -65,7 +74,8 @@
         margin: 0;
         min-width: 44px;
         min-height: 44px;
-        padding: 10px 12px;
+        /* Keep 44px hit area; bias the label to the bottom edge. */
+        padding: 22px 12px 2px;
         border: 0;
         border-radius: 4px;
         background: transparent;

@@ -1,0 +1,139 @@
+.teach-opt-out-warn {
+    --settle: 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    --backdrop: 180ms cubic-bezier(0.22, 1, 0.36, 1);
+
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--background) 55%, transparent);
+    padding: var(--frame-top) var(--frame-right) var(--frame-bottom) var(--frame-left);
+    animation: teach-warn-backdrop-in var(--backdrop) both;
+}
+
+.teach-opt-out-warn.is-leaving {
+    animation: teach-warn-backdrop-out var(--backdrop) both;
+    pointer-events: none;
+}
+
+.teach-opt-out-warn__panel {
+    max-width: 22rem;
+    padding: 20px;
+    border-radius: 10px;
+    border: thin solid var(--boardBorder);
+    background: var(--boardBackground);
+    transform-origin: center;
+    animation: teach-warn-panel-in var(--settle) both;
+}
+
+.teach-opt-out-warn.is-leaving .teach-opt-out-warn__panel {
+    animation: teach-warn-panel-out var(--settle) both;
+}
+
+.teach-opt-out-warn__title {
+    margin: 0 0 8px;
+    font-size: 1rem;
+}
+
+.teach-opt-out-warn__body {
+    margin: 0 0 16px;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--textBackground);
+}
+
+.teach-opt-out-warn__actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.teach-opt-out-warn__secondary,
+.teach-opt-out-warn__primary {
+    --press: 140ms cubic-bezier(0.22, 1, 0.36, 1);
+
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transform: translateZ(0);
+    transition: transform var(--press);
+
+    &:active:not(:disabled) {
+        transform: scale(0.96);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: default;
+    }
+}
+
+.teach-opt-out-warn__secondary {
+    border: thin solid var(--boardBorder);
+    background: transparent;
+    color: var(--textBackground);
+}
+
+.teach-opt-out-warn__primary {
+    border: thin solid var(--primary);
+    background: var(--primary);
+    color: var(--textForeground);
+}
+
+@keyframes teach-warn-backdrop-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes teach-warn-backdrop-out {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes teach-warn-panel-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes teach-warn-panel-out {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .teach-opt-out-warn,
+    .teach-opt-out-warn.is-leaving,
+    .teach-opt-out-warn__panel,
+    .teach-opt-out-warn.is-leaving .teach-opt-out-warn__panel {
+        animation: none;
+    }
+
+    .teach-opt-out-warn__secondary,
+    .teach-opt-out-warn__primary {
+        transition: none;
+    }
+}

@@ -62,6 +62,7 @@ describe('Game', () => {
         for (let i = 0; i < 4; i++) {
             if (i === 3) {
                 game.addChoice('position');
+                expect(game.getClaimFeedback('position')).toBe('success');
             }
             await vi.advanceTimersByTimeAsync(50);
         }
@@ -88,6 +89,71 @@ describe('Game', () => {
         expect(onEnded).not.toHaveBeenCalled();
     });
 
+    it('pauses the trial clock and resumes without skipping ahead', async () => {
+        const matchTimes: number[] = [];
+        const game = new Game(
+            2,
+            1,
+            1200,
+            1200,
+            () => undefined,
+            () => {
+                matchTimes.push(Date.now());
+            },
+            () => undefined,
+            {
+                random: () => 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        // Fixed 1200ms ISI → 1000ms response + 200ms feedback reserve.
+        await vi.advanceTimersByTimeAsync(400);
+        game.pause();
+        expect(game.isPaused).toBe(true);
+        expect(game.addChoice('position')).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(matchTimes).toHaveLength(0);
+
+        game.resume();
+        expect(game.isPaused).toBe(false);
+        await vi.advanceTimersByTimeAsync(600);
+        expect(matchTimes).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(200);
+        await startPromise;
+    });
+
+    it('allows claims when paused with allowClaims', async () => {
+        vi.useFakeTimers();
+        const game = new Game(
+            2,
+            1,
+            50,
+            50,
+            () => undefined,
+            () => undefined,
+            () => undefined,
+            {
+                random: () => 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        await vi.advanceTimersByTimeAsync(10);
+        game.pause({ allowClaims: true });
+        expect(game.isPaused).toBe(true);
+        expect(game.addChoice('position')).toBe(true);
+        game.resume();
+        await vi.advanceTimersByTimeAsync(5000);
+        await startPromise;
+        vi.useRealTimers();
+    });
+
     it('fires onStateChanged before onPlayerChoiceValidated within a trial', async () => {
         const order: string[] = [];
         const game = new Game(
@@ -107,6 +173,39 @@ describe('Game', () => {
         await startPromise;
 
         expect(order).toEqual(['state', 'validated']);
+    });
+
+    it('samples only four cells on a 2x2 position grid', async () => {
+        const positions: number[] = [];
+        let randomCall = 0;
+        const game = new Game(
+            2,
+            16,
+            10,
+            10,
+            (state) => positions.push(state.positionIndex),
+            () => undefined,
+            () => undefined,
+            {
+                positionGrid: '2x2',
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                random: () => {
+                    const t = (randomCall++ % 20) / 20;
+                    return t;
+                },
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 16; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(positions.length).toBe(16);
+        expect(positions.every((p) => p >= 0 && p <= 3)).toBe(true);
+        expect(new Set(positions).size).toBeGreaterThan(1);
     });
 
     it('never places a stimulus in the center cell when allowCenterStimulus is false', async () => {
@@ -147,7 +246,7 @@ describe('Game', () => {
         const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
         let randomCall = 0;
         // Dual mode: 1 random per modality + ISI per trial (no history yet at n=2).
-        // ISI random 0 → 500ms; ISI random 1 → 1500ms (response 500 + remainder 1000).
+        // Grace off for pacing characterization: short ISI 500; long 500 + remainder 1000.
         const randomValues = [0.5, 0.5, 0, 0.5, 0.5, 1];
 
         const game = new Game(
@@ -162,6 +261,7 @@ describe('Game', () => {
                 random: () => randomValues[randomCall++] ?? 0.5,
                 interferenceChance: 0,
                 guaranteedMatchChance: 0,
+                answerGraceMs: 0,
             }
         );
 
@@ -177,6 +277,45 @@ describe('Game', () => {
 
         expect(delayCalls).toContain(500);
         expect(delayCalls).toContain(1000);
+    });
+
+    it('adds answer grace to every trial claim window', async () => {
+        const matchTimes: number[] = [];
+        let randomCall = 0;
+        // Force short ISI (1000) then long (1500) with isiMin=1000.
+        const randomValues = [0.5, 0.5, 0, 0.5, 0.5, 1];
+
+        const game = new Game(
+            2,
+            2,
+            1000,
+            1500,
+            () => undefined,
+            () => {
+                matchTimes.push(Date.now());
+            },
+            () => undefined,
+            {
+                random: () => randomValues[randomCall++] ?? 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                answerGraceMs: 250,
+            }
+        );
+
+        const t0 = Date.now();
+        const startPromise = game.start();
+        // Short: 1000 + 250 grace, carve → response 1050 + feedback 200
+        await vi.advanceTimersByTimeAsync(1050);
+        expect(matchTimes).toHaveLength(1);
+        expect(matchTimes[0]! - t0).toBe(1050);
+        await vi.advanceTimersByTimeAsync(200);
+        // Long: isiMin 1000 + 250 grace, remainder 500 → score at 1250, gap 500
+        await vi.advanceTimersByTimeAsync(1250);
+        expect(matchTimes).toHaveLength(2);
+        expect(matchTimes[1]! - matchTimes[0]!).toBe(1450);
+        await vi.advanceTimersByTimeAsync(500);
+        await startPromise;
     });
 
     it('scores at isiMin even when onset-to-onset ISI is longer', async () => {
@@ -199,6 +338,7 @@ describe('Game', () => {
                 random: () => randomValues[randomCall++] ?? 0.5,
                 interferenceChance: 0,
                 guaranteedMatchChance: 0,
+                answerGraceMs: 0,
             }
         );
 
@@ -216,8 +356,9 @@ describe('Game', () => {
         expect(matchTimes[1]! - matchTimes[0]!).toBe(1500);
     });
 
-    it('keeps a single delay when isiMin equals isiMax', async () => {
+    it('splits fixed ISI into response window plus feedback reserve', async () => {
         const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+        const feedbackMs: number[] = [];
         let randomCall = 0;
         const game = new Game(
             2,
@@ -225,25 +366,209 @@ describe('Game', () => {
             1200,
             1200,
             () => undefined,
-            () => undefined,
+            (_match, ms) => {
+                feedbackMs.push(ms);
+            },
             () => undefined,
             {
                 random: () => [0.5, 0.5, 0.5, 0.5][randomCall++] ?? 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                answerGraceMs: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(200);
+        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(200);
+        await startPromise;
+
+        const delayCalls = setTimeoutSpy.mock.calls
+            .map(([, ms]) => ms)
+            .filter((ms): ms is number => typeof ms === 'number');
+        expect(delayCalls.filter((ms) => ms === 1000).length).toBeGreaterThanOrEqual(2);
+        expect(delayCalls.filter((ms) => ms === 200).length).toBeGreaterThanOrEqual(2);
+        expect(feedbackMs.every((ms) => ms === 200)).toBe(true);
+    });
+
+    it('keeps onset spacing equal to fixed ISI when feedback is reserved', async () => {
+        const matchTimes: number[] = [];
+        let randomCall = 0;
+        const game = new Game(
+            2,
+            2,
+            1200,
+            1200,
+            () => undefined,
+            () => {
+                matchTimes.push(Date.now());
+            },
+            () => undefined,
+            {
+                random: () => [0.5, 0.5, 0.5, 0.5][randomCall++] ?? 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                answerGraceMs: 0,
+            }
+        );
+
+        const t0 = Date.now();
+        const startPromise = game.start();
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(matchTimes).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(200);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(matchTimes).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(200);
+        await startPromise;
+
+        expect(matchTimes[0]! - t0).toBe(1000);
+        expect(matchTimes[1]! - matchTimes[0]!).toBe(1200);
+    });
+
+    it('keeps the full fixed ISI responsive when instant feedback is enabled', async () => {
+        const game = new Game(
+            1,
+            1,
+            1000,
+            1000,
+            () => undefined,
+            () => undefined,
+            () => undefined,
+            {
+                activeFeedback: true,
+                random: () => 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                answerGraceMs: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        await vi.advanceTimersByTimeAsync(900);
+
+        expect(game.addChoice('position')).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(100);
+        await startPromise;
+    });
+
+    it('keeps the full fixed 1s ISI responsive without instant feedback', async () => {
+        const feedbackMs: number[] = [];
+        const game = new Game(
+            1,
+            1,
+            1000,
+            1000,
+            () => undefined,
+            (_match, ms) => {
+                feedbackMs.push(ms);
+            },
+            () => undefined,
+            {
+                activeFeedback: false,
+                random: () => 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                answerGraceMs: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        await vi.advanceTimersByTimeAsync(900);
+
+        expect(game.addChoice('position')).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(100);
+        await startPromise;
+
+        // Claim window stays 1000ms; feedback still requested as an overlap flash.
+        expect(feedbackMs).toEqual([200]);
+    });
+
+    it('ignores claims after the response window closes', async () => {
+        const matches: Array<Record<string, string | undefined>> = [];
+        let randomCall = 0;
+        const game = new Game(
+            2,
+            3,
+            100,
+            300,
+            () => undefined,
+            (match) => {
+                matches.push({ ...match });
+            },
+            () => undefined,
+            {
+                // Warmup trials + force non-targets after history: no guaranteed match / interference.
+                random: () => [0.5, 0.5, 1, 0.5, 0.5, 1, 0.5, 0.5, 1][randomCall++] ?? 0.9,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                answerGraceMs: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        // Trial 0: score at 100, remainder 200
+        await vi.advanceTimersByTimeAsync(100);
+        // Late press during remainder — must not attach to next trial.
+        game.addChoice('position');
+        await vi.advanceTimersByTimeAsync(200);
+        // Trial 1
+        await vi.advanceTimersByTimeAsync(100);
+        await vi.advanceTimersByTimeAsync(200);
+        // Trial 2
+        await vi.advanceTimersByTimeAsync(100);
+        await vi.advanceTimersByTimeAsync(200);
+        await startPromise;
+
+        // No position key on later matches means CR (unclaimed non-target) or warmup.
+        for (const match of matches) {
+            expect(match.position).not.toBe('failed');
+        }
+    });
+
+    it('does not create accidental targets on free-play random trials', async () => {
+        let result: import('./GameResult').GameResult | undefined;
+        let seed = 42;
+        const random = () => {
+            seed = (seed * 16807) % 2147483647;
+            return (seed - 1) / 2147483646;
+        };
+
+        const game = new Game(
+            2,
+            40,
+            10,
+            10,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                random,
                 interferenceChance: 0,
                 guaranteedMatchChance: 0,
             }
         );
 
         const startPromise = game.start();
-        await vi.advanceTimersByTimeAsync(1200);
-        await vi.advanceTimersByTimeAsync(1200);
+        for (let i = 0; i < 40; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
         await startPromise;
 
-        const delayCalls = setTimeoutSpy.mock.calls
-            .map(([, ms]) => ms)
-            .filter((ms): ms is number => typeof ms === 'number' && ms === 1200);
-        expect(delayCalls.length).toBeGreaterThanOrEqual(2);
-        expect(delayCalls.every((ms) => ms === 1200)).toBe(true);
+        // No forced targets and no claims → only CRs if accidental matches are repaired.
+        expect(result!.sdt?.byModality.position?.all.counts.misses ?? -1).toBe(0);
+        expect(result!.sdt?.byModality.audio?.all.counts.misses ?? -1).toBe(0);
+        expect(result!.sdt?.byModality.position?.all.counts.hits ?? -1).toBe(0);
+        expect(result!.sdt?.byModality.audio?.all.counts.hits ?? -1).toBe(0);
+        expect(result!.sdt?.byModality.position?.all.counts.correctRejections ?? 0).toBeGreaterThan(
+            0
+        );
     });
 
     it('uses near-miss history when interference is 1 and claiming N-back fails', async () => {
@@ -643,5 +968,80 @@ describe('Game', () => {
         await startPromise;
 
         expect(result).not.toBeNull();
+    });
+
+    it('uses Jaeggi quotas in free-play when enabled', async () => {
+        let seed = 42;
+        const random = () => {
+            seed = (seed * 1664525 + 1013904223) >>> 0;
+            return seed / 0x100000000;
+        };
+
+        let result: import('./GameResult').GameResult | null = null;
+        const game = new Game(
+            2,
+            20,
+            10,
+            10,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                useJaeggiQuotas: true,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                random,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 20; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(result).not.toBeNull();
+        const position = result!.sdt?.byModality.position?.all.counts;
+        const audio = result!.sdt?.byModality.audio?.all.counts;
+        expect((position?.hits ?? 0) + (position?.misses ?? 0)).toBe(4);
+        expect((audio?.hits ?? 0) + (audio?.misses ?? 0)).toBe(4);
+    });
+
+    it('plans Jaeggi-scale targets when variable N is on', async () => {
+        let randomCall = 0;
+        let result: import('./GameResult').GameResult | null = null;
+        const game = new Game(
+            2,
+            20,
+            10,
+            10,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                useJaeggiQuotas: true,
+                variableN: true,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                random: () => (randomCall++ % 100) / 100,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 20; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(result).not.toBeNull();
+        const position = result!.sdt?.byModality.position?.all.counts;
+        const audio = result!.sdt?.byModality.audio?.all.counts;
+        // Variable N planner restores Jaeggi density (4+4 at 20 trials).
+        expect((position?.hits ?? 0) + (position?.misses ?? 0)).toBe(4);
+        expect((audio?.hits ?? 0) + (audio?.misses ?? 0)).toBe(4);
     });
 });
