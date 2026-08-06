@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import './TeachOptOutWarn.scss';
 
 interface TeachOptOutWarnProps {
@@ -8,18 +9,21 @@ interface TeachOptOutWarnProps {
 
 const EXIT_MS = 220;
 
+function getExitDelay(): number {
+    if (
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+        return 0;
+    }
+    return EXIT_MS;
+}
+
 const TeachOptOutWarn = ({ onKeepPracticing, onConfirm }: TeachOptOutWarnProps) => {
     const [leaving, setLeaving] = useState(false);
     const [action, setAction] = useState<'keep' | 'confirm' | null>(null);
-
-    useEffect(() => {
-        if (!leaving || action == null) return;
-        const id = window.setTimeout(() => {
-            if (action === 'keep') onKeepPracticing();
-            else onConfirm();
-        }, EXIT_MS);
-        return () => window.clearTimeout(id);
-    }, [leaving, action, onKeepPracticing, onConfirm]);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const keepRef = useRef<HTMLButtonElement>(null);
 
     const leave = (next: 'keep' | 'confirm') => {
         if (leaving) return;
@@ -27,10 +31,35 @@ const TeachOptOutWarn = ({ onKeepPracticing, onConfirm }: TeachOptOutWarnProps) 
         setLeaving(true);
     };
 
+    useModalA11y({
+        active: !leaving,
+        onEscape: () => leave('keep'),
+        initialFocusRef: keepRef,
+        enableTrap: true,
+        restoreTarget: () => {
+            window.setTimeout(() => {
+                document.querySelector<HTMLElement>('.teach-opt-out__btn')?.focus();
+            }, getExitDelay());
+            return null;
+        },
+        containerRef,
+    });
+
+    useEffect(() => {
+        if (!leaving || action == null) return;
+        const id = window.setTimeout(() => {
+            if (action === 'keep') onKeepPracticing();
+            else onConfirm();
+        }, getExitDelay());
+        return () => window.clearTimeout(id);
+    }, [leaving, action, onKeepPracticing, onConfirm]);
+
     return (
         <div
+            ref={containerRef}
             className={`teach-opt-out-warn${leaving ? ' is-leaving' : ''}`}
             role="dialog"
+            aria-modal="true"
             aria-labelledby="teach-opt-out-title"
         >
             <div className="teach-opt-out-warn__panel">
@@ -43,6 +72,7 @@ const TeachOptOutWarn = ({ onKeepPracticing, onConfirm }: TeachOptOutWarnProps) 
                 </p>
                 <div className="teach-opt-out-warn__actions">
                     <button
+                        ref={keepRef}
                         type="button"
                         className="teach-opt-out-warn__secondary"
                         onClick={() => leave('keep')}

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import './StrategyInstruction.scss';
 
 interface StrategyInstructionProps {
@@ -8,19 +9,42 @@ interface StrategyInstructionProps {
 
 const EXIT_MS = 220;
 
+function getExitDelay(): number {
+    if (
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+        return 0;
+    }
+    return EXIT_MS;
+}
+
 const StrategyInstruction = ({ n, onContinue }: StrategyInstructionProps) => {
     const [leaving, setLeaving] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const ctaRef = useRef<HTMLButtonElement>(null);
+
+    useModalA11y({
+        active: !leaving,
+        onEscape: () => {},
+        initialFocusRef: ctaRef,
+        enableTrap: false,
+        restoreTarget: '.session-primary-btn',
+        containerRef,
+    });
 
     useEffect(() => {
         if (!leaving) return;
-        const id = window.setTimeout(() => onContinue(), EXIT_MS);
+        const id = window.setTimeout(() => onContinue(), getExitDelay());
         return () => window.clearTimeout(id);
     }, [leaving, onContinue]);
 
     return (
         <div
+            ref={containerRef}
             className={`strategy-instruction${leaving ? ' is-leaving' : ''}`}
             role="dialog"
+            aria-modal="true"
             aria-labelledby="strategy-instruction-title"
         >
             <div className="strategy-instruction__panel">
@@ -38,6 +62,7 @@ const StrategyInstruction = ({ n, onContinue }: StrategyInstructionProps) => {
                     <li>Advance to the next slot</li>
                 </ol>
                 <button
+                    ref={ctaRef}
                     type="button"
                     className="strategy-instruction__cta"
                     onClick={() => setLeaving(true)}
