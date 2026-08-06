@@ -84,11 +84,15 @@
     cursor: pointer;
     transition: border-color var(--settle), color var(--settle);
 
-    &:hover,
-    &:focus-visible {
+    &:hover {
         border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
         color: var(--textForeground);
+    }
+
+    &:focus-visible {
         outline: none;
+        border-color: var(--focus-ring-color);
+        color: var(--textForeground);
     }
 }
 
@@ -134,10 +138,13 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover,
-    &:focus-visible {
-        outline: none;
+    &:hover {
         background: color-mix(in srgb, var(--primary) 8%, transparent);
+    }
+
+    &:focus-visible {
+        outline: var(--focus-ring-width) solid var(--focus-ring-color);
+        outline-offset: var(--focus-ring-offset);
     }
 }
 
@@ -198,7 +205,26 @@
 }
 
 .settings-section__panel.is-open .settings-section__inner {
+    /* Keep vertical clip for the 0fr/1fr collapse, but don't crop row controls. */
+    overflow-x: visible;
     padding-bottom: 12px;
+}
+
+.settings-section__inner .settings-row {
+    flex-wrap: wrap;
+    row-gap: 10px;
+}
+
+.settings-section__inner .settings-row-copy {
+    flex: 1 1 10rem;
+}
+
+.settings-section__inner .settings-segment,
+.settings-section__inner .settings-stepper,
+.settings-section__inner .settings-cycle,
+.settings-section__inner .settings-toggle-host {
+    flex: 0 0 auto;
+    margin-left: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -236,12 +262,12 @@
     background: var(--background);
     color: var(--textForeground);
     font: inherit;
-    font-size: 0.9rem;
+    font-size: 16px;
     letter-spacing: 0.02em;
 
     &:focus-visible {
         outline: none;
-        border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+        border-color: var(--focus-ring-color);
     }
 }
 
@@ -340,11 +366,14 @@
     cursor: pointer;
     transition: border-color var(--settle), background-color var(--settle);
 
-    &:hover,
-    &:focus-visible {
+    &:hover {
         border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
         background: color-mix(in srgb, var(--primary) 10%, transparent);
+    }
+
+    &:focus-visible {
         outline: none;
+        border-color: var(--focus-ring-color);
     }
 }
 
@@ -354,7 +383,7 @@
     font-variant-numeric: tabular-nums;
     font-size: 1.05rem;
     font-weight: 500;
-    color: var(--primary);
+    color: var(--textForeground);
 }
 
 .settings-toggle {
@@ -374,11 +403,8 @@
     cursor: pointer;
 
     &:focus-visible {
-        outline: none;
-    }
-
-    &:focus-visible .settings-toggle-knob {
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent);
+        outline: var(--focus-ring-width) solid var(--focus-ring-color);
+        outline-offset: var(--focus-ring-offset);
     }
 }
 
@@ -486,11 +512,15 @@
     cursor: pointer;
     transition: border-color var(--settle), color var(--settle), background-color var(--settle);
 
-    &:hover,
-    &:focus-visible {
+    &:hover {
         border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
         color: var(--textForeground);
+    }
+
+    &:focus-visible {
         outline: none;
+        border-color: var(--focus-ring-color);
+        color: var(--textForeground);
     }
 
     &.is-open {
@@ -549,6 +579,30 @@
     }
 }
 
+.settings-auto-progress {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 200ms ease;
+}
+
+.settings-auto-progress.is-open {
+    grid-template-rows: 1fr;
+}
+
+.settings-auto-progress__inner {
+    overflow: hidden;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .settings-auto-progress {
+        transition: none;
+    }
+}
+
 .settings-ladder-reset {
     display: flex;
     justify-content: flex-end;
@@ -559,7 +613,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 36px;
+    min-height: var(--touch-min);
     padding: 0 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -570,11 +624,15 @@
     font-weight: 500;
     cursor: pointer;
 
-    &:hover,
-    &:focus-visible {
+    &:hover {
         color: var(--textForeground);
         border-color: color-mix(in srgb, var(--textForeground) 35%, var(--border));
+    }
+
+    &:focus-visible {
         outline: none;
+        color: var(--textForeground);
+        border-color: var(--focus-ring-color);
     }
 
     &:active {
@@ -623,6 +681,12 @@
     display: inline-flex;
     gap: 4px;
     flex-shrink: 0;
+
+    &--wrap {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        max-width: min(100%, 22rem);
+    }
 }
 
 .segment-btn-host {
@@ -649,10 +713,13 @@
         background: color-mix(in srgb, var(--primary) 10%, transparent);
     }
 
-    &:hover,
-    &:focus-visible {
+    &:hover {
         border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+    }
+
+    &:focus-visible {
         outline: none;
+        border-color: var(--focus-ring-color);
     }
 }
 
@@ -670,11 +737,14 @@
     cursor: pointer;
     transition: border-color var(--settle), background-color var(--settle);
 
-    &:hover,
-    &:focus-visible {
+    &:hover {
         border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
         background: color-mix(in srgb, var(--primary) 10%, transparent);
+    }
+
+    &:focus-visible {
         outline: none;
+        border-color: var(--focus-ring-color);
     }
 }
 

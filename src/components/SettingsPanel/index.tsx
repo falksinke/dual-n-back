@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import { useGameStore } from '../../store/gameStore';
-import { ModeId } from '../../model/modalities';
+import { ModeId, ModalityId, TRIPLE_COMBINATIONS, tripleCombinationLabel } from '../../model/modalities';
 import { AudioPackId } from '../../model/audioPacks';
 import { msToSecondsLabel } from '../../model/isi';
 import { FAILS_TO_DEMOTE_STAGE } from '../../model/adaptiveController';
@@ -30,9 +31,10 @@ import './SettingsPanel.scss';
 
 const DEFAULT_SECTION_OPEN: Record<SettingsSectionId, boolean> = {
     training: true,
-    timing: true,
-    challenge: false,
-    board: false,
+    // Timing is tall; keep it closed so Challenge/Board controls stay reachable.
+    timing: false,
+    challenge: true,
+    board: true,
     feedback: false,
     sync: false,
 };
@@ -60,7 +62,8 @@ const PLAY_MODE_OPTIONS: { id: 'free' | 'adaptive' | 'cyclic'; label: string }[]
     { id: 'cyclic', label: 'Cyclic' },
 ];
 
-function formatInterference(value: number): string {
+function formatInterference(value: number | 'easy'): string {
+    if (value === 'easy') return 'Easy';
     if (value === 0) return 'Off';
     if (value === 0.125) return 'Default (⅛)';
     const eighths = Math.round(value * 8);
@@ -114,6 +117,7 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
         (state) => state.settings.displayVariableNCenter
     );
     const mode = useGameStore((state) => state.settings.mode);
+    const tripleModalities = useGameStore((state) => state.settings.tripleModalities);
     const audioPack = useGameStore((state) => state.settings.audioPack);
     const interferenceChance = useGameStore((state) => state.settings.interferenceChance);
     const variableN = useGameStore((state) => state.settings.variableN);
@@ -139,6 +143,7 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
         (state) => state.setDisplayVariableNCenter
     );
     const setMode = useGameStore((state) => state.setMode);
+    const setTripleModalities = useGameStore((state) => state.setTripleModalities);
     const setAudioPack = useGameStore((state) => state.setAudioPack);
     const cycleInterferenceChance = useGameStore((state) => state.cycleInterferenceChance);
     const setVariableN = useGameStore((state) => state.setVariableN);
@@ -148,6 +153,20 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
     const setUseBlockQuotas = useGameStore((state) => state.setUseBlockQuotas);
     const useJaeggiQuotas = useGameStore((state) => state.settings.useJaeggiQuotas);
     const setUseJaeggiQuotas = useGameStore((state) => state.setUseJaeggiQuotas);
+    const dailyRounds = useGameStore((state) => state.settings.dailyRounds);
+    const dailySessions = useGameStore((state) => state.settings.dailySessions);
+    const setDailyRounds = useGameStore((state) => state.setDailyRounds);
+    const setDailySessions = useGameStore((state) => state.setDailySessions);
+    const freePlayAutoProgress = useGameStore((state) => state.settings.freePlayAutoProgress);
+    const freePlayPromotePct = useGameStore((state) => state.settings.freePlayPromotePct);
+    const freePlayFailsToDemote = useGameStore(
+        (state) => state.settings.freePlayFailsToDemote
+    );
+    const setFreePlayAutoProgress = useGameStore((state) => state.setFreePlayAutoProgress);
+    const setFreePlayPromotePct = useGameStore((state) => state.setFreePlayPromotePct);
+    const setFreePlayFailsToDemote = useGameStore(
+        (state) => state.setFreePlayFailsToDemote
+    );
     const activeFeedback = useGameStore((state) => state.settings.activeFeedback);
     const setActiveFeedback = useGameStore((state) => state.setActiveFeedback);
 
@@ -155,42 +174,35 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
     const isCyclic = playMode === 'cyclic';
     const isFreePlay = playMode === 'free';
     const isLadderMode = isMatchAdaptive || isCyclic;
-    const isTwoByTwo = isFreePlay && positionGrid === '2x2';
+    const pinCenterNoPosition =
+        mode === 'triple' && !tripleModalities.includes('position');
+    const isTwoByTwo = isFreePlay && positionGrid === '2x2' && !pinCenterNoPosition;
     const matchProgressLevel = settingsFromLevel(matchLadder.levelIndex);
     const cyclicProgressLevel = settingsFromCurriculum(cyclicLadder);
     const progressLevel = isCyclic ? cyclicProgressLevel : matchProgressLevel;
+
+    useModalA11y({
+        active: open,
+        onEscape: onClose,
+        containerRef: panelRef,
+        enableTrap: true,
+        restoreTarget: '.settings-trigger',
+    });
 
     useEffect(() => {
         if (!open) {
             setLadderInfoOpen(false);
             return;
         }
-
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
-            }
-        };
-
-        document.addEventListener('keydown', onKeyDown, true);
-        return () => document.removeEventListener('keydown', onKeyDown, true);
-    }, [open, onClose]);
+        setPlayerCodeDraft(loadPlayerCode() ?? '');
+        setSyncStatus(getSyncStatus());
+    }, [open]);
 
     useEffect(() => {
         return subscribeSyncStatus(() => {
             setSyncStatus(getSyncStatus());
         });
     }, []);
-
-    useEffect(() => {
-        if (open) {
-            setPlayerCodeDraft(loadPlayerCode() ?? '');
-            setSyncStatus(getSyncStatus());
-            panelRef.current?.querySelector<HTMLElement>('button, input')?.focus();
-        }
-    }, [open]);
 
     const onApplyPlayerCode = async () => {
         if (applyBusy) return;
@@ -219,8 +231,8 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
               isCyclic
                   ? `${cyclicLadder.track === 'flexible' ? 'F' : 'C'}${cyclicLadder.n}`
                   : `L${matchLadder.levelIndex}`
-          }`
-        : `${pathLabel} · ${modeLabel} · n=${level} · ${trials} trials`;
+          } · ${dailyRounds}r/${dailySessions}s`
+        : `${pathLabel} · ${modeLabel} · n=${level} · ${trials} trials · ${dailyRounds}r/${dailySessions}s`;
     const timingSummary = isLadderMode
         ? `${msToSecondsLabel(progressLevel.isiMin)}–${msToSecondsLabel(progressLevel.isiMax)}s · +${answerGraceMs}ms`
         : `${msToSecondsLabel(isiMin)}–${msToSecondsLabel(isiMax)}s · +${answerGraceMs}ms`;
@@ -323,6 +335,42 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             </div>
                         </div>
 
+                        {mode === 'triple' && (
+                            <div className="settings-row">
+                                <div className="settings-row-copy">
+                                    <span className="settings-row-label">Triple streams</span>
+                                    <span className="settings-row-hint">
+                                        Pick which three modalities · no Position pins to center
+                                    </span>
+                                </div>
+                                <div className="settings-segment settings-segment--wrap">
+                                    {TRIPLE_COMBINATIONS.map((combo) => {
+                                        const label = tripleCombinationLabel(combo);
+                                        const active =
+                                            tripleCombinationLabel(tripleModalities) === label;
+                                        return (
+                                            <div
+                                                key={label}
+                                                className="segment-btn-host haptic-host"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    className={`segment-btn${active ? ' is-active' : ''}`}
+                                                    data-haptic="light"
+                                                    aria-pressed={active}
+                                                    onClick={() =>
+                                                        setTripleModalities(combo as ModalityId[])
+                                                    }
+                                                >
+                                                    {label}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="settings-row">
                             <div className="settings-row-copy">
                                 <span className="settings-row-label">Audio pack</span>
@@ -343,6 +391,176 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                 ))}
                             </div>
                         </div>
+
+                        <div className="settings-row">
+                            <div className="settings-row-copy">
+                                <span className="settings-row-label">Daily rounds</span>
+                                <span className="settings-row-hint">
+                                    Goal dots in the topbar · 0 hides them · day resets at 04:00
+                                </span>
+                            </div>
+                            <div className="settings-stepper">
+                                <button
+                                    type="button"
+                                    className="step-btn"
+                                    onClick={() => setDailyRounds(dailyRounds - 1)}
+                                    aria-label="Decrease daily rounds"
+                                >
+                                    −
+                                </button>
+                                <span className="step-value">{dailyRounds}</span>
+                                <button
+                                    type="button"
+                                    className="step-btn"
+                                    onClick={() => setDailyRounds(dailyRounds + 1)}
+                                    aria-label="Increase daily rounds"
+                                >
+                                    +
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="settings-row">
+                            <div className="settings-row-copy">
+                                <span className="settings-row-label">Daily sessions</span>
+                                <span className="settings-row-hint">
+                                    Groups dots with spacing · last filled dot marks session end
+                                </span>
+                            </div>
+                            <div className="settings-stepper">
+                                <button
+                                    type="button"
+                                    className="step-btn"
+                                    onClick={() => setDailySessions(dailySessions - 1)}
+                                    aria-label="Decrease daily sessions"
+                                >
+                                    −
+                                </button>
+                                <span className="step-value">{dailySessions}</span>
+                                <button
+                                    type="button"
+                                    className="step-btn"
+                                    onClick={() => setDailySessions(dailySessions + 1)}
+                                    aria-label="Increase daily sessions"
+                                >
+                                    +
+                                </button>
+                            </div>
+                        </div>
+
+                        {isFreePlay && (
+                            <>
+                                <div className="settings-row">
+                                    <div className="settings-row-copy">
+                                        <span className="settings-row-label">Auto progress</span>
+                                        <span className="settings-row-hint">
+                                            Adjust n from Match % · trials / ISI / interference stay
+                                            put
+                                        </span>
+                                    </div>
+                                    <div className="settings-toggle-host haptic-host">
+                                        <button
+                                            type="button"
+                                            className={`settings-toggle${freePlayAutoProgress ? ' is-on' : ''}`}
+                                            role="switch"
+                                            aria-checked={freePlayAutoProgress}
+                                            aria-label="Free-play auto progress"
+                                            data-haptic="light"
+                                            onClick={() =>
+                                                setFreePlayAutoProgress(!freePlayAutoProgress)
+                                            }
+                                        >
+                                            <span className="settings-toggle-knob" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div
+                                    className={`settings-auto-progress${freePlayAutoProgress ? ' is-open' : ''}`}
+                                >
+                                    <div className="settings-auto-progress__inner">
+                                        <div className="settings-row">
+                                            <div className="settings-row-copy">
+                                                <span className="settings-row-label">
+                                                    Promote at
+                                                </span>
+                                                <span className="settings-row-hint">
+                                                    Match % threshold
+                                                </span>
+                                            </div>
+                                            <div className="settings-stepper">
+                                                <button
+                                                    type="button"
+                                                    className="step-btn"
+                                                    onClick={() =>
+                                                        setFreePlayPromotePct(
+                                                            freePlayPromotePct - 5
+                                                        )
+                                                    }
+                                                    aria-label="Decrease promote percent"
+                                                >
+                                                    −
+                                                </button>
+                                                <span className="step-value">
+                                                    {freePlayPromotePct}%
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    className="step-btn"
+                                                    onClick={() =>
+                                                        setFreePlayPromotePct(
+                                                            freePlayPromotePct + 5
+                                                        )
+                                                    }
+                                                    aria-label="Increase promote percent"
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="settings-row">
+                                            <div className="settings-row-copy">
+                                                <span className="settings-row-label">
+                                                    Fails to demote
+                                                </span>
+                                                <span className="settings-row-hint">
+                                                    Consecutive blocks below promote %
+                                                </span>
+                                            </div>
+                                            <div className="settings-stepper">
+                                                <button
+                                                    type="button"
+                                                    className="step-btn"
+                                                    onClick={() =>
+                                                        setFreePlayFailsToDemote(
+                                                            freePlayFailsToDemote - 1
+                                                        )
+                                                    }
+                                                    aria-label="Decrease fails to demote"
+                                                >
+                                                    −
+                                                </button>
+                                                <span className="step-value">
+                                                    {freePlayFailsToDemote}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    className="step-btn"
+                                                    onClick={() =>
+                                                        setFreePlayFailsToDemote(
+                                                            freePlayFailsToDemote + 1
+                                                        )
+                                                    }
+                                                    aria-label="Increase fails to demote"
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         {isLadderMode ? (
                             <div className="settings-row settings-row--ladder">
@@ -599,7 +817,9 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                 <div className="settings-row">
                                     <div className="settings-row-copy">
                                         <span className="settings-row-label">Interference</span>
-                                        <span className="settings-row-hint">Near-miss bias chance</span>
+                                        <span className="settings-row-hint">
+                                            Easy avoids accidental near-misses · Off only skips planted ones
+                                        </span>
                                     </div>
                                     <button
                                         type="button"
@@ -670,7 +890,7 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                         ? 'Free-play only · fixed match counts per block'
                                         : variableN
                                           ? 'Variable N uses the same target density via its own plan'
-                                          : 'Fixed matches per block (4+4+2 at 20 trials) · on by default'}
+                                          : 'Fixed matches per block (6+6 incl. 2 both at 20 scorable) · on by default'}
                                 </span>
                             </div>
                             <div className="settings-toggle-host haptic-host">
@@ -724,11 +944,15 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                         onToggle={() => toggleSection('board')}
                     >
                         {isFreePlay && (
-                            <div className="settings-row">
+                            <div
+                                className={`settings-row${pinCenterNoPosition ? ' is-disabled' : ''}`}
+                            >
                                 <div className="settings-row-copy">
                                     <span className="settings-row-label">Size</span>
                                     <span className="settings-row-hint">
-                                        3×3 standard · 2×2 easier spatial load
+                                        {pinCenterNoPosition
+                                            ? 'Locked to 3×3 while Position is off'
+                                            : '3×3 standard · 2×2 easier spatial load'}
                                     </span>
                                 </div>
                                 <div className="settings-segment">
@@ -744,10 +968,32 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                         >
                                             <button
                                                 type="button"
-                                                className={`segment-btn${positionGrid === option.id ? ' is-active' : ''}`}
+                                                className={`segment-btn${
+                                                    (pinCenterNoPosition ? '3x3' : positionGrid) ===
+                                                    option.id
+                                                        ? ' is-active'
+                                                        : ''
+                                                }`}
                                                 data-haptic="light"
-                                                aria-pressed={positionGrid === option.id}
-                                                onClick={() => setPositionGrid(option.id)}
+                                                aria-pressed={
+                                                    (pinCenterNoPosition ? '3x3' : positionGrid) ===
+                                                    option.id
+                                                }
+                                                aria-disabled={
+                                                    pinCenterNoPosition && option.id === '2x2'
+                                                }
+                                                disabled={
+                                                    pinCenterNoPosition && option.id === '2x2'
+                                                }
+                                                onClick={() => {
+                                                    if (
+                                                        pinCenterNoPosition &&
+                                                        option.id === '2x2'
+                                                    ) {
+                                                        return;
+                                                    }
+                                                    setPositionGrid(option.id);
+                                                }}
                                             >
                                                 {option.label}
                                             </button>
@@ -757,13 +1003,19 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             </div>
                         )}
 
-                        <div className={`settings-row${isTwoByTwo ? ' is-disabled' : ''}`}>
+                        <div
+                            className={`settings-row${
+                                isTwoByTwo || pinCenterNoPosition ? ' is-disabled' : ''
+                            }`}
+                        >
                             <div className="settings-row-copy">
                                 <span className="settings-row-label">Center cell</span>
                                 <span className="settings-row-hint">
-                                    {isTwoByTwo
-                                        ? 'Only on 3×3 board'
-                                        : 'Stimulus in the middle square'}
+                                    {pinCenterNoPosition
+                                        ? 'Always center when Position is off'
+                                        : isTwoByTwo
+                                          ? 'Only on 3×3 board'
+                                          : 'Stimulus in the middle square'}
                                 </span>
                             </div>
                             <div className="settings-toggle-host haptic-host">
@@ -773,10 +1025,10 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                     role="switch"
                                     aria-checked={allowCenterStimulus}
                                     aria-label="Center cell"
-                                    aria-disabled={isTwoByTwo}
-                                    disabled={isTwoByTwo}
+                                    aria-disabled={isTwoByTwo || pinCenterNoPosition}
+                                    disabled={isTwoByTwo || pinCenterNoPosition}
                                     onClick={() => {
-                                        if (isTwoByTwo) return;
+                                        if (isTwoByTwo || pinCenterNoPosition) return;
                                         setAllowCenterStimulus(!allowCenterStimulus);
                                     }}
                                 >
