@@ -14,10 +14,9 @@ export const useKeyboardControls = () => {
                 return;
             }
 
-            if (
-                document.querySelector('[data-modal-open]') ||
-                document.querySelector('.settings-shell.is-open')
-            ) {
+            // Any open modal owns the keyboard (Settings, Strategy, TeachOptOut
+            // all mark their container via useModalA11y).
+            if (document.querySelector('[data-modal-open]')) {
                 return;
             }
 

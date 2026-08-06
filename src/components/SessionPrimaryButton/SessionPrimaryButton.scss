@@ -11,11 +11,11 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--touch-min);
+    min-height: var(--touch-min);
     padding: 12px 20px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--primary) 18%, var(--background));
     color: var(--textForeground);
     font: inherit;
@@ -32,6 +32,11 @@
     &:disabled {
         opacity: 0.45;
         cursor: default;
+    }
+
+    &:focus-visible {
+        outline: none;
+        border-color: var(--focus-ring-color);
     }
 
     &:not(:disabled):active,

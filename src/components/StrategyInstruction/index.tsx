@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { getModalExitDelay } from '../utils/modalExit';
 import './StrategyInstruction.scss';
 
 interface StrategyInstructionProps {
@@ -7,26 +8,20 @@ interface StrategyInstructionProps {
     onContinue: () => void;
 }
 
-const EXIT_MS = 220;
-
-function getExitDelay(): number {
-    if (
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
-        return 0;
-    }
-    return EXIT_MS;
-}
+// Plan policy: Escape must not commit — only the CTA starts teach. The key is
+// still captured (and blocked from the game) while the dialog is open.
+const noopEscape = (): void => undefined;
 
 const StrategyInstruction = ({ n, onContinue }: StrategyInstructionProps) => {
     const [leaving, setLeaving] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const ctaRef = useRef<HTMLButtonElement>(null);
 
+    // `active` stays true through the exit animation so the keyboard gate and
+    // focus restore span the dialog's full visible lifetime (unmount).
     useModalA11y({
-        active: !leaving,
-        onEscape: () => {},
+        active: true,
+        onEscape: noopEscape,
         initialFocusRef: ctaRef,
         enableTrap: false,
         restoreTarget: '.session-primary-btn',
@@ -35,7 +30,7 @@ const StrategyInstruction = ({ n, onContinue }: StrategyInstructionProps) => {
 
     useEffect(() => {
         if (!leaving) return;
-        const id = window.setTimeout(() => onContinue(), getExitDelay());
+        const id = window.setTimeout(() => onContinue(), getModalExitDelay());
         return () => window.clearTimeout(id);
     }, [leaving, onContinue]);
 

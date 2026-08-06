@@ -1,22 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { getModalExitDelay } from '../utils/modalExit';
 import './TeachOptOutWarn.scss';
 
 interface TeachOptOutWarnProps {
     onKeepPracticing: () => void;
     onConfirm: () => void;
-}
-
-const EXIT_MS = 220;
-
-function getExitDelay(): number {
-    if (
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
-        return 0;
-    }
-    return EXIT_MS;
 }
 
 const TeachOptOutWarn = ({ onKeepPracticing, onConfirm }: TeachOptOutWarnProps) => {
@@ -31,17 +20,17 @@ const TeachOptOutWarn = ({ onKeepPracticing, onConfirm }: TeachOptOutWarnProps) 
         setLeaving(true);
     };
 
+    const handleEscape = useCallback(() => leave('keep'), [leaving]);
+
+    // `active` stays true through the exit animation: the keyboard gate lasts
+    // the warn's full visible lifetime, and focus restores on unmount — after
+    // the store update remounts the `.teach-opt-out__btn` invoker.
     useModalA11y({
-        active: !leaving,
-        onEscape: () => leave('keep'),
+        active: true,
+        onEscape: handleEscape,
         initialFocusRef: keepRef,
         enableTrap: true,
-        restoreTarget: () => {
-            window.setTimeout(() => {
-                document.querySelector<HTMLElement>('.teach-opt-out__btn')?.focus();
-            }, getExitDelay());
-            return null;
-        },
+        restoreTarget: '.teach-opt-out__btn',
         containerRef,
     });
 
@@ -50,7 +39,7 @@ const TeachOptOutWarn = ({ onKeepPracticing, onConfirm }: TeachOptOutWarnProps) 
         const id = window.setTimeout(() => {
             if (action === 'keep') onKeepPracticing();
             else onConfirm();
-        }, getExitDelay());
+        }, getModalExitDelay());
         return () => window.clearTimeout(id);
     }, [leaving, action, onKeepPracticing, onConfirm]);
 

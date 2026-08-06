@@ -387,13 +387,12 @@
 }
 
 .settings-toggle {
-    --radius-full: 999px;
     touch-action: manipulation;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 44px;
-    min-width: 44px;
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
     padding: 0;
     border: 0;
     background: transparent;
@@ -861,7 +860,7 @@
     &:active::-webkit-slider-thumb,
     &:focus-visible::-webkit-slider-thumb {
         transform: scale(1.08);
-        box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 24%, transparent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--textBackground) 28%, transparent);
         outline: none;
     }
 

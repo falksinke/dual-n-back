@@ -78,4 +78,77 @@ describe('TeachOptOutWarn', () => {
         expect(onKeepPracticing).toHaveBeenCalledOnce();
         expect(onConfirm).not.toHaveBeenCalled();
     });
+
+    it('Move to speed ramp dismisses via onConfirm', () => {
+        const onKeepPracticing = vi.fn();
+        const onConfirm = vi.fn();
+        render(
+            <TeachOptOutWarn onKeepPracticing={onKeepPracticing} onConfirm={onConfirm} />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Move to speed ramp' }));
+
+        vi.advanceTimersByTime(EXIT_MS);
+        expect(onConfirm).toHaveBeenCalledOnce();
+        expect(onKeepPracticing).not.toHaveBeenCalled();
+    });
+
+    it('keeps the keyboard gate through the exit animation until unmount', () => {
+        const { container, unmount } = render(
+            <TeachOptOutWarn onKeepPracticing={vi.fn()} onConfirm={vi.fn()} />
+        );
+        const dialog = container.querySelector('.teach-opt-out-warn');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Keep practicing' }));
+        expect(dialog?.hasAttribute('data-modal-open')).toBe(true);
+
+        vi.advanceTimersByTime(EXIT_MS);
+        unmount();
+        expect(document.querySelector('[data-modal-open]')).toBeNull();
+    });
+
+    it('ignores a second Escape during the exit animation', () => {
+        const onKeepPracticing = vi.fn();
+        render(
+            <TeachOptOutWarn onKeepPracticing={onKeepPracticing} onConfirm={vi.fn()} />
+        );
+
+        fireEvent.keyDown(document, { key: 'Escape', bubbles: true });
+        fireEvent.keyDown(document, { key: 'Escape', bubbles: true });
+
+        vi.advanceTimersByTime(EXIT_MS);
+        expect(onKeepPracticing).toHaveBeenCalledOnce();
+    });
+
+    it('restores focus to the opt-out invoker on unmount after dismiss', () => {
+        const invoker = document.createElement('button');
+        invoker.className = 'teach-opt-out__btn';
+        document.body.appendChild(invoker);
+
+        const onKeepPracticing = vi.fn();
+        const { unmount } = render(
+            <TeachOptOutWarn onKeepPracticing={onKeepPracticing} onConfirm={vi.fn()} />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Keep practicing' }));
+        vi.advanceTimersByTime(EXIT_MS);
+        expect(onKeepPracticing).toHaveBeenCalledOnce();
+
+        unmount();
+        expect(document.activeElement).toBe(invoker);
+
+        invoker.remove();
+    });
+
+    it('skips the exit delay under prefers-reduced-motion', () => {
+        mockMatchMedia(true);
+        const onKeepPracticing = vi.fn();
+        render(
+            <TeachOptOutWarn onKeepPracticing={onKeepPracticing} onConfirm={vi.fn()} />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Keep practicing' }));
+        vi.advanceTimersByTime(0);
+        expect(onKeepPracticing).toHaveBeenCalledOnce();
+    });
 });

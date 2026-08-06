@@ -33,7 +33,7 @@ describe('StrategyInstruction', () => {
         expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true');
     });
 
-    it('sets data-modal-open while open and not leaving', () => {
+    it('sets data-modal-open while open', () => {
         const { container } = render(<StrategyInstruction n={2} onContinue={vi.fn()} />);
         const dialog = container.querySelector('.strategy-instruction');
         expect(dialog?.hasAttribute('data-modal-open')).toBe(true);
@@ -60,11 +60,43 @@ describe('StrategyInstruction', () => {
         expect(onContinue).toHaveBeenCalledOnce();
     });
 
-    it('removes data-modal-open when leaving', () => {
-        const { container } = render(<StrategyInstruction n={2} onContinue={vi.fn()} />);
+    it('keeps the keyboard gate through the exit animation until unmount', () => {
+        const { container, unmount } = render(<StrategyInstruction n={2} onContinue={vi.fn()} />);
         const dialog = container.querySelector('.strategy-instruction');
 
         fireEvent.click(screen.getByRole('button', { name: 'Start teach' }));
-        expect(dialog?.hasAttribute('data-modal-open')).toBe(false);
+        expect(dialog?.hasAttribute('data-modal-open')).toBe(true);
+
+        vi.advanceTimersByTime(EXIT_MS);
+        unmount();
+        expect(document.querySelector('[data-modal-open]')).toBeNull();
+    });
+
+    it('restores focus to the Start button on unmount after acknowledge', () => {
+        const startButton = document.createElement('button');
+        startButton.className = 'session-primary-btn';
+        document.body.appendChild(startButton);
+
+        const onContinue = vi.fn();
+        const { unmount } = render(<StrategyInstruction n={2} onContinue={onContinue} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Start teach' }));
+        vi.advanceTimersByTime(EXIT_MS);
+        expect(onContinue).toHaveBeenCalledOnce();
+
+        unmount();
+        expect(document.activeElement).toBe(startButton);
+
+        startButton.remove();
+    });
+
+    it('skips the exit delay under prefers-reduced-motion', () => {
+        mockMatchMedia(true);
+        const onContinue = vi.fn();
+        render(<StrategyInstruction n={2} onContinue={onContinue} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Start teach' }));
+        vi.advanceTimersByTime(0);
+        expect(onContinue).toHaveBeenCalledOnce();
     });
 });

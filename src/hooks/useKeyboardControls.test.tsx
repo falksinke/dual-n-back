@@ -60,21 +60,6 @@ describe('useKeyboardControls', () => {
         unmount();
     });
 
-    it('ignores space while settings dialog is open', () => {
-        const shell = document.createElement('div');
-        shell.className = 'settings-shell is-open';
-        document.body.appendChild(shell);
-
-        const { unmount } = renderHook(() => useKeyboardControls());
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
-
-        expect(useGameStore.getState().countdown).toBeNull();
-        expect(useGameStore.getState().game).toBeNull();
-
-        shell.remove();
-        unmount();
-    });
-
     it('ignores space while a modal marker is present', () => {
         const modal = document.createElement('div');
         modal.setAttribute('data-modal-open', '');

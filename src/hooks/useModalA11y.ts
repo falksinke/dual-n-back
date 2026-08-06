@@ -39,6 +39,20 @@ export const useModalA11y = ({
 }: UseModalA11yOptions): void => {
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const prevActiveRef = useRef(false);
+    const restoreFocusRef = useRef<() => void>(() => undefined);
+
+    restoreFocusRef.current = () => {
+        const explicitTarget = restoreTarget ? resolveRestoreTarget(restoreTarget) : null;
+        const fallbackTarget = previousFocusRef.current;
+        const target =
+            explicitTarget && document.contains(explicitTarget)
+                ? explicitTarget
+                : fallbackTarget && document.contains(fallbackTarget)
+                  ? fallbackTarget
+                  : null;
+
+        target?.focus();
+    };
 
     useEffect(() => {
         const container = containerRef.current;
@@ -132,18 +146,22 @@ export const useModalA11y = ({
         }
 
         if (!active && wasActive) {
-            const explicitTarget = restoreTarget ? resolveRestoreTarget(restoreTarget) : null;
-            const fallbackTarget = previousFocusRef.current;
-            const target =
-                explicitTarget && document.contains(explicitTarget)
-                    ? explicitTarget
-                    : fallbackTarget && document.contains(fallbackTarget)
-                      ? fallbackTarget
-                      : null;
-
-            target?.focus();
+            restoreFocusRef.current();
         }
 
         prevActiveRef.current = active;
     }, [active, restoreTarget, initialFocusRef, containerRef]);
+
+    // Animated overlays unmount after their exit delay instead of flipping
+    // `active` — restore focus on unmount-while-active so the gate and the
+    // keyboard owner last the overlay's full visible lifetime. Resolution is
+    // deferred to cleanup time, so selectors can target elements that remount
+    // in the same commit that removes the overlay.
+    useEffect(() => {
+        return () => {
+            if (prevActiveRef.current) {
+                restoreFocusRef.current();
+            }
+        };
+    }, []);
 };

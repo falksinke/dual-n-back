@@ -31,7 +31,7 @@
     flex: 0 0 auto;
     width: var(--dot-size);
     height: var(--dot-size);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     box-sizing: border-box;
     background: transparent;
     border: 1.5px solid color-mix(in srgb, var(--textBackground) 82%, transparent);

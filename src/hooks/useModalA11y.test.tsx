@@ -257,4 +257,33 @@ describe('useModalA11y', () => {
         rerender({ active: false });
         expect(document.activeElement).toBe(trigger);
     });
+
+    it('restores focus on unmount while still active (animated exit path)', () => {
+        const trigger = document.createElement('button');
+        trigger.className = 'unmount-restore';
+        trigger.textContent = 'Trigger';
+        document.body.appendChild(trigger);
+
+        const container = document.createElement('div');
+        const modalButton = document.createElement('button');
+        modalButton.textContent = 'Modal';
+        container.appendChild(modalButton);
+        document.body.appendChild(container);
+
+        const containerRef = { current: container };
+        const { unmount } = renderHook(() =>
+            useModalA11y({
+                active: true,
+                onEscape: vi.fn(),
+                restoreTarget: '.unmount-restore',
+                containerRef,
+            })
+        );
+
+        expect(document.activeElement).toBe(modalButton);
+
+        unmount();
+        expect(document.activeElement).toBe(trigger);
+        expect(container.hasAttribute('data-modal-open')).toBe(false);
+    });
 });
