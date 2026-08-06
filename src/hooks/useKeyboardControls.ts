@@ -14,6 +14,13 @@ export const useKeyboardControls = () => {
                 return;
             }
 
+            if (
+                document.querySelector('[data-modal-open]') ||
+                document.querySelector('.settings-shell.is-open')
+            ) {
+                return;
+            }
+
             const {
                 game,
                 countdown,
@@ -42,12 +49,6 @@ export const useKeyboardControls = () => {
             if (modality && inSession) {
                 e.preventDefault();
                 selectModality(modality);
-                return;
-            }
-
-            // Settings dialog owns the keyboard while open (Space would otherwise
-            // start a round behind the overlay — audio plays, board stays hidden).
-            if (document.querySelector('.settings-shell.is-open')) {
                 return;
             }
 

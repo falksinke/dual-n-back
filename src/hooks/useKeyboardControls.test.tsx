@@ -31,6 +31,7 @@ describe('useKeyboardControls', () => {
                 answerGraceMs: 250,
                 useFullScreen: false,
                 mode: 'dual',
+                tripleModalities: ['position', 'color', 'audio'],
                 audioPack: 'letters',
                 interferenceChance: 0.125,
                 variableN: false,
@@ -71,6 +72,60 @@ describe('useKeyboardControls', () => {
         expect(useGameStore.getState().game).toBeNull();
 
         shell.remove();
+        unmount();
+    });
+
+    it('ignores space while a modal marker is present', () => {
+        const modal = document.createElement('div');
+        modal.setAttribute('data-modal-open', '');
+        document.body.appendChild(modal);
+
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+        expect(useGameStore.getState().countdown).toBeNull();
+        expect(useGameStore.getState().game).toBeNull();
+
+        modal.remove();
+        unmount();
+    });
+
+    it('does not cancel game on Escape while a modal marker is present', async () => {
+        const modal = document.createElement('div');
+        modal.setAttribute('data-modal-open', '');
+        document.body.appendChild(modal);
+
+        const { unmount } = renderHook(() => useKeyboardControls());
+        useGameStore.getState().startGame();
+        await finishCountdown();
+        expect(useGameStore.getState().game).not.toBeNull();
+
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+        expect(useGameStore.getState().game).not.toBeNull();
+
+        useGameStore.getState().cancelGame();
+        modal.remove();
+        unmount();
+    });
+
+    it('does not select modality while a modal marker is present', async () => {
+        const modal = document.createElement('div');
+        modal.setAttribute('data-modal-open', '');
+        document.body.appendChild(modal);
+
+        useGameStore.getState().startGame();
+        await finishCountdown();
+        const session = useGameStore.getState().game!;
+        const addChoiceSpy = vi.spyOn(session, 'addChoice');
+
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+
+        expect(addChoiceSpy).not.toHaveBeenCalled();
+
+        useGameStore.getState().cancelGame();
+        modal.remove();
         unmount();
     });
 
