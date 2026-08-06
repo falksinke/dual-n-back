@@ -1,6 +1,7 @@
 .footer {
     position: absolute;
-    bottom: 0;
+    /* Sit above the always-mounted match claim band. */
+    bottom: var(--action-band, 0px);
     left: 0;
     right: 0;
     z-index: 6;
@@ -85,10 +86,14 @@
         text-transform: inherit;
         cursor: pointer;
 
-        &:hover,
+        &:hover {
+            color: var(--textForeground);
+        }
+
         &:focus-visible {
             color: var(--textForeground);
-            outline: none;
+            outline: var(--focus-ring-width) solid var(--focus-ring-color);
+            outline-offset: var(--focus-ring-offset);
         }
     }
 

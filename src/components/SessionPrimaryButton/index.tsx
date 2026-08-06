@@ -39,7 +39,7 @@ const SessionPrimaryButton = ({ label }: SessionPrimaryButtonProps) => {
                 onClick={() => startGame()}
             >
                 {label}
-                <span className="session-primary-btn-hint">
+                <span className="session-primary-btn-hint" aria-hidden="true">
                     or <kbd>Space</kbd>
                 </span>
             </button>

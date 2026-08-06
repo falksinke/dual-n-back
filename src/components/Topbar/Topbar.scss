@@ -12,7 +12,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 20px;
+    gap: 12px;
     padding: var(--frame-top) var(--frame-right) 0 var(--frame-left);
 
     .brand {
@@ -20,6 +20,7 @@
         align-items: center;
         gap: 12px;
         min-width: 0;
+        flex: 0 1 auto;
     }
 
     .brand-mark {
@@ -40,9 +41,13 @@
         line-height: 1.15;
         color: var(--textForeground);
         white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 7.5rem;
     }
 
     .settings-trigger {
+        flex: 0 0 auto;
         touch-action: manipulation;
         display: inline-flex;
         align-items: center;
@@ -73,7 +78,7 @@
         &:focus-visible {
             outline: none;
             color: var(--textForeground);
-            border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+            border-color: var(--focus-ring-color);
         }
 
         &:active {

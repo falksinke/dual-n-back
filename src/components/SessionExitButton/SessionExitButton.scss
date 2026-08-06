@@ -27,10 +27,14 @@
     pointer-events: auto;
     transition: opacity var(--settle), transform var(--settle);
 
-    &:hover,
+    &:hover {
+        opacity: 0.85;
+    }
+
     &:focus-visible {
         opacity: 0.85;
         outline: none;
+        border-color: var(--focus-ring-color);
     }
 
     &:active {

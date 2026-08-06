@@ -67,8 +67,7 @@
 
     &:focus-visible {
         outline: none;
-        border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
-        color: var(--primary);
+        border-color: var(--focus-ring-color);
     }
 }
 
@@ -105,7 +104,7 @@
 }
 
 .adaptive-hud-phase {
-    font-size: 0.6rem;
+    font-size: 0.75rem;
     font-weight: 500;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -139,7 +138,7 @@
 }
 
 .adaptive-hud-stage-letter {
-    font-size: 0.55rem;
+    font-size: 0.75rem;
     font-weight: 500;
     letter-spacing: 0.04em;
     color: var(--textBackground);
