@@ -14,6 +14,13 @@
     /* Idle adaptive: reserve strip for the HUD only (Start sits above the board). */
     --action-band-hud: 56px;
     --action-band-match: 88px;
+    --session-end: #c45c4a;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --touch-min: 44px;
+    --focus-ring-color: color-mix(in srgb, var(--textBackground) 55%, var(--border));
+    --focus-ring-width: 2px;
+    --focus-ring-offset: 2px;
 }
 
 html {
@@ -21,7 +28,9 @@ html {
     color: var(--textBackground);
     font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
     font-weight: 400;
+    font-synthesis: none;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
 
     box-sizing: border-box;
@@ -44,6 +53,7 @@ body,
 
 body {
     margin: 0;
+    -moz-osx-font-smoothing: grayscale;
     background-color: var(--background);
     /* App shell owns the viewport — no document rubber-band scroll. */
     overscroll-behavior: none;
@@ -92,12 +102,16 @@ body {
         min-height: 0;
         padding: var(--frame-top) var(--frame-right) var(--frame-bottom) var(--frame-left);
         overflow: hidden;
-        --action-band: 0px;
+        /* Position / Audio claim buttons stay mounted idle + in-session. */
+        --action-band: var(--action-band-match);
+        padding-bottom: calc(var(--frame-bottom) + var(--action-band));
     }
 
     &.adaptive .app {
-        --action-band: 0px;
-        padding-bottom: calc(var(--frame-bottom) + var(--action-band-hud));
+        --action-band: var(--action-band-match);
+        padding-bottom: calc(
+            var(--frame-bottom) + var(--action-band-hud) + var(--action-band)
+        );
     }
 
     &.adaptive.in-session .app {
@@ -106,14 +120,18 @@ body {
     }
 
     &.adaptive.pending-continue .app {
-        --action-band: 0px;
-        padding-bottom: calc(var(--frame-bottom) + var(--action-band-hud));
+        --action-band: var(--action-band-match);
+        padding-bottom: calc(
+            var(--frame-bottom) + var(--action-band-hud) + var(--action-band)
+        );
     }
 
     &.showing-results .app {
+        --action-band: 0px;
         justify-content: flex-start;
         /* Clear top chrome (logo / exit / trials band): 44px control + gap. */
         padding-top: calc(var(--frame-top) + 44px + 16px);
+        padding-bottom: var(--frame-bottom);
     }
 }
 
