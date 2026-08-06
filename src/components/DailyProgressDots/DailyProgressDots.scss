@@ -1,0 +1,70 @@
+.daily-progress-dots {
+    --gap-tight: 4px;
+    --gap-group: 10px;
+    --dot-size: 8px;
+
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.daily-progress-dots__row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: var(--gap-group) var(--gap-group);
+    max-width: 100%;
+    row-gap: var(--gap-tight);
+}
+
+.daily-progress-dots__session {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--gap-tight);
+}
+
+.daily-progress-dots__dot {
+    flex: 0 0 auto;
+    width: var(--dot-size);
+    height: var(--dot-size);
+    border-radius: 999px;
+    box-sizing: border-box;
+    background: transparent;
+    border: 1.5px solid color-mix(in srgb, var(--textBackground) 82%, transparent);
+    transform: scale(1);
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        transform 120ms ease,
+        opacity 120ms ease;
+
+    &.is-filled {
+        background: color-mix(in srgb, var(--textForeground) 72%, transparent);
+        border-color: transparent;
+    }
+
+    &.is-session-end {
+        background: var(--session-end);
+        border: 1.5px solid color-mix(in srgb, var(--session-end) 40%, var(--textForeground));
+        /* Non-color size cue via compositor-friendly scale (not width/height). */
+        transform: scale(1.2);
+    }
+}
+
+@media (max-width: 320px) {
+    .daily-progress-dots {
+        --dot-size: 5px;
+        --gap-tight: 4px;
+        --gap-group: 8px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .daily-progress-dots__dot {
+        transition: none;
+    }
+}

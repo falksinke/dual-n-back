@@ -1,4 +1,5 @@
 import SettingsPanel from '../SettingsPanel';
+import DailyProgressDots from '../DailyProgressDots';
 import './Topbar.scss';
 
 const GearIcon = () => (
@@ -31,20 +32,25 @@ interface TopbarProps {
     settingsOpen: boolean;
     onSettingsOpenChange: (open: boolean) => void;
     onHapticsEnabledChange?: (enabled: boolean) => void;
+    /** Hide chrome from assistive tech while visually hidden during play. */
+    ariaHidden?: boolean;
 }
 
 const Topbar = ({
     settingsOpen,
     onSettingsOpenChange,
     onHapticsEnabledChange,
+    ariaHidden = false,
 }: TopbarProps) => {
     return (
         <>
-            <header className="topbar">
+            <header className="topbar" aria-hidden={ariaHidden || undefined}>
                 <div className="brand">
                     <span className="brand-mark" aria-hidden="true" />
                     <h1 className="title">N-Back</h1>
                 </div>
+
+                <DailyProgressDots />
 
                 <button
                     type="button"

@@ -6,14 +6,16 @@ import './Footer.scss';
 interface FooterProps {
     themeMode: ThemeMode;
     onToggleTheme: () => void;
+    /** Hide chrome from assistive tech while visually hidden during play. */
+    ariaHidden?: boolean;
 }
 
-const Footer = ({ themeMode, onToggleTheme }: FooterProps) => {
+const Footer = ({ themeMode, onToggleTheme, ariaHidden = false }: FooterProps) => {
     const pendingContinue = useGameStore((state) => state.adaptiveSession?.pendingContinue === true);
     const playMode = useGameStore((state) => state.settings.playMode);
 
     return (
-        <footer className="footer">
+        <footer className="footer" aria-hidden={ariaHidden || undefined}>
             <div className="footer-hints" aria-label="Keyboard shortcuts">
                 {pendingContinue ? (
                     <div className="hint-line">

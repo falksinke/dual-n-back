@@ -56,6 +56,8 @@ const App = () => {
     const dismissTeachOptOutWarn = useGameStore((state) => state.dismissTeachOptOutWarn);
     const activeModalities = useGameStore((state) => state.activeModalities);
     const blocksCompletedSignal = useGameStore((state) => state.results.all.length);
+    const dailyRounds = useGameStore((state) => state.settings.dailyRounds);
+    const ensureDailyProgressCurrent = useGameStore((state) => state.ensureDailyProgressCurrent);
     const trialsShown = game !== null ? currentTrials : configuredTrials;
     const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -86,6 +88,10 @@ const App = () => {
         countdown,
         pendingContinue,
     });
+
+    useEffect(() => {
+        ensureDailyProgressCurrent();
+    }, [ensureDailyProgressCurrent]);
 
     useEffect(() => {
         if (!canApplySwUpdate) return;
@@ -122,7 +128,9 @@ const App = () => {
     // Per-trial N must stay visible in ladder modes too — recipe "var N" alone is not enough.
     const showVariableN = variableN && (inSession || countingDown);
     const variableNValue = nForTrial > 0 ? nForTrial : level;
-    const showSessionStatus = !showingResults;
+    const showIdleSessionStatus = !showingResults && dailyRounds <= 0;
+    const showInSessionStatus = !showingResults && (inSession || countingDown);
+    const showSessionStatus = showIdleSessionStatus || showInSessionStatus;
 
     const appContainerClass = [
         'app-container',
@@ -143,6 +151,7 @@ const App = () => {
                         settingsOpen={settingsOpen}
                         onSettingsOpenChange={setSettingsOpen}
                         onHapticsEnabledChange={setHapticsEnabled}
+                        ariaHidden={chromeHidden}
                     />
                     <SessionExitButton />
                     {showSessionStatus && (
@@ -192,8 +201,9 @@ const App = () => {
                         onToggleTheme={() =>
                             setThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark'))
                         }
+                        ariaHidden={chromeHidden}
                     />
-                    {inSession && <UserMatchNotice />}
+                    {!showingResults && <UserMatchNotice />}
                     <CountdownFlash />
                     <InstallNudge
                         flowBusy={flowBusy}
