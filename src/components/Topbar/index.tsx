@@ -28,9 +28,29 @@ const GearIcon = () => (
     </svg>
 );
 
+const StatisticsIcon = () => (
+    <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+        className="statistics-icon"
+    >
+        <path
+            d="M5 19V11M12 19V5M19 19V8"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+        />
+    </svg>
+);
+
 interface TopbarProps {
     settingsOpen: boolean;
     onSettingsOpenChange: (open: boolean) => void;
+    statisticsOpen: boolean;
+    onStatisticsOpenChange: (open: boolean) => void;
     onHapticsEnabledChange?: (enabled: boolean) => void;
     /** Hide chrome from assistive tech while visually hidden during play. */
     ariaHidden?: boolean;
@@ -39,6 +59,8 @@ interface TopbarProps {
 const Topbar = ({
     settingsOpen,
     onSettingsOpenChange,
+    statisticsOpen,
+    onStatisticsOpenChange,
     onHapticsEnabledChange,
     ariaHidden = false,
 }: TopbarProps) => {
@@ -52,16 +74,28 @@ const Topbar = ({
 
                 <DailyProgressDots />
 
-                <button
-                    type="button"
-                    className="settings-trigger"
-                    aria-label="Settings"
-                    aria-haspopup="dialog"
-                    aria-expanded={settingsOpen}
-                    onClick={() => onSettingsOpenChange(true)}
-                >
-                    <GearIcon />
-                </button>
+                <div className="topbar-actions">
+                    <button
+                        type="button"
+                        className="settings-trigger statistics-trigger"
+                        aria-label="Statistics"
+                        aria-haspopup="dialog"
+                        aria-expanded={statisticsOpen}
+                        onClick={() => onStatisticsOpenChange(true)}
+                    >
+                        <StatisticsIcon />
+                    </button>
+                    <button
+                        type="button"
+                        className="settings-trigger"
+                        aria-label="Settings"
+                        aria-haspopup="dialog"
+                        aria-expanded={settingsOpen}
+                        onClick={() => onSettingsOpenChange(true)}
+                    >
+                        <GearIcon />
+                    </button>
+                </div>
             </header>
 
             <SettingsPanel

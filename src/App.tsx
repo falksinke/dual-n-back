@@ -24,6 +24,7 @@ import { isLadderPlayMode } from './store/gameStore';
 import { loadUiPreferences } from './model/uiPreferences';
 import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
 import { shouldApplyWaitingUpdate } from './pwa/updateGate';
+import StatisticsPanel from './components/StatisticsPanel';
 
 const App = () => {
     const appRef = useRef<HTMLDivElement>(null);
@@ -60,6 +61,7 @@ const App = () => {
     const ensureDailyProgressCurrent = useGameStore((state) => state.ensureDailyProgressCurrent);
     const trialsShown = game !== null ? currentTrials : configuredTrials;
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [statisticsOpen, setStatisticsOpen] = useState(false);
 
     const inSession = game !== null;
     const countingDown = countdown !== null;
@@ -77,6 +79,7 @@ const App = () => {
         inSession ? 'play' : 'idle',
         pendingContinue ? 'continue' : 'ready',
         settingsOpen ? 'settings' : 'closed',
+        statisticsOpen ? 'statistics' : 'stats-closed',
         activeModalities.join(','),
         blocksCompletedSignal,
         hapticsEnabled ? 'h1' : 'h0',
@@ -149,9 +152,21 @@ const App = () => {
                 <div className="app">
                     <Topbar
                         settingsOpen={settingsOpen}
-                        onSettingsOpenChange={setSettingsOpen}
+                        onSettingsOpenChange={(open) => {
+                            setSettingsOpen(open);
+                            if (open) setStatisticsOpen(false);
+                        }}
+                        statisticsOpen={statisticsOpen}
+                        onStatisticsOpenChange={(open) => {
+                            setStatisticsOpen(open);
+                            if (open) setSettingsOpen(false);
+                        }}
                         onHapticsEnabledChange={setHapticsEnabled}
                         ariaHidden={chromeHidden}
+                    />
+                    <StatisticsPanel
+                        open={statisticsOpen}
+                        onClose={() => setStatisticsOpen(false)}
                     />
                     <SessionExitButton />
                     {showSessionStatus && (
