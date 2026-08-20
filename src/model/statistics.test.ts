@@ -48,7 +48,14 @@ describe('statistics persistence', () => {
     it('keeps valid rounds when stored history contains malformed entries', () => {
         expect(
             parseStatisticsHistory(
-                JSON.stringify({ version: 1, rounds: [round(), { id: 'broken' }] })
+                JSON.stringify({
+                    version: 1,
+                    rounds: [
+                        round(),
+                        { id: 'broken' },
+                        round({ id: 'bad-variable-n', variableN: [null] as never }),
+                    ],
+                })
             ).rounds
         ).toEqual([round()]);
     });

@@ -80,6 +80,17 @@ function isModeId(value: unknown): value is ModeId {
     return value === 'dual' || value === 'triple' || value === 'quad';
 }
 
+function isNBackDistribution(value: unknown): value is NBackDistributionEntry[] {
+    return (
+        Array.isArray(value) &&
+        value.every((entry) => {
+            if (entry == null || typeof entry !== 'object') return false;
+            const candidate = entry as Partial<NBackDistributionEntry>;
+            return Number.isFinite(candidate.n) && Number.isFinite(candidate.trials);
+        })
+    );
+}
+
 function isStatisticsRound(value: unknown): value is StatisticsRound {
     if (value == null || typeof value !== 'object') return false;
     const round = value as Partial<StatisticsRound>;
@@ -100,7 +111,7 @@ function isStatisticsRound(value: unknown): value is StatisticsRound {
         Number.isFinite(round.scorePct) &&
         round.modalityScores != null &&
         typeof round.modalityScores === 'object' &&
-        (round.variableN === null || Array.isArray(round.variableN))
+        (round.variableN === null || isNBackDistribution(round.variableN))
     );
 }
 
