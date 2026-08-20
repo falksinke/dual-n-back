@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ALL_MODALITIES, MODALITY_LABELS, type ModeId } from '../../model/modalities';
+import { MODE_PRESETS, MODALITY_LABELS, type ModeId } from '../../model/modalities';
 import {
     buildStatisticsSummary,
     createEmptyStatisticsHistory,
@@ -181,7 +181,7 @@ const StatisticsPanel = ({ open, onClose }: StatisticsPanelProps) => {
                                 </div>
                             </div>
                             <div className="statistics-modalities">
-                                {ALL_MODALITIES.flatMap((modality) => {
+                                {MODE_PRESETS.quad.flatMap((modality) => {
                                     const score = summary.modalityAverages[modality];
                                     return score == null
                                         ? []
