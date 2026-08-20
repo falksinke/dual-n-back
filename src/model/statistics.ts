@@ -1,4 +1,3 @@
-import { trainingDayKey } from './dailyProgress';
 import type { ModalityId, ModeId } from './modalities';
 import type { NBackDistributionEntry } from './GameResult';
 import type { StorageLike } from './uiPreferences';
@@ -6,6 +5,7 @@ import type { StorageLike } from './uiPreferences';
 export const STATISTICS_STORAGE_KEY = 'nback-statistics';
 export const STATISTICS_SCHEMA_VERSION = 1 as const;
 export const MAX_STATISTICS_ROUNDS = 2000;
+const TRAINING_DAY_ROLLOVER_HOUR = 4;
 
 export type StatisticsModeFilter = ModeId | 'all';
 
@@ -62,6 +62,18 @@ function roundToOne(value: number): number {
 function average(values: number[]): number {
     if (values.length === 0) return 0;
     return roundToOne(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function trainingDayKey(date: Date): string {
+    const day = new Date(date.getTime());
+    if (day.getHours() < TRAINING_DAY_ROLLOVER_HOUR) {
+        day.setDate(day.getDate() - 1);
+    }
+    return [
+        day.getFullYear(),
+        String(day.getMonth() + 1).padStart(2, '0'),
+        String(day.getDate()).padStart(2, '0'),
+    ].join('-');
 }
 
 function isModeId(value: unknown): value is ModeId {

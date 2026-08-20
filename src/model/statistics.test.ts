@@ -39,6 +39,18 @@ function round(overrides: Partial<StatisticsRound> = {}): StatisticsRound {
 describe('statistics persistence', () => {
     it('returns an empty versioned history for corrupt storage', () => {
         expect(parseStatisticsHistory('{broken')).toEqual(createEmptyStatisticsHistory());
+        expect(parseStatisticsHistory('null')).toEqual(createEmptyStatisticsHistory());
+        expect(parseStatisticsHistory('{"version":2,"rounds":[]}')).toEqual(
+            createEmptyStatisticsHistory()
+        );
+    });
+
+    it('keeps valid rounds when stored history contains malformed entries', () => {
+        expect(
+            parseStatisticsHistory(
+                JSON.stringify({ version: 1, rounds: [round(), { id: 'broken' }] })
+            ).rounds
+        ).toEqual([round()]);
     });
 
     it('persists completed rounds and loads them again', () => {
@@ -47,6 +59,18 @@ describe('statistics persistence', () => {
 
         expect(loadStatisticsHistory(storage).rounds).toEqual([round()]);
         expect(storage.map.has(STATISTICS_STORAGE_KEY)).toBe(true);
+    });
+
+    it('returns the new history when storage rejects a write', () => {
+        const storage = {
+            getItem: () => null,
+            setItem: () => {
+                throw new Error('quota exceeded');
+            },
+        };
+
+        expect(() => appendStatisticsRound(round(), storage)).not.toThrow();
+        expect(appendStatisticsRound(round(), storage).rounds).toEqual([round()]);
     });
 
     it('keeps only the newest 2000 rounds', () => {

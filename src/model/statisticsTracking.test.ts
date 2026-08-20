@@ -1,34 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameResult } from './GameResult';
-import type { GameDebugLog } from './gameDebugLog';
 import { loadStatisticsHistory, STATISTICS_STORAGE_KEY } from './statistics';
 import { bindStatisticsTracking, statisticsRoundFromResult } from './statisticsTracking';
-import { useGameStore } from '../store/gameStore';
-
-const debugLog: GameDebugLog = {
-    schemaVersion: 1,
-    startedAt: '2026-08-20T10:00:00.000Z',
-    completedAt: '2026-08-20T10:01:30.000Z',
-    durationMs: 90_000,
-    config: {
-        level: 3,
-        trials: 20,
-        isiMinMs: 2500,
-        isiMaxMs: 3000,
-        answerGraceMs: 250,
-        mode: 'dual',
-        modalities: ['position', 'audio'],
-        positionGrid: '3x3',
-        allowCenterStimulus: false,
-        variableN: false,
-        variableNHoldTrials: 1,
-        interferenceChance: 0.125,
-        lureStage: null,
-        useBlockQuotas: false,
-        useJaeggiQuotas: true,
-    },
-    trials: [],
-};
+import { useGameStore, type GameStore } from '../store/gameStore';
 
 function result(): GameResult {
     return new GameResult(
@@ -40,14 +14,25 @@ function result(): GameResult {
         },
         ['position', 'audio'],
         null,
-        null,
-        debugLog
+        null
     );
 }
 
 describe('statisticsRoundFromResult', () => {
     it('captures the completed round snapshot and calculated scores', () => {
-        expect(statisticsRoundFromResult(result(), 'adaptive', 'match')).toEqual({
+        expect(
+            statisticsRoundFromResult(
+                result(),
+                {
+                    startedAt: new Date('2026-08-20T10:00:00.000Z'),
+                    playMode: 'adaptive',
+                    mode: 'dual',
+                    nBack: 3,
+                },
+                'match',
+                new Date('2026-08-20T10:01:30.000Z')
+            )
+        ).toEqual({
             id: '2026-08-20T10:01:30.000Z-dual-3',
             completedAt: '2026-08-20T10:01:30.000Z',
             durationMs: 90_000,
@@ -61,18 +46,6 @@ describe('statisticsRoundFromResult', () => {
         });
     });
 
-    it('does not invent metadata for results without a debug snapshot', () => {
-        const legacy = new GameResult(
-            {
-                position: { success: 1, failed: 0 },
-                color: { success: 0, failed: 0 },
-                image: { success: 0, failed: 0 },
-                audio: { success: 1, failed: 0 },
-            },
-            ['position', 'audio']
-        );
-        expect(statisticsRoundFromResult(legacy, 'free', 'free')).toBeNull();
-    });
 });
 
 describe('bindStatisticsTracking', () => {
@@ -93,12 +66,17 @@ describe('bindStatisticsTracking', () => {
     });
 
     it('persists each newly completed store result once', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-20T10:00:00.000Z'));
         const unbind = bindStatisticsTracking();
         const completed = result();
 
+        useGameStore.setState({ game: {} as GameStore['game'] });
+        vi.setSystemTime(new Date('2026-08-20T10:01:30.000Z'));
         useGameStore.setState({
             results: { all: [completed], last: completed },
             lastBlockRole: 'free',
+            game: null,
         });
         useGameStore.setState({ countdown: null });
 
@@ -109,5 +87,6 @@ describe('bindStatisticsTracking', () => {
             scorePct: 75,
         });
         unbind();
+        vi.useRealTimers();
     });
 });

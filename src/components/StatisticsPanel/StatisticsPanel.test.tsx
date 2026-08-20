@@ -73,6 +73,14 @@ describe('StatisticsPanel', () => {
         expect(screen.getByText('Dual 2-back')).toBeTruthy();
     });
 
+    it('explains why one training day has no trend graph', () => {
+        render(<StatisticsPanel open onClose={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Dual' }));
+
+        expect(screen.getByText('Two training days are needed for the progress graph.')).toBeTruthy();
+        expect(screen.queryByRole('img', { name: 'Daily N-back progress' })).toBeNull();
+    });
+
     it('closes through the visible close button', () => {
         const onClose = vi.fn();
         render(<StatisticsPanel open onClose={onClose} />);
