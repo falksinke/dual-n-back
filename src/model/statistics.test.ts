@@ -108,8 +108,8 @@ describe('buildStatisticsSummary', () => {
             audio: 70,
         });
         expect(summary.dailyTrend).toEqual([
-            { dayKey: '2026-08-19', averageN: 2.5, maximumN: 3, averageScore: 70 },
-            { dayKey: '2026-08-20', averageN: 4, maximumN: 4, averageScore: 90 },
+            { dayKey: '2026-08-19', averageN: 2.5, maximumN: 3 },
+            { dayKey: '2026-08-20', averageN: 4, maximumN: 4 },
         ]);
     });
 

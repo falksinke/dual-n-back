@@ -34,6 +34,8 @@ function result(): GameResult {
     return new GameResult(
         {
             position: { success: 8, failed: 2 },
+            color: { success: 0, failed: 0 },
+            image: { success: 0, failed: 0 },
             audio: { success: 7, failed: 3 },
         },
         ['position', 'audio'],
@@ -61,7 +63,12 @@ describe('statisticsRoundFromResult', () => {
 
     it('does not invent metadata for results without a debug snapshot', () => {
         const legacy = new GameResult(
-            { position: { success: 1, failed: 0 }, audio: { success: 1, failed: 0 } },
+            {
+                position: { success: 1, failed: 0 },
+                color: { success: 0, failed: 0 },
+                image: { success: 0, failed: 0 },
+                audio: { success: 1, failed: 0 },
+            },
             ['position', 'audio']
         );
         expect(statisticsRoundFromResult(legacy, 'free', 'free')).toBeNull();

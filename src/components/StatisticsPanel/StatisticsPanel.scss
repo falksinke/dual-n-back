@@ -65,8 +65,7 @@
 .statistics-section-heading,
 .statistics-history-row,
 .statistics-modality,
-.statistics-legend,
-.topbar-actions {
+.statistics-legend {
     display: flex;
     align-items: center;
 }
@@ -386,16 +385,6 @@
 
 .statistics-empty p {
     font-size: 0.8rem;
-}
-
-.topbar-actions {
-    position: relative;
-    z-index: 1;
-    gap: 0.382rem;
-}
-
-.topbar .statistics-trigger .statistics-icon {
-    display: block;
 }
 
 @media (max-width: 48rem) {

@@ -1,6 +1,7 @@
 import SettingsPanel from '../SettingsPanel';
 import DailyProgressDots from '../DailyProgressDots';
 import './Topbar.scss';
+import './StatisticsTrigger.scss';
 
 const GearIcon = () => (
     <svg

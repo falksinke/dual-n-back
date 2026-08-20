@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { ALL_MODALITIES, MODALITY_LABELS, type ModeId } from '../../model/modalities';
 import {
     buildStatisticsSummary,
+    createEmptyStatisticsHistory,
     loadStatisticsHistory,
     type StatisticsModeFilter,
     type StatisticsRound,
@@ -61,7 +62,7 @@ function scoreClass(score: number): string {
 const StatisticsPanel = ({ open, onClose }: StatisticsPanelProps) => {
     const panelRef = useRef<HTMLDivElement>(null);
     const [modeFilter, setModeFilter] = useState<StatisticsModeFilter>('all');
-    const history = loadStatisticsHistory();
+    const history = open ? loadStatisticsHistory() : createEmptyStatisticsHistory();
     const summary = buildStatisticsSummary(history.rounds, modeFilter);
 
     useModalA11y({

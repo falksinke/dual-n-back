@@ -36,7 +36,6 @@ export interface StatisticsDailyPoint {
     dayKey: string;
     averageN: number;
     maximumN: number;
-    averageScore: number;
 }
 
 export interface StatisticsSummary {
@@ -179,7 +178,6 @@ function dailyTrend(rounds: StatisticsRound[]): StatisticsDailyPoint[] {
             dayKey,
             averageN: average(dayRounds.map((round) => round.nBack)),
             maximumN: Math.max(...dayRounds.map((round) => round.nBack)),
-            averageScore: average(dayRounds.map((round) => round.scorePct)),
         }));
 }
 
