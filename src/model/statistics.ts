@@ -1,13 +1,29 @@
 import type { ModalityId, ModeId } from './modalities';
 import type { NBackDistributionEntry } from './GameResult';
 import type { StorageLike } from './uiPreferences';
+import {
+    isStatisticsInterferenceLevel,
+    isStatisticsModalityCombination,
+    statisticsCategoryId,
+    type StatisticsCategoryFilter,
+    type StatisticsInterferenceLevel,
+} from './statisticsCategories';
+
+export {
+    buildStatisticsCategories,
+    statisticsCategoryId,
+    statisticsCategoryLabel,
+} from './statisticsCategories';
+export type {
+    StatisticsCategory,
+    StatisticsCategoryFilter,
+    StatisticsInterferenceLevel,
+} from './statisticsCategories';
 
 export const STATISTICS_STORAGE_KEY = 'nback-statistics';
-export const STATISTICS_SCHEMA_VERSION = 1 as const;
+export const STATISTICS_SCHEMA_VERSION = 2 as const;
 export const MAX_STATISTICS_ROUNDS = 2000;
 const TRAINING_DAY_ROLLOVER_HOUR = 4;
-
-export type StatisticsModeFilter = ModeId | 'all';
 
 export interface StatisticsRound {
     id: string;
@@ -16,6 +32,8 @@ export interface StatisticsRound {
     playMode: 'free' | 'adaptive' | 'cyclic';
     blockRole: string | null;
     mode: ModeId;
+    modalities: ModalityId[];
+    interferenceLevel: StatisticsInterferenceLevel;
     nBack: number;
     scorePct: number;
     modalityScores: Partial<Record<ModalityId, number>>;
@@ -105,6 +123,8 @@ function isStatisticsRound(value: unknown): value is StatisticsRound {
             round.playMode === 'cyclic') &&
         (round.blockRole === null || typeof round.blockRole === 'string') &&
         isModeId(round.mode) &&
+        isStatisticsModalityCombination(round.modalities) &&
+        isStatisticsInterferenceLevel(round.interferenceLevel) &&
         typeof round.nBack === 'number' &&
         Number.isFinite(round.nBack) &&
         typeof round.scorePct === 'number' &&
@@ -206,10 +226,13 @@ function dailyTrend(rounds: StatisticsRound[]): StatisticsDailyPoint[] {
 
 export function buildStatisticsSummary(
     rounds: StatisticsRound[],
-    mode: StatisticsModeFilter,
+    category: StatisticsCategoryFilter,
     now: Date = new Date()
 ): StatisticsSummary {
-    const filtered = mode === 'all' ? rounds : rounds.filter((round) => round.mode === mode);
+    const filtered =
+        category === 'all'
+            ? rounds
+            : rounds.filter((round) => statisticsCategoryId(round) === category);
     const currentDay = trainingDayKey(now);
     const last24Cutoff = now.getTime() - 24 * 60 * 60 * 1000;
     const todayRounds = filtered.filter(

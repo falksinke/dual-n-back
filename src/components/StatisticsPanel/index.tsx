@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
-import { MODE_PRESETS, MODALITY_LABELS, type ModeId } from '../../model/modalities';
+import { MODE_PRESETS, MODALITY_LABELS } from '../../model/modalities';
 import {
+    buildStatisticsCategories,
     buildStatisticsSummary,
     createEmptyStatisticsHistory,
     loadStatisticsHistory,
-    type StatisticsModeFilter,
+    statisticsCategoryLabel,
+    type StatisticsCategoryFilter,
     type StatisticsRound,
 } from '../../model/statistics';
 import { useModalA11y } from '../../hooks/useModalA11y';
@@ -15,19 +17,6 @@ interface StatisticsPanelProps {
     open: boolean;
     onClose: () => void;
 }
-
-const MODE_FILTERS: Array<{ id: StatisticsModeFilter; label: string }> = [
-    { id: 'all', label: 'All' },
-    { id: 'dual', label: 'Dual' },
-    { id: 'triple', label: 'Triple' },
-    { id: 'quad', label: 'Quad' },
-];
-
-const MODE_LABELS: Record<ModeId, string> = {
-    dual: 'Dual',
-    triple: 'Triple',
-    quad: 'Quad',
-};
 
 function formatDuration(durationMs: number): string {
     const totalSeconds = Math.round(durationMs / 1000);
@@ -61,9 +50,14 @@ function scoreClass(score: number): string {
 
 const StatisticsPanel = ({ open, onClose }: StatisticsPanelProps) => {
     const panelRef = useRef<HTMLDivElement>(null);
-    const [modeFilter, setModeFilter] = useState<StatisticsModeFilter>('all');
+    const [selectedCategory, setSelectedCategory] = useState<StatisticsCategoryFilter>('all');
     const history = open ? loadStatisticsHistory() : createEmptyStatisticsHistory();
-    const summary = buildStatisticsSummary(history.rounds, modeFilter);
+    const categories = buildStatisticsCategories(history.rounds);
+    const categoryFilter =
+        selectedCategory === 'all' || categories.some(({ id }) => id === selectedCategory)
+            ? selectedCategory
+            : 'all';
+    const summary = buildStatisticsSummary(history.rounds, categoryFilter);
 
     useModalA11y({
         active: open,
@@ -106,18 +100,23 @@ const StatisticsPanel = ({ open, onClose }: StatisticsPanelProps) => {
                     </button>
                 </header>
 
-                <div className="statistics-filters" aria-label="Filter statistics by mode">
-                    {MODE_FILTERS.map((filter) => (
+                <div
+                    className="statistics-filters"
+                    aria-label="Filter statistics by modality and interference"
+                >
+                    {[{ id: 'all' as const, label: 'All categories' }, ...categories].map(
+                        (filter) => (
                         <button
                             key={filter.id}
                             type="button"
-                            className={`statistics-filter${modeFilter === filter.id ? ' is-active' : ''}`}
-                            aria-pressed={modeFilter === filter.id}
-                            onClick={() => setModeFilter(filter.id)}
+                            className={`statistics-filter${categoryFilter === filter.id ? ' is-active' : ''}`}
+                            aria-pressed={categoryFilter === filter.id}
+                            onClick={() => setSelectedCategory(filter.id)}
                         >
                             {filter.label}
                         </button>
-                    ))}
+                        )
+                    )}
                 </div>
 
                 {summary.totalRounds === 0 ? (
@@ -209,7 +208,7 @@ const StatisticsPanel = ({ open, onClose }: StatisticsPanelProps) => {
                                             {formatCompletedAt(round.completedAt)}
                                         </time>
                                         <span className="statistics-history-mode">
-                                            {MODE_LABELS[round.mode]} {nBackLabel(round)}
+                                            {statisticsCategoryLabel(round)} · {nBackLabel(round)}
                                         </span>
                                         <strong className={`statistics-history-score${scoreClass(round.scorePct)}`}>
                                             {round.scorePct}%

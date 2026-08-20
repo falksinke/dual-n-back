@@ -1,5 +1,10 @@
 import type { GameResult } from './GameResult';
-import { appendStatisticsRound, type StatisticsRound } from './statistics';
+import {
+    appendStatisticsRound,
+    type StatisticsInterferenceLevel,
+    type StatisticsRound,
+} from './statistics';
+import type { ModalityId } from './modalities';
 import type { GameStore, PlayMode } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
 
@@ -7,6 +12,8 @@ export interface StatisticsRoundContext {
     startedAt: Date;
     playMode: PlayMode;
     mode: StatisticsRound['mode'];
+    modalities: ModalityId[];
+    interferenceLevel: StatisticsInterferenceLevel;
     nBack: number;
 }
 
@@ -15,6 +22,8 @@ function contextFromState(state: GameStore, startedAt: Date): StatisticsRoundCon
         startedAt,
         playMode: state.settings.playMode,
         mode: state.settings.mode,
+        modalities: [...state.activeModalities],
+        interferenceLevel: state.settings.interferenceChance,
         nBack: state.settings.level,
     };
 }
@@ -38,6 +47,8 @@ export function statisticsRoundFromResult(
         playMode: context.playMode,
         blockRole,
         mode: context.mode,
+        modalities: context.modalities,
+        interferenceLevel: context.interferenceLevel,
         nBack: context.nBack,
         scorePct: result.generalMatchPercentage,
         modalityScores,

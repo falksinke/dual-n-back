@@ -137,6 +137,7 @@
 }
 
 .statistics-filter {
+    flex: 0 0 auto;
     min-height: 44px;
     padding: var(--stats-space-sm) var(--stats-space-md);
     border: 1px solid var(--border);
@@ -145,6 +146,7 @@
     color: var(--textBackground);
     font: inherit;
     font-size: 0.8rem;
+    white-space: nowrap;
     cursor: pointer;
     transition: color var(--stats-settle), background-color var(--stats-settle), border-color var(--stats-settle), transform 120ms cubic-bezier(0.25, 1, 0.5, 1);
 }

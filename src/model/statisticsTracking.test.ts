@@ -27,6 +27,8 @@ describe('statisticsRoundFromResult', () => {
                     startedAt: new Date('2026-08-20T10:00:00.000Z'),
                     playMode: 'adaptive',
                     mode: 'dual',
+                    modalities: ['position', 'audio'],
+                    interferenceLevel: 0.125,
                     nBack: 3,
                 },
                 'match',
@@ -39,6 +41,8 @@ describe('statisticsRoundFromResult', () => {
             playMode: 'adaptive',
             blockRole: 'match',
             mode: 'dual',
+            modalities: ['position', 'audio'],
+            interferenceLevel: 0.125,
             nBack: 3,
             scorePct: 75,
             modalityScores: { position: 80, audio: 70 },
@@ -70,12 +74,21 @@ describe('bindStatisticsTracking', () => {
         vi.setSystemTime(new Date('2026-08-20T10:00:00.000Z'));
         const unbind = bindStatisticsTracking();
         const completed = result();
+        const startSettings = {
+            ...useGameStore.getState().settings,
+            interferenceChance: 0.375 as const,
+        };
 
-        useGameStore.setState({ game: {} as GameStore['game'] });
+        useGameStore.setState({
+            settings: startSettings,
+            activeModalities: ['position', 'audio'],
+            game: {} as GameStore['game'],
+        });
         vi.setSystemTime(new Date('2026-08-20T10:01:30.000Z'));
         useGameStore.setState({
             results: { all: [completed], last: completed },
             lastBlockRole: 'free',
+            settings: { ...startSettings, interferenceChance: 0.5 },
             game: null,
         });
         useGameStore.setState({ countdown: null });
@@ -84,6 +97,8 @@ describe('bindStatisticsTracking', () => {
         expect(loadStatisticsHistory().rounds[0]).toMatchObject({
             playMode: useGameStore.getState().settings.playMode,
             blockRole: 'free',
+            modalities: ['position', 'audio'],
+            interferenceLevel: 0.375,
             scorePct: 75,
         });
         unbind();

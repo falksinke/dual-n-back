@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     STATISTICS_STORAGE_KEY,
     appendStatisticsRound,
+    buildStatisticsCategories,
     buildStatisticsSummary,
     createEmptyStatisticsHistory,
     loadStatisticsHistory,
@@ -28,6 +29,8 @@ function round(overrides: Partial<StatisticsRound> = {}): StatisticsRound {
         playMode: 'free',
         blockRole: 'free',
         mode: 'dual',
+        modalities: ['position', 'audio'],
+        interferenceLevel: 0.125,
         nBack: 2,
         scorePct: 75,
         modalityScores: { position: 80, audio: 70 },
@@ -40,7 +43,7 @@ describe('statistics persistence', () => {
     it('returns an empty versioned history for corrupt storage', () => {
         expect(parseStatisticsHistory('{broken')).toEqual(createEmptyStatisticsHistory());
         expect(parseStatisticsHistory('null')).toEqual(createEmptyStatisticsHistory());
-        expect(parseStatisticsHistory('{"version":2,"rounds":[]}')).toEqual(
+        expect(parseStatisticsHistory('{"version":1,"rounds":[]}')).toEqual(
             createEmptyStatisticsHistory()
         );
     });
@@ -49,7 +52,7 @@ describe('statistics persistence', () => {
         expect(
             parseStatisticsHistory(
                 JSON.stringify({
-                    version: 1,
+                    version: 2,
                     rounds: [
                         round(),
                         { id: 'broken' },
@@ -85,7 +88,7 @@ describe('statistics persistence', () => {
             round({ id: `round-${index}` })
         );
         const storage = memoryStorage({
-            [STATISTICS_STORAGE_KEY]: JSON.stringify({ version: 1, rounds: seededRounds }),
+            [STATISTICS_STORAGE_KEY]: JSON.stringify({ version: 2, rounds: seededRounds }),
         });
         appendStatisticsRound(round({ id: 'round-2000' }), storage);
 
@@ -117,6 +120,8 @@ describe('buildStatisticsSummary', () => {
             completedAt: '2026-08-20T11:00:00.000+02:00',
             durationMs: 90_000,
             mode: 'triple',
+            modalities: ['position', 'color', 'audio'],
+            interferenceLevel: 0.25,
             nBack: 4,
             scorePct: 90,
             modalityScores: { position: 100, color: 80, audio: 90 },
@@ -144,10 +149,43 @@ describe('buildStatisticsSummary', () => {
         ]);
     });
 
-    it('filters every summary by game mode', () => {
+    it('gives every modality and interference combination its own category', () => {
+        const categoryRounds = [
+            round({ id: 'one-eighth' }),
+            round({ id: 'same-category-reordered', modalities: ['audio', 'position'] }),
+            round({ id: 'one-quarter', interferenceLevel: 0.25 }),
+            round({ id: 'easy', interferenceLevel: 'easy' }),
+            round({
+                id: 'color-audio',
+                modalities: ['color', 'audio'],
+                modalityScores: { color: 80, audio: 70 },
+            }),
+        ];
+
+        expect(buildStatisticsCategories(categoryRounds)).toEqual([
+            {
+                id: 'category:color+audio|interference:0.125',
+                label: 'Color + Audio · Interference 1/8',
+            },
+            {
+                id: 'category:position+audio|interference:easy',
+                label: 'Position + Audio · Interference Easy',
+            },
+            {
+                id: 'category:position+audio|interference:0.125',
+                label: 'Position + Audio · Interference 1/8',
+            },
+            {
+                id: 'category:position+audio|interference:0.25',
+                label: 'Position + Audio · Interference 1/4',
+            },
+        ]);
+    });
+
+    it('filters every summary by exact category', () => {
         const summary = buildStatisticsSummary(
             rounds,
-            'dual',
+            'category:position+audio|interference:0.125',
             new Date('2026-08-20T12:00:00.000+02:00')
         );
 

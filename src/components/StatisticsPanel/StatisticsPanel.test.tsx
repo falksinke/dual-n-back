@@ -11,6 +11,8 @@ function round(overrides: Partial<StatisticsRound> = {}): StatisticsRound {
         playMode: 'free',
         blockRole: 'free',
         mode: 'dual',
+        modalities: ['position', 'audio'],
+        interferenceLevel: 0.125,
         nBack: 2,
         scorePct: 75,
         modalityScores: { position: 80, audio: 70 },
@@ -32,6 +34,8 @@ describe('StatisticsPanel', () => {
                 id: 'triple-round',
                 completedAt: '2026-08-20T11:00:00.000+02:00',
                 mode: 'triple',
+                modalities: ['position', 'color', 'audio'],
+                interferenceLevel: 0.25,
                 nBack: 3,
                 scorePct: 90,
                 modalityScores: { position: 90, color: 85, audio: 95 },
@@ -56,26 +60,36 @@ describe('StatisticsPanel', () => {
             screen.getByText('2.50', { selector: '.statistics-metric-value' })
         ).toBeTruthy();
         expect(screen.getByRole('img', { name: 'Daily N-back progress' })).toBeTruthy();
-        expect(screen.getByText('Triple 3-back')).toBeTruthy();
-        expect(screen.getByText('Dual 2-back')).toBeTruthy();
+        expect(screen.getByText('Position + Color + Audio · Interference 1/4 · 3-back')).toBeTruthy();
+        expect(screen.getByText('Position + Audio · Interference 1/8 · 2-back')).toBeTruthy();
     });
 
-    it('filters the full panel by mode', () => {
+    it('filters the full panel by modality and interference category', () => {
         render(<StatisticsPanel open onClose={vi.fn()} />);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Dual' }));
+        fireEvent.click(
+            screen.getByRole('button', {
+                name: 'Position + Audio · Interference 1/8',
+            })
+        );
 
         expect(screen.getByText('1', { selector: '.statistics-metric-value' })).toBeTruthy();
         expect(
             screen.getByText('75%', { selector: '.statistics-metric-value' })
         ).toBeTruthy();
-        expect(screen.queryByText('Triple 3-back')).toBeNull();
-        expect(screen.getByText('Dual 2-back')).toBeTruthy();
+        expect(
+            screen.queryByText('Position + Color + Audio · Interference 1/4 · 3-back')
+        ).toBeNull();
+        expect(screen.getByText('Position + Audio · Interference 1/8 · 2-back')).toBeTruthy();
     });
 
     it('explains why one training day has no trend graph', () => {
         render(<StatisticsPanel open onClose={vi.fn()} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Dual' }));
+        fireEvent.click(
+            screen.getByRole('button', {
+                name: 'Position + Audio · Interference 1/8',
+            })
+        );
 
         expect(screen.getByText('Two training days are needed for the progress graph.')).toBeTruthy();
         expect(screen.queryByRole('img', { name: 'Daily N-back progress' })).toBeNull();
