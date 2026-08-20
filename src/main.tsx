@@ -10,6 +10,7 @@ import { recordVisit } from './model/uiPreferences';
 import { bindInstallPromptCapture } from './pwa/installPrompt';
 import { initServiceWorker } from './pwa/registerSW';
 import { initProgressSync } from './sync/progressSync';
+import { bindStatisticsTracking } from './model/statisticsTracking';
 
 bindInstallPromptCapture();
 recordVisit();
@@ -17,6 +18,7 @@ bindAudioLifecycleResume();
 bindAppLifecyclePause();
 initServiceWorker();
 initProgressSync();
+bindStatisticsTracking();
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
