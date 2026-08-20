@@ -180,10 +180,26 @@
 }
 
 .statistics-metrics {
-    grid-column: 1 / -1;
+    grid-column: 2;
+    grid-row: 1;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: var(--stats-space-sm);
+}
+
+.statistics-progress {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.statistics-modalities-section {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.statistics-history {
+    grid-column: 1;
+    grid-row: 2;
 }
 
 .statistics-metric,
@@ -411,14 +427,19 @@
 
     .statistics-metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        order: 2;
     }
 
     .statistics-progress {
         order: 1;
     }
 
-    .statistics-history {
+    .statistics-modalities-section {
         order: 3;
+    }
+
+    .statistics-history {
+        order: 4;
     }
 
     .statistics-history-row {

@@ -172,7 +172,7 @@ const StatisticsPanel = ({ open, onClose }: StatisticsPanelProps) => {
                             <StatisticsTrendChart points={summary.dailyTrend} />
                         </section>
 
-                        <section className="statistics-section">
+                        <section className="statistics-section statistics-modalities-section">
                             <div className="statistics-section-heading">
                                 <div>
                                     <p className="statistics-section-kicker">Last 50 rounds</p>
