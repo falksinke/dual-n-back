@@ -1,0 +1,38 @@
+.trainer-home {
+    height: 100%;
+    overflow-y: auto;
+    padding: max(var(--space-xl), env(safe-area-inset-top)) max(var(--space-lg), env(safe-area-inset-right)) max(var(--space-xl), env(safe-area-inset-bottom)) max(var(--space-lg), env(safe-area-inset-left));
+
+    &__content { max-width: 44rem; margin-inline: auto; }
+    header { margin-bottom: var(--space-xl); }
+    h1 { font-size: clamp(1.618rem, 5vw, 2.618rem); font-weight: 500; margin: var(--space-sm) 0; }
+    p { margin: 0; line-height: 1.618; }
+    &__eyebrow, &__focus { color: var(--primary); }
+    nav { display: grid; gap: var(--space-md); }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    &__mode {
+        display: grid;
+        gap: var(--space-sm);
+        width: 100%;
+        padding: var(--space-lg);
+        text-align: left;
+        line-height: 1.618;
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        &:hover { background: color-mix(in srgb, var(--primary) 6%, var(--background)); }
+        &:active { opacity: 0.8; }
+    }
+    &__name { display: flex; justify-content: space-between; gap: var(--space-md); font-size: 1.618rem; }
+    &__focus { font-size: 0.875rem; }
+    button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    footer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-md);
+        margin-top: var(--space-xl);
+        font-size: 0.875rem;
+        button { min-height: 44px; padding: var(--space-sm) var(--space-md); border: 1px solid var(--border); border-radius: var(--radius-md); background: transparent; }
+    }
+}

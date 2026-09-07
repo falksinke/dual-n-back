@@ -27,15 +27,15 @@ import { shouldApplyWaitingUpdate } from './pwa/updateGate';
 import StatisticsPanel from './components/StatisticsPanel';
 import SpatialPractice from './components/SpatialPractice';
 import Swapping from './components/Swapping';
+import TrainerHome, { type TrainingMode } from './components/TrainerHome';
 
 interface NBackAppProps {
     themeMode: ThemeMode;
     onToggleTheme: () => void;
-    onPractice: () => void;
-    onSwapping: () => void;
+    onHome: () => void;
 }
 
-const NBackApp = ({ themeMode, onToggleTheme, onPractice, onSwapping }: NBackAppProps) => {
+const NBackApp = ({ themeMode, onToggleTheme, onHome }: NBackAppProps) => {
     const appRef = useRef<HTMLDivElement>(null);
     const [hapticsEnabled, setHapticsEnabled] = useState(
         () => loadUiPreferences().hapticFeedbackEnabled
@@ -158,8 +158,7 @@ const NBackApp = ({ themeMode, onToggleTheme, onPractice, onSwapping }: NBackApp
             <div ref={appRef} className={appContainerClass}>
                 <div className="app">
                     <Topbar
-                        onPractice={onPractice}
-                        onSwapping={onSwapping}
+                        onHome={onHome}
                         settingsOpen={settingsOpen}
                         onSettingsOpenChange={(open) => {
                             setSettingsOpen(open);
@@ -238,16 +237,23 @@ const NBackApp = ({ themeMode, onToggleTheme, onPractice, onSwapping }: NBackApp
 };
 
 const App = () => {
-    const [practiceMode, setPracticeMode] = useState<'spatial' | 'swapping' | null>(null);
+    const [trainingMode, setTrainingMode] = useState<TrainingMode | null>(null);
     const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
     useThemeVariables(themeMode === 'dark' ? DefaultDrakTheme : DefaultLightTheme, themeMode);
 
-    if (practiceMode !== null) {
+    const toggleTheme = () => setThemeMode((mode) => mode === 'dark' ? 'light' : 'dark');
+    const goHome = () => setTrainingMode(null);
+
+    if (trainingMode === null) {
+        return <TrainerHome onSelect={setTrainingMode} themeMode={themeMode} onToggleTheme={toggleTheme} />;
+    }
+
+    if (trainingMode !== 'nback') {
         return (
             <main className="practice-shell">
-                {practiceMode === 'spatial'
-                    ? <SpatialPractice onExit={() => setPracticeMode(null)} />
-                    : <Swapping onExit={() => setPracticeMode(null)} />}
+                {trainingMode === 'spatial'
+                    ? <SpatialPractice onExit={goHome} />
+                    : <Swapping onExit={goHome} />}
             </main>
         );
     }
@@ -255,9 +261,8 @@ const App = () => {
     return (
         <NBackApp
             themeMode={themeMode}
-            onToggleTheme={() => setThemeMode((mode) => mode === 'dark' ? 'light' : 'dark')}
-            onPractice={() => setPracticeMode('spatial')}
-            onSwapping={() => setPracticeMode('swapping')}
+            onToggleTheme={toggleTheme}
+            onHome={goHome}
         />
     );
 };

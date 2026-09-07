@@ -49,8 +49,7 @@ const StatisticsIcon = () => (
 );
 
 interface TopbarProps {
-    onPractice: () => void;
-    onSwapping: () => void;
+    onHome: () => void;
     settingsOpen: boolean;
     onSettingsOpenChange: (open: boolean) => void;
     statisticsOpen: boolean;
@@ -61,8 +60,7 @@ interface TopbarProps {
 }
 
 const Topbar = ({
-    onPractice,
-    onSwapping,
+    onHome,
     settingsOpen,
     onSettingsOpenChange,
     statisticsOpen,
@@ -84,20 +82,14 @@ const Topbar = ({
                     <button
                         type="button"
                         className="settings-trigger practice-trigger"
-                        onClick={onPractice}
-                    >
-                        Practice
-                    </button>
-                    <button
-                        type="button"
-                        className="settings-trigger practice-trigger"
-                        onClick={onSwapping}
+                        onClick={onHome}
+                        disabled={ariaHidden}
                         onKeyDown={(event) => {
-                            // Preserve native button activation before the N-back document shortcut.
+                            // Preserve native activation before the N-back document shortcut.
                             if (event.key === ' ') event.stopPropagation();
                         }}
                     >
-                        Swapping
+                        All exercises
                     </button>
                     <button
                         type="button"

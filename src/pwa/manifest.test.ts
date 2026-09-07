@@ -8,8 +8,8 @@ describe('web app manifest', () => {
     ) as Record<string, unknown>;
 
     it('declares standalone install identity and required icons', () => {
-        expect(manifest.name).toBe('N-Back');
-        expect(manifest.short_name).toBe('N-Back');
+        expect(manifest.name).toBe('Working Memory Trainer');
+        expect(manifest.short_name).toBe('Memory Trainer');
         expect(manifest.start_url).toBe('/');
         expect(manifest.scope).toBe('/');
         expect(manifest.display).toBe('standalone');

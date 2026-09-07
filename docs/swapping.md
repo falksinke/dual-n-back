@@ -1,6 +1,6 @@
 # Swapping
 
-Open **Swapping** from the N-back home screen. Remember an arrangement, hide it with **Ready**, carry out each instruction in your head, then reconstruct the final arrangement. Positions always refer to their current screen coordinates.
+Open **Swapping** from the Working Memory Trainer home screen. Remember an arrangement, hide it with **Ready**, carry out each instruction in your head, then reconstruct the final arrangement. Positions always refer to their current screen coordinates.
 
 Choose numbers, letters, shapes or mixed content for a sequence of 3–12 items or a 2×2, 2×3 or 3×3 grid. Spoken letters use sequences. Audio plays each letter completely; Ready and replay become available after the full pass. Use the sample button to check playback before starting.
 

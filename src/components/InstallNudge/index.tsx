@@ -93,7 +93,7 @@ const InstallNudge = ({ flowBusy, blocksCompletedSignal }: InstallNudgeProps) =>
             aria-label="Install app"
         >
             <div className="install-nudge-copy">
-                <p className="install-nudge-title">Install N-Back</p>
+                <p className="install-nudge-title">Install Memory Trainer</p>
                 {iosSafari && deferred == null ? (
                     <p className="install-nudge-body">
                         Tap Share, then <strong>Add to Home Screen</strong>.

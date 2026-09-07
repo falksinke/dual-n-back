@@ -21,9 +21,7 @@ vi.mock('./store/gameStore', () => {
         isLadderPlayMode: () => false,
     };
 });
-vi.mock('./components/Topbar', () => ({ default: ({ onPractice, onSwapping }: { onPractice: () => void; onSwapping: () => void }) => <>
-    <button onClick={onPractice}>Practice</button><button onClick={onSwapping}>Swapping</button>
-</> }));
+vi.mock('./components/Topbar', () => ({ default: ({ onHome }: { onHome: () => void }) => <button onClick={onHome}>All exercises</button> }));
 vi.mock('./components/SpatialPractice', () => ({ default: ({ onExit }: { onExit: () => void }) => <section aria-label="Spatial Practice mode"><button onClick={onExit}>Exit practice</button></section> }));
 vi.mock('./components/Swapping', () => ({ default: ({ onExit }: { onExit: () => void }) => <section aria-label="Swapping mode"><button onClick={onExit}>Exit swapping</button></section> }));
 vi.mock('./hooks/useThemeVariables', () => ({ useThemeVariables: () => {} }));
@@ -45,23 +43,29 @@ vi.mock('./components/StatisticsPanel', () => ({ default: () => null }));
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
-describe('standalone practice navigation', () => {
-    it('unmounts N-back keyboard controls in Swapping and restores them on exit', () => {
+describe('working memory trainer navigation', () => {
+    it('mounts N-back keyboard controls only inside N-back', () => {
         render(<App />);
         fireEvent.keyDown(document, { key: ' ' });
+        expect(model.startGame).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'N-back' }));
+        fireEvent.keyDown(document, { key: ' ' });
         expect(model.startGame).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByRole('button', { name: 'All exercises' }));
         fireEvent.click(screen.getByRole('button', { name: 'Swapping' }));
         expect(screen.getByRole('region', { name: 'Swapping mode' })).toBeTruthy();
         fireEvent.keyDown(document, { key: ' ' });
         expect(model.startGame).toHaveBeenCalledTimes(1);
         fireEvent.click(screen.getByRole('button', { name: 'Exit swapping' }));
+        expect(screen.getByRole('heading', { name: 'Choose your practice' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'N-back' }));
         fireEvent.keyDown(document, { key: ' ' });
         expect(model.startGame).toHaveBeenCalledTimes(2);
     });
 
-    it('keeps the direct Spatial Practice entry', () => {
+    it('opens spatial practice and returns to the shared home', () => {
         render(<App />);
-        fireEvent.click(screen.getByRole('button', { name: 'Practice' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Spatial sequence' }));
         expect(screen.getByRole('region', { name: 'Spatial Practice mode' })).toBeTruthy();
         expect(screen.queryByRole('region', { name: 'Swapping mode' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Exit practice' }));

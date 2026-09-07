@@ -15,17 +15,17 @@ vi.mock('../DailyProgressDots', () => ({ default: () => null }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-function Navigation({ onSwapping }: { onSwapping: () => void }) {
+function Navigation({ onHome }: { onHome: () => void }) {
     useKeyboardControls();
-    return <Topbar onPractice={() => {}} onSwapping={onSwapping} settingsOpen={false}
+    return <Topbar onHome={onHome} settingsOpen={false}
         onSettingsOpenChange={() => {}} statisticsOpen={false} onStatisticsOpenChange={() => {}} />;
 }
 
-describe('Swapping entry keyboard ownership', () => {
+describe('Trainer home entry keyboard ownership', () => {
     it('preserves native Space activation and the global non-control shortcut', () => {
-        const onSwapping = vi.fn();
-        render(<Navigation onSwapping={onSwapping} />);
-        const button = screen.getByRole('button', { name: 'Swapping' });
+        const onHome = vi.fn();
+        render(<Navigation onHome={onHome} />);
+        const button = screen.getByRole('button', { name: 'All exercises' });
         button.focus();
         const key = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
         fireEvent(button, key);
@@ -33,7 +33,7 @@ describe('Swapping entry keyboard ownership', () => {
         expect(startGame).not.toHaveBeenCalled();
         // jsdom does not synthesize a native click from keyboard events.
         fireEvent.click(button);
-        expect(onSwapping).toHaveBeenCalledOnce();
+        expect(onHome).toHaveBeenCalledOnce();
         fireEvent.keyDown(document, { key: ' ' });
         expect(startGame).toHaveBeenCalledOnce();
     });

@@ -1,7 +1,7 @@
 {
-  "name": "N-Back",
-  "short_name": "N-Back",
-  "description": "N-back trainer for working memory practice.",
+  "name": "Working Memory Trainer",
+  "short_name": "Memory Trainer",
+  "description": "Working memory practice with N-back, Swapping, and spatial sequences.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
