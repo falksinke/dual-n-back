@@ -157,3 +157,60 @@
         transition: none;
     }
 }
+
+.spatial-practice__sequence-option {
+    display: flex;
+    align-items: center;
+    gap: 0.618rem;
+    min-height: var(--touch-min);
+    input { width: 1.25rem; height: 1.25rem; accent-color: var(--primary); }
+}
+
+.spatial-practice__feedback-icon:not(:empty) {
+    display: inline-block;
+    margin-inline-end: 0.618rem;
+    font-size: 1.618rem;
+}
+
+.spatial-practice__cell.is-pressed {
+    background: var(--primary);
+    color: var(--background);
+    transform: scale(0.94);
+}
+
+.spatial-practice.is-success {
+    .spatial-practice__status, .spatial-practice__cell {
+        border-color: #70b891;
+        background: color-mix(in srgb, #70b891 18%, var(--background));
+    }
+    .spatial-practice__grid { animation: practice-success 450ms cubic-bezier(0.22, 1, 0.36, 1); }
+    .spatial-practice__feedback-icon { animation: practice-success 450ms cubic-bezier(0.22, 1, 0.36, 1); }
+}
+
+.spatial-practice.is-retry {
+    .spatial-practice__status { border-color: #d98679; }
+    .spatial-practice__grid { animation: practice-failure 300ms cubic-bezier(0.65, 0, 0.35, 1); }
+    .spatial-practice__cell.is-wrong {
+        background: #d98679;
+        border-color: #d98679;
+        color: #202522;
+    }
+}
+
+@keyframes practice-success {
+    0%, 100% { transform: scale(1); }
+    40% { transform: scale(1.025); }
+}
+
+@keyframes practice-failure {
+    0%, 100% { transform: translateX(0); }
+    25%, 75% { transform: translateX(-0.382rem); }
+    50% { transform: translateX(0.382rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spatial-practice.is-success .spatial-practice__grid,
+    .spatial-practice.is-success .spatial-practice__feedback-icon,
+    .spatial-practice.is-retry .spatial-practice__grid { animation: none; }
+    .spatial-practice__cell.is-pressed { transform: none; }
+}
