@@ -137,3 +137,9 @@ Production: [nback.sinke.me](https://nback.sinke.me) (Vercel project `nback` onl
 For cloud progress, configure Upstash Redis env vars on that project (see **Player code** above), then `pnpm dlx vercel deploy --prod --yes --scope falk-sinkes-projects`.
 
 Set Vite `base` to your GitHub Pages subpath (for example `/dual-n-back/`) before publishing elsewhere. Manifest `start_url` / `scope` and the service worker assume site root (`/`) unless you adjust those to match. The service worker navigation denylist already excludes `/api/`.
+
+### Spatial sequence practice
+
+Open **Practice** in the top bar for a separate spatial recall exercise. Choose 1–9 positions (default 5), watch them appear in order, then click the squares in the same order. Each correct recall replays the same sequence with a 10% shorter interval, down to 300 ms per position. A mistake offers a replay at the current speed. **New sequence** starts a fresh pattern at the initial speed; **Back to N-Back** returns to the normal game. Practice does not record N-back results or advance daily session progress.
+
+On the results screen, press **Enter** while a rest-duration button is focused to skip the current rest and start the next round. The saved rest duration stays unchanged.

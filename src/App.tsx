@@ -25,14 +25,19 @@ import { loadUiPreferences } from './model/uiPreferences';
 import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
 import { shouldApplyWaitingUpdate } from './pwa/updateGate';
 import StatisticsPanel from './components/StatisticsPanel';
+import SpatialPractice from './components/SpatialPractice';
 
-const App = () => {
+interface NBackAppProps {
+    themeMode: ThemeMode;
+    onToggleTheme: () => void;
+    onPractice: () => void;
+}
+
+const NBackApp = ({ themeMode, onToggleTheme, onPractice }: NBackAppProps) => {
     const appRef = useRef<HTMLDivElement>(null);
-    const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
     const [hapticsEnabled, setHapticsEnabled] = useState(
         () => loadUiPreferences().hapticFeedbackEnabled
     );
-    useThemeVariables(themeMode === 'dark' ? DefaultDrakTheme : DefaultLightTheme, themeMode);
     useKeyboardControls();
 
     const game = useGameStore((state) => state.game);
@@ -151,6 +156,7 @@ const App = () => {
             <div ref={appRef} className={appContainerClass}>
                 <div className="app">
                     <Topbar
+                        onPractice={onPractice}
                         settingsOpen={settingsOpen}
                         onSettingsOpenChange={(open) => {
                             setSettingsOpen(open);
@@ -213,9 +219,7 @@ const App = () => {
                     )}
                     <Footer
                         themeMode={themeMode}
-                        onToggleTheme={() =>
-                            setThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark'))
-                        }
+                        onToggleTheme={onToggleTheme}
                         ariaHidden={chromeHidden}
                     />
                     {!showingResults && <UserMatchNotice />}
@@ -227,6 +231,28 @@ const App = () => {
                 </div>
             </div>
         </HapticsEnabledProvider>
+    );
+};
+
+const App = () => {
+    const [practiceOpen, setPracticeOpen] = useState(false);
+    const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
+    useThemeVariables(themeMode === 'dark' ? DefaultDrakTheme : DefaultLightTheme, themeMode);
+
+    if (practiceOpen) {
+        return (
+            <main className="practice-shell">
+                <SpatialPractice onExit={() => setPracticeOpen(false)} />
+            </main>
+        );
+    }
+
+    return (
+        <NBackApp
+            themeMode={themeMode}
+            onToggleTheme={() => setThemeMode((mode) => mode === 'dark' ? 'light' : 'dark')}
+            onPractice={() => setPracticeOpen(true)}
+        />
     );
 };
 

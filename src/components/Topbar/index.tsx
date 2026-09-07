@@ -48,6 +48,7 @@ const StatisticsIcon = () => (
 );
 
 interface TopbarProps {
+    onPractice: () => void;
     settingsOpen: boolean;
     onSettingsOpenChange: (open: boolean) => void;
     statisticsOpen: boolean;
@@ -58,6 +59,7 @@ interface TopbarProps {
 }
 
 const Topbar = ({
+    onPractice,
     settingsOpen,
     onSettingsOpenChange,
     statisticsOpen,
@@ -76,6 +78,13 @@ const Topbar = ({
                 <DailyProgressDots />
 
                 <div className="topbar-actions">
+                    <button
+                        type="button"
+                        className="settings-trigger practice-trigger"
+                        onClick={onPractice}
+                    >
+                        Practice
+                    </button>
                     <button
                         type="button"
                         className="settings-trigger statistics-trigger"

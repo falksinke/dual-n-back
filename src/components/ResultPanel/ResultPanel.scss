@@ -1,7 +1,7 @@
 .result-panel {
     --result-pad: 18px;
-    --result-gap: 11px;
-    --result-gap-section: 18px;
+    --result-gap: var(--space-md);
+    --result-gap-section: var(--space-lg);
 
     width: min(560px, 100%);
     max-height: min(78dvh, 100%);
@@ -67,6 +67,10 @@
         grid-area: counts;
         font-size: 0.85rem;
         color: var(--textBackground);
+    }
+
+    .rest-timer {
+        margin-bottom: var(--space-lg);
     }
 
     .result-modality-grid {
@@ -271,7 +275,7 @@
 @media (max-width: 480px) {
     .result-panel {
         --result-pad: 14px;
-        --result-gap: 10px;
+        --result-gap: var(--space-md);
         width: 100%;
         max-height: min(82dvh, 100%);
         font-size: 0.95rem;

@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useMountEffect } from './useMountEffect';
 import { useGameStore } from '../store/gameStore';
 import { modalityFromKey } from '../model/modalities';
 
 export const useKeyboardControls = () => {
-    useEffect(() => {
+    useMountEffect(() => {
         const handleKeydown = (e: KeyboardEvent): void => {
+            if (e.defaultPrevented) return;
             const target = e.target;
             if (
                 target instanceof HTMLInputElement ||
@@ -52,6 +53,12 @@ export const useKeyboardControls = () => {
             }
 
             switch (e.key) {
+                case 'Enter':
+                    // Let focused controls keep their native activation behavior.
+                    if (target instanceof HTMLElement && target.closest('button, a, select')) return;
+                    e.preventDefault();
+                    if (!e.repeat && !busy) startGame();
+                    break;
                 case 'ArrowDown':
                     e.preventDefault();
                     if (!busy && !adaptiveIdle) decreaseLevel();
@@ -95,5 +102,5 @@ export const useKeyboardControls = () => {
 
         document.addEventListener('keydown', handleKeydown);
         return () => document.removeEventListener('keydown', handleKeydown);
-    }, []);
+    });
 };

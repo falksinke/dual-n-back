@@ -1,4 +1,9 @@
 :root {
+    --space-xs: 0.382rem;
+    --space-sm: 0.618rem;
+    --space-md: 1rem;
+    --space-lg: 1.618rem;
+    --space-xl: 2.618rem;
     --pad-frame-y: 28px;
     --pad-frame-x: 32px;
     --safe-top: env(safe-area-inset-top, 0px);
@@ -101,14 +106,18 @@ body {
         align-items: center;
         flex: 1;
         min-height: 0;
-        padding: var(--frame-top) var(--frame-right) var(--frame-bottom) var(--frame-left);
+        /* Topbar is absolute; reserve its band so Start / board never sit under dots. */
+        --chrome-top: calc(var(--frame-top) + 88px + var(--space-lg));
+        padding: var(--chrome-top) var(--frame-right) var(--frame-bottom) var(--frame-left);
         overflow: hidden;
         /* Position / Audio claim buttons stay mounted idle + in-session. */
         --action-band: var(--action-band-match);
+        --idle-hud-space: 0px;
         padding-bottom: calc(var(--frame-bottom) + var(--action-band));
     }
 
     &.adaptive .app {
+        --idle-hud-space: var(--action-band-hud);
         --action-band: var(--action-band-match);
         padding-bottom: calc(
             var(--frame-bottom) + var(--action-band-hud) + var(--action-band)
@@ -130,8 +139,8 @@ body {
     &.showing-results .app {
         --action-band: 0px;
         justify-content: flex-start;
-        /* Clear top chrome (logo / exit / trials band): 44px control + gap. */
-        padding-top: calc(var(--frame-top) + 44px + 16px);
+        /* Clear top chrome (logo / exit / trials band): same band as idle. */
+        padding-top: var(--chrome-top);
         padding-bottom: var(--frame-bottom);
     }
 }
@@ -191,5 +200,38 @@ body {
     *::after {
         transition-duration: 0.01ms !important;
         animation-duration: 0.01ms !important;
+    }
+}
+
+.practice-shell {
+    height: 100%;
+    height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: max(var(--space-lg), var(--safe-top)) max(var(--space-md), var(--safe-right))
+        max(var(--space-lg), var(--safe-bottom)) max(var(--space-md), var(--safe-left));
+}
+
+/* Use the extra portrait height, including Safari's changing browser viewport. */
+@media (max-width: 600px) and (min-height: 700px) {
+    .app-container {
+        --frame-top: calc(max(var(--pad-frame-y), var(--safe-top)) + var(--space-lg));
+    }
+}
+
+.app-container.showing-results .board-container {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Keep the absolute Start button below the dots when browser chrome reduces height. */
+@media (max-height: 740px) {
+    .app-container:not(.playing):not(.showing-results) .board {
+        --idle-board-size: min(80vw, calc(70dvh - 100px),
+            max(132px, calc(100dvh - var(--chrome-top) - var(--frame-bottom)
+                - var(--action-band) - var(--idle-hud-space)
+                - 2 * (var(--touch-min) + var(--space-lg)))));
+        width: var(--idle-board-size);
+        height: var(--idle-board-size);
     }
 }
