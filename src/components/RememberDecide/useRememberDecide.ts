@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useMountEffect } from '../../hooks/useMountEffect';
 import { generateRound } from '../../model/rememberDecide';
-import type { DecisionAnswer, RememberDecideConfig, RememberDecideRound } from '../../model/rememberDecide';
+import type { DecisionAnswer, RememberDecideConfig, RememberDecideResult, RememberDecideRound } from '../../model/rememberDecide';
 import {
     initialState,
     rememberDecideReducer,
@@ -10,9 +10,7 @@ import type { RememberDecideAction, RememberDecideState, TimedPhase } from './co
 import { phaseIdentity, projectState } from './projection';
 
 interface RememberDecideDependencies {
-    readonly createRound?: (config: RememberDecideConfig) =>
-        | { readonly ok: true; readonly value: RememberDecideRound }
-        | { readonly ok: false; readonly error: { readonly message: string } };
+    readonly createRound?: (config: RememberDecideConfig) => RememberDecideResult<RememberDecideRound>;
     readonly now?: () => number;
 }
 
@@ -39,6 +37,7 @@ export function useRememberDecide(
         if (!mountedRef.current) return stateRef.current;
         const previous = stateRef.current;
         const next = rememberDecideReducer(previous, action);
+        if (next === previous) return previous;
         if (phaseIdentity(previous) !== phaseIdentity(next)) clearRunner();
         stateRef.current = next;
         setState(next);
