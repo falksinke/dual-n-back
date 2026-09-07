@@ -27,6 +27,7 @@ import { shouldApplyWaitingUpdate } from './pwa/updateGate';
 import StatisticsPanel from './components/StatisticsPanel';
 import SpatialPractice from './components/SpatialPractice';
 import Swapping from './components/Swapping';
+import RememberDecide from './components/RememberDecide';
 import TrainerHome, { type TrainingMode } from './components/TrainerHome';
 
 interface NBackAppProps {
@@ -248,12 +249,26 @@ const App = () => {
         return <TrainerHome onSelect={setTrainingMode} themeMode={themeMode} onToggleTheme={toggleTheme} />;
     }
 
-    if (trainingMode !== 'nback') {
+    if (trainingMode === 'spatial') {
         return (
             <main className="practice-shell">
-                {trainingMode === 'spatial'
-                    ? <SpatialPractice onExit={goHome} />
-                    : <Swapping onExit={goHome} />}
+                <SpatialPractice onExit={goHome} />
+            </main>
+        );
+    }
+
+    if (trainingMode === 'swapping') {
+        return (
+            <main className="practice-shell">
+                <Swapping onExit={goHome} />
+            </main>
+        );
+    }
+
+    if (trainingMode === 'remember-decide') {
+        return (
+            <main className="practice-shell">
+                <RememberDecide onExit={goHome} />
             </main>
         );
     }

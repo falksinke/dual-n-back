@@ -1,12 +1,13 @@
 import type { ThemeMode } from '../../themes/config';
 import './TrainerHome.scss';
 
-export type TrainingMode = 'nback' | 'spatial' | 'swapping';
+export type TrainingMode = 'nback' | 'spatial' | 'swapping' | 'remember-decide';
 
 const modes: { id: TrainingMode; title: string; focus: string; description: string }[] = [
     { id: 'nback', title: 'N-back', focus: 'Track and update', description: 'Follow a stream of items and spot matches from earlier in the sequence.' },
     { id: 'swapping', title: 'Swapping', focus: 'Hold and transform', description: 'Remember an arrangement, apply changes in your head, then rebuild the result.' },
     { id: 'spatial', title: 'Spatial sequence', focus: 'Remember locations', description: 'Recall locations in order. Adjust the pace or add a maths challenge before recall.' },
+    { id: 'remember-decide', title: 'Remember & Decide', focus: 'Spatial complex span', description: 'Remember locations while making a separate symmetry decision after each one.' },
 ];
 
 export default function TrainerHome({ onSelect, themeMode, onToggleTheme }: {
