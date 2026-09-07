@@ -79,11 +79,14 @@
     aspect-ratio: 1;
     align-self: center;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    flex-shrink: 0;
     gap: 0.618rem;
 }
 
 .spatial-practice__cell {
+    padding: 0;
     min-width: var(--touch-min);
     min-height: var(--touch-min);
     border: 1px solid var(--border);
@@ -92,6 +95,7 @@
     color: var(--background);
     font: inherit;
     font-size: 1.618rem;
+    line-height: 1;
     font-weight: 700;
     cursor: pointer;
     transition: background-color 120ms ease-out, border-color 120ms ease-out;
