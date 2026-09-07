@@ -218,3 +218,15 @@
     .spatial-practice.is-retry .spatial-practice__grid { animation: none; }
     .spatial-practice__cell.is-pressed { transform: none; }
 }
+
+.spatial-practice__options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.618rem;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+    legend { margin-bottom: 0.618rem; font-weight: 600; }
+    &:disabled { opacity: 0.65; }
+}

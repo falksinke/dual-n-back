@@ -2,35 +2,27 @@ import { useRef, useState } from 'react';
 import { useMountEffect } from '../../hooks/useMountEffect';
 import './SpatialPractice.scss';
 import { PracticeSounds } from './sounds';
+import { CELL_COUNT, createSequence } from './sequence';
+import MathChallenge from './MathChallenge';
+import PracticeSettings from './PracticeSettings';
 
 interface SpatialPracticeProps {
     onExit: () => void;
 }
 
-type Phase = 'idle' | 'showing' | 'recall' | 'success' | 'retry' | 'paused';
+type Phase = 'idle' | 'showing' | 'math' | 'recall' | 'success' | 'retry' | 'paused';
 
-const CELL_COUNT = 9;
 const INITIAL_ITEM_MS = 1000;
 const MIN_ITEM_MS = 300;
 const ACTIVE_PORTION = 0.7;
 const SUCCESS_PAUSE_MS = 1000;
 
-function createSequence(length: number, previous: number[] = []): number[] {
-    const cells = Array.from({ length: CELL_COUNT }, (_, index) => index);
-    for (let index = cells.length - 1; index > 0; index -= 1) {
-        const swapIndex = Math.floor(Math.random() * (index + 1));
-        [cells[index], cells[swapIndex]] = [cells[swapIndex], cells[index]];
-    }
-    const next = cells.slice(0, length);
-    if (next.every((cell, index) => cell === previous[index])) {
-        if (length === 1) next[0] = (next[0] + 1) % CELL_COUNT;
-        else [next[0], next[1]] = [next[1], next[0]];
-    }
-    return next;
-}
-
 const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const [length, setLength] = useState(5);
+    const [increaseSpeed, setIncreaseSpeed] = useState(true);
+    const [interference, setInterference] = useState(0);
+    const [mathEnabled, setMathEnabled] = useState(false);
+    const historyRef = useRef<number[]>([]);
     const [newSequenceOnSuccess, setNewSequenceOnSuccess] = useState(true);
     const [pressedCell, setPressedCell] = useState<number | null>(null);
     const pressRef = useRef(0);
@@ -79,9 +71,10 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         const run = runRef.current;
         const showItem = (index: number): void => {
             if (index >= nextSequence.length) {
-                updatePhase('recall');
+                updatePhase(mathEnabled ? 'math' : 'recall');
                 return;
             }
+            historyRef.current = [...historyRef.current, nextSequence[index]].slice(-2 * length);
             soundsRef.current?.play('item');
             setActiveCell(nextSequence[index]);
             setActiveOrder(index + 1);
@@ -95,7 +88,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     };
 
     const startNewSequence = (): void => {
-        const nextSequence = createSequence(length, sequenceRef.current);
+        const nextSequence = createSequence(length, sequenceRef.current, historyRef.current, interference);
         sequenceRef.current = nextSequence;
         itemMsRef.current = INITIAL_ITEM_MS;
         setSequence(nextSequence);
@@ -113,6 +106,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const stop = (): void => {
         cancelScheduled();
         sequenceRef.current = [];
+        historyRef.current = [];
         itemMsRef.current = INITIAL_ITEM_MS;
         setSequence([]);
         recallRef.current = [];
@@ -139,7 +133,8 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             return;
         }
         if (nextRecall.length === sequenceRef.current.length) {
-            const faster = Math.max(MIN_ITEM_MS, Math.round(itemMsRef.current * 0.9));
+            const faster = increaseSpeed
+                ? Math.max(MIN_ITEM_MS, Math.round(itemMsRef.current * 0.9)) : itemMsRef.current;
             itemMsRef.current = faster;
             setItemMs(faster);
             soundsRef.current?.play('success');
@@ -147,7 +142,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             const run = runRef.current;
             // Select the next pattern now so a background pause resumes the intended round.
             const next = newSequenceOnSuccess
-                ? createSequence(length, sequenceRef.current) : sequenceRef.current;
+                ? createSequence(length, sequenceRef.current, historyRef.current, interference) : sequenceRef.current;
             sequenceRef.current = next;
             schedule(() => {
                 setSequence(next);
@@ -159,6 +154,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const changeLength = (nextLength: number): void => {
         cancelScheduled();
         sequenceRef.current = [];
+        historyRef.current = [];
         itemMsRef.current = INITIAL_ITEM_MS;
         setLength(nextLength);
         setSequence([]);
@@ -178,6 +174,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         const handleVisibility = (): void => {
             if (document.hidden && (
                 phaseRef.current === 'showing'
+                || phaseRef.current === 'math'
                 || phaseRef.current === 'recall'
                 || phaseRef.current === 'success'
             )) {
@@ -202,10 +199,12 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         ? 'Choose a length, then start.'
         : phase === 'showing'
             ? 'Watch — remember the order.'
+            : phase === 'math'
+                ? 'Solve the math problem, then recall the sequence.'
             : phase === 'recall'
                 ? `Your turn — item ${recall.length + 1} of ${length}.`
                 : phase === 'success'
-                    ? `Correct! ${newSequenceOnSuccess ? 'New sequence' : 'Same sequence'} next${itemMs === MIN_ITEM_MS ? ' at top speed.' : ', faster.'}`
+                    ? `Correct! ${newSequenceOnSuccess ? 'New sequence' : 'Same sequence'} next${!increaseSpeed ? ' at the same speed.' : itemMs === MIN_ITEM_MS ? ' at top speed.' : ', faster.'}`
                 : phase === 'retry'
                     ? `Not quite — wrong square at step ${recall.length}. Replay to try again.`
                     : 'Practice paused while the tab was hidden. Replay to continue.';
@@ -220,27 +219,14 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                 <button type="button" className="spatial-practice__back" onClick={exit}>Back to N-Back</button>
             </header>
 
-            <div className="spatial-practice__settings">
-                <label htmlFor="spatial-sequence-length">Sequence length</label>
-                <select
-                    id="spatial-sequence-length"
-                    value={length}
-                    onChange={(event) => changeLength(Number(event.target.value))}
-                >
-                    {Array.from({ length: CELL_COUNT }, (_, index) => index + 1).map((value) => (
-                        <option key={value} value={value}>{value}</option>
-                    ))}
-                </select>
-            </div>
-
-            <label className="spatial-practice__sequence-option">
-                <input type="checkbox" checked={newSequenceOnSuccess}
-                    disabled={phase !== 'idle'}
-                    onChange={(event) => setNewSequenceOnSuccess(event.target.checked)} />
-                New sequence after each correct recall
-            </label>
+            <PracticeSettings length={length} onLengthChange={changeLength}
+                newSequence={newSequenceOnSuccess} onNewSequenceChange={setNewSequenceOnSuccess}
+                increaseSpeed={increaseSpeed} onIncreaseSpeedChange={setIncreaseSpeed}
+                interference={interference} onInterferenceChange={setInterference}
+                mathEnabled={mathEnabled} onMathEnabledChange={setMathEnabled}
+                disabled={phase !== 'idle'} />
             <p className="spatial-practice__instruction">
-                Watch and listen, then tap the squares in order. Correct recall increases the speed.
+                Watch and listen, then tap every square in order, including repeated positions.
                 A mistake lets you retry at the same speed.
             </p>
 
@@ -267,6 +253,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                 ))}
             </div>
 
+            {phase === 'math' && <MathChallenge
+                onSolved={() => { if (phaseRef.current === 'math') updatePhase('recall'); }}
+                onAbort={stop} />}
             <div className="spatial-practice__controls">
                 {phase === 'idle' ? (
                     <button type="button" className="is-primary" onClick={startNewSequence}>Start</button>
