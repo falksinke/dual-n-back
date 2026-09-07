@@ -110,20 +110,20 @@ describe('useRememberDecide lifecycle and callback ownership', () => {
         const firstGeneration = view.generation;
         runTimedPhase(game, 'location', 1000);
         runTimedPhase(game, 'location-blank', 250);
-        view = game.result.current.view;
-        expectPhase(view, 'decision');
-        act(() => game.result.current.mountPhase(view.generation, view.phase, view.itemIndex));
-        const firstDecisionGeneration = view.generation;
-        const firstDecisionItem = view.itemIndex;
+        const firstDecision = game.result.current.view;
+        expectPhase(firstDecision, 'decision');
+        act(() => game.result.current.mountPhase(firstDecision.generation, firstDecision.phase, firstDecision.itemIndex));
+        const firstDecisionGeneration = firstDecision.generation;
+        const firstDecisionItem = firstDecision.itemIndex;
         const staleAnswer = () => game.result.current.answer(firstDecisionGeneration, firstDecisionItem, 'yes');
         act(staleAnswer);
         runTimedPhase(game, 'decision-blank', 250);
 
         runTimedPhase(game, 'location', 1000);
         runTimedPhase(game, 'location-blank', 250);
-        view = game.result.current.view;
-        expectPhase(view, 'decision');
-        act(() => game.result.current.mountPhase(view.generation, view.phase, view.itemIndex));
+        const secondDecision = game.result.current.view;
+        expectPhase(secondDecision, 'decision');
+        act(() => game.result.current.mountPhase(secondDecision.generation, secondDecision.phase, secondDecision.itemIndex));
         act(staleAnswer);
         expect(game.result.current.view).toMatchObject({ phase: 'decision', itemIndex: 1 });
         answerCurrent(game, 'no');

@@ -5,7 +5,7 @@ import type {
     RememberDecideScore,
     SymmetryPattern,
 } from '../../model/rememberDecide';
-import type { RememberDecideState, TimedPhase } from './controller';
+import type { RememberDecideState } from './controller';
 
 interface TimedIdentity {
     readonly generation: number;
@@ -74,13 +74,4 @@ export function projectState(state: RememberDecideState): RememberDecideProjecti
     }
     if (!state.score) throw new Error('A submitted Remember & Decide round requires a score.');
     return { phase: 'result', generation: state.generation, round: state.round, score: state.score, status: state.status };
-}
-
-export function isTimedProjection(
-    phase: RememberDecideProjection['phase']
-): phase is TimedPhase {
-    return phase === 'location'
-        || phase === 'location-blank'
-        || phase === 'decision'
-        || phase === 'decision-blank';
 }

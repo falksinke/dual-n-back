@@ -60,6 +60,7 @@ describe('Remember & Decide assembled flow', () => {
         expect(screen.getByText('positions correct')).toBeTruthy();
         expect(screen.getByText('decisions correct')).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Try next length' })).toBeTruthy();
+        expect(screen.getByRole('status').textContent).toBe('Results available.');
     });
 
     it('removes all task material on Pause and suppresses held native activation', () => {

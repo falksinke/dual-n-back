@@ -142,7 +142,7 @@ export default function RememberDecide({ onExit }: RememberDecideProps) {
                 <Result round={view.round} score={view.score} onNewRound={() => game.start(view.generation)} onTryNextLength={() => game.tryNextLength(view.generation)} onSetup={() => game.setup(view.generation)} onExit={() => game.exit(view.generation)} />
             )}
 
-            {view.phase !== 'setup' && view.phase !== 'result' && (
+            {view.phase !== 'setup' && (
                 <p className="remember-decide-live-status" role="status" aria-live="polite" aria-atomic="true">{view.status}</p>
             )}
         </section>
