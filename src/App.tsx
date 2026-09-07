@@ -26,14 +26,16 @@ import { applyPendingUpdate, subscribeUpdateReady } from './pwa/registerSW';
 import { shouldApplyWaitingUpdate } from './pwa/updateGate';
 import StatisticsPanel from './components/StatisticsPanel';
 import SpatialPractice from './components/SpatialPractice';
+import Swapping from './components/Swapping';
 
 interface NBackAppProps {
     themeMode: ThemeMode;
     onToggleTheme: () => void;
     onPractice: () => void;
+    onSwapping: () => void;
 }
 
-const NBackApp = ({ themeMode, onToggleTheme, onPractice }: NBackAppProps) => {
+const NBackApp = ({ themeMode, onToggleTheme, onPractice, onSwapping }: NBackAppProps) => {
     const appRef = useRef<HTMLDivElement>(null);
     const [hapticsEnabled, setHapticsEnabled] = useState(
         () => loadUiPreferences().hapticFeedbackEnabled
@@ -157,6 +159,7 @@ const NBackApp = ({ themeMode, onToggleTheme, onPractice }: NBackAppProps) => {
                 <div className="app">
                     <Topbar
                         onPractice={onPractice}
+                        onSwapping={onSwapping}
                         settingsOpen={settingsOpen}
                         onSettingsOpenChange={(open) => {
                             setSettingsOpen(open);
@@ -235,14 +238,16 @@ const NBackApp = ({ themeMode, onToggleTheme, onPractice }: NBackAppProps) => {
 };
 
 const App = () => {
-    const [practiceOpen, setPracticeOpen] = useState(false);
+    const [practiceMode, setPracticeMode] = useState<'spatial' | 'swapping' | null>(null);
     const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
     useThemeVariables(themeMode === 'dark' ? DefaultDrakTheme : DefaultLightTheme, themeMode);
 
-    if (practiceOpen) {
+    if (practiceMode !== null) {
         return (
             <main className="practice-shell">
-                <SpatialPractice onExit={() => setPracticeOpen(false)} />
+                {practiceMode === 'spatial'
+                    ? <SpatialPractice onExit={() => setPracticeMode(null)} />
+                    : <Swapping onExit={() => setPracticeMode(null)} />}
             </main>
         );
     }
@@ -251,7 +256,8 @@ const App = () => {
         <NBackApp
             themeMode={themeMode}
             onToggleTheme={() => setThemeMode((mode) => mode === 'dark' ? 'light' : 'dark')}
-            onPractice={() => setPracticeOpen(true)}
+            onPractice={() => setPracticeMode('spatial')}
+            onSwapping={() => setPracticeMode('swapping')}
         />
     );
 };

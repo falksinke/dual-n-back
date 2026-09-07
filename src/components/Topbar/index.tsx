@@ -2,6 +2,7 @@ import SettingsPanel from '../SettingsPanel';
 import DailyProgressDots from '../DailyProgressDots';
 import './Topbar.scss';
 import './StatisticsTrigger.scss';
+import './PracticeNavigation.scss';
 
 const GearIcon = () => (
     <svg
@@ -49,6 +50,7 @@ const StatisticsIcon = () => (
 
 interface TopbarProps {
     onPractice: () => void;
+    onSwapping: () => void;
     settingsOpen: boolean;
     onSettingsOpenChange: (open: boolean) => void;
     statisticsOpen: boolean;
@@ -60,6 +62,7 @@ interface TopbarProps {
 
 const Topbar = ({
     onPractice,
+    onSwapping,
     settingsOpen,
     onSettingsOpenChange,
     statisticsOpen,
@@ -84,6 +87,17 @@ const Topbar = ({
                         onClick={onPractice}
                     >
                         Practice
+                    </button>
+                    <button
+                        type="button"
+                        className="settings-trigger practice-trigger"
+                        onClick={onSwapping}
+                        onKeyDown={(event) => {
+                            // Preserve native button activation before the N-back document shortcut.
+                            if (event.key === ' ') event.stopPropagation();
+                        }}
+                    >
+                        Swapping
                     </button>
                     <button
                         type="button"

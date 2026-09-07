@@ -1,0 +1,15 @@
+.topbar .topbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+@media (max-width: 480px) {
+    .topbar {
+        flex-wrap: wrap;
+        gap: 0.618rem;
+    }
+
+    .topbar .topbar-actions {
+        width: 100%;
+    }
+}
