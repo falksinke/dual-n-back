@@ -6,12 +6,13 @@ interface SpatialPracticeProps {
     onExit: () => void;
 }
 
-type Phase = 'idle' | 'showing' | 'recall' | 'retry' | 'paused';
+type Phase = 'idle' | 'showing' | 'recall' | 'success' | 'retry' | 'paused';
 
 const CELL_COUNT = 9;
 const INITIAL_ITEM_MS = 1000;
 const MIN_ITEM_MS = 300;
 const ACTIVE_PORTION = 0.7;
+const SUCCESS_PAUSE_MS = 700;
 
 function createSequence(length: number): number[] {
     const cells = Array.from({ length: CELL_COUNT }, (_, index) => index);
@@ -120,7 +121,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             const faster = Math.max(MIN_ITEM_MS, Math.round(itemMsRef.current * 0.9));
             itemMsRef.current = faster;
             setItemMs(faster);
-            playSequence(sequenceRef.current, faster);
+            updatePhase('success');
+            const run = runRef.current;
+            schedule(() => playSequence(sequenceRef.current, faster), SUCCESS_PAUSE_MS, run);
         }
     };
 
@@ -143,7 +146,11 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
 
     useMountEffect(() => {
         const handleVisibility = (): void => {
-            if (document.hidden && (phaseRef.current === 'showing' || phaseRef.current === 'recall')) {
+            if (document.hidden && (
+                phaseRef.current === 'showing'
+                || phaseRef.current === 'recall'
+                || phaseRef.current === 'success'
+            )) {
                 cancelScheduled();
                 recallRef.current = [];
                 setRecall([]);
@@ -165,6 +172,10 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             ? 'Watch the positions in order.'
             : phase === 'recall'
                 ? 'Repeat the sequence.'
+                : phase === 'success'
+                    ? itemMs === MIN_ITEM_MS
+                        ? 'Correct — replaying at top speed.'
+                        : 'Correct — replaying faster.'
                 : phase === 'retry'
                     ? 'That was not the next position. Replay and try again.'
                     : 'Practice paused while the tab was hidden. Replay to continue.';
@@ -191,6 +202,11 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                     ))}
                 </select>
             </div>
+
+            <p className="spatial-practice__instruction">
+                Repeat the positions in order. A correct recall replays the same sequence faster;
+                New sequence gives you a different pattern.
+            </p>
 
             <div className="spatial-practice__status" role="status" aria-live="polite">
                 <strong>{status}</strong>
