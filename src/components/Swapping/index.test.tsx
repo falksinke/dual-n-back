@@ -21,11 +21,13 @@ async function placeNextToken() {
 
 describe('assembled Swapping game', () => {
     it('hides the round on pause and reveals the solution only after submission', async () => {
-        render(<Swapping onExit={vi.fn()} />);
+        const { container } = render(<Swapping onExit={vi.fn()} />);
         fireEvent.click(screen.getByRole('button', { name: 'Start round' }));
         expect(screen.getByRole('list', { name: 'Starting arrangement' })).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Ready' }));
         expect(screen.queryByRole('list', { name: 'Starting arrangement' })).toBeNull();
+        expect(container.querySelectorAll('.swapping-cargo__mark, .swapping-token__icon')).toHaveLength(0);
+        expect(container.querySelectorAll('details, .swapping-result')).toHaveLength(0);
         fireEvent.click(screen.getByRole('button', { name: 'Reconstruct' }));
         await placeNextToken();
         const firstSlot = within(screen.getByRole('list', { name: 'Answer slots' })).getAllByRole('button')[0].getAttribute('aria-label');
@@ -33,6 +35,7 @@ describe('assembled Swapping game', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
         expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Resume', 'Exit']);
         expect(screen.queryByRole('list')).toBeNull();
+        expect(container.querySelectorAll('.swapping-track, .swapping-cargo, .swapping-instruction-card, .swapping-palette')).toHaveLength(0);
         fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
         expect(within(screen.getByRole('list', { name: 'Answer slots' })).getAllByRole('button')[0].getAttribute('aria-label')).toBe(firstSlot);
         expect(document.activeElement?.getAttribute('aria-label')).toBe(activeLabel);

@@ -1,8 +1,11 @@
-import { useRef, type CSSProperties, type KeyboardEvent } from 'react';
+import { useRef, type KeyboardEvent } from 'react';
 import { useMountEffect } from '../../hooks/useMountEffect';
-import { GRID_DIMENSIONS, getAccessiblePositionLabel, getPositionLabel } from '../../model/swapping';
+import { getAccessiblePositionLabel, getPositionLabel } from '../../model/swapping';
 import type { PaletteEntry, SwappingConfig, SwappingToken } from '../../model/swapping/types';
-import { SwappingTokenMark } from './Board';
+import { CargoMark } from './Board';
+import { WagonBaseArt } from './RailwayArt';
+import RailwayScene from './RailwayScene';
+import TrackBed, { boardStyle } from './TrackBed';
 
 export interface AnswerProps {
     config: SwappingConfig;
@@ -35,11 +38,6 @@ export default function Answer({
     const paletteRefs = useRef<(HTMLButtonElement | null)[]>([]);
     const submitRef = useRef<HTMLButtonElement | null>(null);
     const complete = slots.every((token) => token != null);
-    const columns =
-        config.layout === 'sequence'
-            ? Math.min(slots.length, 6)
-            : GRID_DIMENSIONS[config.layout].columns;
-    const mobileColumns = config.layout === 'sequence' ? Math.min(slots.length, 4) : columns;
 
     useMountEffect(() => {
         slotRefs.current[activeIndex]?.focus();
@@ -121,96 +119,112 @@ export default function Answer({
             onKeyDown={handleAnswerKeys}
         >
             <div className="swapping-play__topline">
-                <span>Reconstruct the final arrangement</span>
+                <span>03 / Unloading</span>
                 <button type="button" className="swapping-button is-quiet" onClick={onPause}>
                     Pause
                 </button>
             </div>
             <header className="swapping-section-heading">
-                <h2 id="swapping-answer-title">Place every token</h2>
-                <p>Select a slot, then choose one remaining token.</p>
+                <h2 id="swapping-answer-title">Put the cargo where it belongs.</h2>
+                <p>Rebuild the final arrangement. Select a bay, then choose a cargo mark below.</p>
             </header>
 
-            <ol
-                className={`swapping-answer__slots is-${config.layout === 'sequence' ? 'sequence' : 'grid'}`}
-                style={{
-                    '--swapping-columns': columns,
-                    '--swapping-mobile-columns': mobileColumns,
-                } as CSSProperties}
-                aria-label="Answer slots"
-            >
-                {slots.map((token, index) => {
-                    const position = getAccessiblePositionLabel(index, config.layout);
-                    const selected = index === activeIndex;
-                    return (
-                        <li key={index}>
-                            <button
-                                type="button"
-                                className={`swapping-answer__slot${selected ? ' is-active' : ''}`}
-                                aria-pressed={selected}
-                                aria-label={`${position}, ${token == null ? 'empty' : token.label}${
-                                    selected ? ', selected' : ''
-                                }`}
-                                onClick={() => onSelect(index)}
-                                onKeyDown={(event) => moveSlotFocus(event, index)}
-                                ref={(element) => {
-                                    slotRefs.current[index] = element;
-                                }}
-                            >
-                                <span className="swapping-answer__position" aria-hidden="true">
-                                    {getPositionLabel(index, config.layout).replace('position ', '')}
-                                </span>
-                                {token == null ? (
-                                    <span className="swapping-answer__empty" aria-hidden="true" />
-                                ) : (
-                                    <SwappingTokenMark token={token} />
-                                )}
-                            </button>
-                        </li>
-                    );
-                })}
-            </ol>
+            <RailwayScene mood="unload" message="Your manifest, your call. Nothing is checked until you submit.">
+                <TrackBed layout={config.layout}>
+                    <ol
+                        className={`swapping-answer__slots is-${config.layout === 'sequence' ? 'sequence' : 'grid'}`}
+                        style={boardStyle(config)}
+                        aria-label="Answer slots"
+                    >
+                        {slots.map((token, index) => {
+                            const position = getAccessiblePositionLabel(index, config.layout);
+                            const selected = index === activeIndex;
+                            return (
+                                <li key={index}>
+                                    <button
+                                        type="button"
+                                        className={`swapping-answer__slot${selected ? ' is-active' : ''}`}
+                                        aria-pressed={selected}
+                                        aria-label={`${position}, ${token == null ? 'empty' : token.label}${
+                                            selected ? ', selected' : ''
+                                        }`}
+                                        onClick={() => onSelect(index)}
+                                        onKeyDown={(event) => moveSlotFocus(event, index)}
+                                        ref={(element) => {
+                                            slotRefs.current[index] = element;
+                                        }}
+                                    >
+                                        <span className="swapping-answer__position" aria-hidden="true">
+                                            {getPositionLabel(index, config.layout).replace('position ', '')}
+                                        </span>
+                                        {token == null ? (
+                                            <span className="swapping-cargo is-empty"><span className="swapping-answer__empty" aria-hidden="true">+</span></span>
+                                        ) : <CargoMark token={token} topDown={config.layout !== 'sequence'} />}
+                                        <WagonBaseArt />
+                                        <span className="swapping-answer__selection" aria-hidden="true">{selected ? 'Selected' : '\u00a0'}</span>
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ol>
+                </TrackBed>
+            </RailwayScene>
 
-            <div className="swapping-palette" role="group" aria-label="Token palette">
-                {palette.map((entry, index) => (
+            <div className="swapping-unloading-desk">
+                <div className="swapping-unloading-desk__heading">
+                    <h3>Cargo manifest</h3>
+                    <p role="status" aria-live="polite">
+                        {slots.filter((token) => token != null).length} of {slots.length} bays filled · {getPositionLabel(activeIndex, config.layout)} selected
+                    </p>
+                </div>
+                <p className="swapping-placement-help">
+                    {slots[activeIndex] == null ? 'Choose a mark for the selected bay.' : 'Choose another available mark to replace this cargo, or clear the bay.'}
+                    {' '}Identical marks are interchangeable; the count shows how many remain.
+                </p>
+                <div className="swapping-palette" role="group" aria-label="Token palette">
+                    {palette.map((entry, index) => (
+                        <button
+                            type="button"
+                            className="swapping-palette__token"
+                            key={entry.key}
+                            onClick={() => place(entry)}
+                            onKeyDown={(event) => movePaletteFocus(event, index)}
+                            disabled={entry.remaining === 0}
+                            aria-label={`${entry.label}, ${entry.remaining} remaining`}
+                            ref={(element) => {
+                                paletteRefs.current[index] = element;
+                            }}
+                        >
+                            <CargoMark token={entry} />
+                            <span className="swapping-palette__count" aria-hidden="true">
+                                ×{entry.remaining}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="swapping-controls">
                     <button
                         type="button"
-                        className="swapping-palette__token"
-                        key={entry.key}
-                        onClick={() => place(entry)}
-                        onKeyDown={(event) => movePaletteFocus(event, index)}
-                        disabled={entry.remaining === 0}
-                        aria-label={`${entry.label}, ${entry.remaining} remaining`}
-                        ref={(element) => {
-                            paletteRefs.current[index] = element;
-                        }}
+                        className="swapping-button is-secondary"
+                        onClick={clearActive}
+                        disabled={slots[activeIndex] == null}
                     >
-                        <SwappingTokenMark token={entry} />
-                        <span className="swapping-palette__count" aria-hidden="true">
-                            ×{entry.remaining}
-                        </span>
+                        Clear selected
                     </button>
-                ))}
-            </div>
-
-            <div className="swapping-controls">
-                <button
-                    type="button"
-                    className="swapping-button is-secondary"
-                    onClick={clearActive}
-                    disabled={slots[activeIndex] == null}
-                >
-                    Clear selected
-                </button>
-                <button
-                    type="button"
-                    className="swapping-button is-primary"
-                    onClick={onSubmit}
-                    disabled={!complete}
-                    ref={submitRef}
-                >
-                    Submit answer
-                </button>
+                    <button
+                        type="button"
+                        className="swapping-button is-primary"
+                        onClick={onSubmit}
+                        disabled={!complete}
+                        ref={submitRef}
+                    >
+                        Submit answer
+                    </button>
+                </div>
+                <p className="swapping-keyboard-help">
+                    Tab to controls · arrows move focus · Enter or Space selects · Delete or Backspace clears the selected bay.
+                </p>
             </div>
         </section>
     );

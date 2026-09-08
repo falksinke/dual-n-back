@@ -57,7 +57,7 @@ describe('Swapping phase views', () => {
         );
     });
 
-    it('shows only the current instruction and an empty highlighted board', () => {
+    it('shows only the current instruction and identical covered bays', () => {
         const card: OperationCard = {
             operations: [
                 { type: 'swap', first: 0, second: 2 },
@@ -79,10 +79,12 @@ describe('Swapping phase views', () => {
         expect(screen.getByText('Swap position 1 and position 3')).toBeTruthy();
         expect(screen.getByText('Reverse positions 2 through 4')).toBeTruthy();
         const board = screen.getByRole('list', {
-            name: 'Empty board with affected positions highlighted',
+            name: 'Covered bays with affected positions highlighted',
         });
-        expect(within(board).getAllByLabelText(/empty/)).toHaveLength(4);
+        expect(within(board).getAllByLabelText(/covered/)).toHaveLength(4);
         expect(within(board).queryByText(/[A-Z]/)).toBeNull();
+        expect(board.querySelectorAll('img, .swapping-cargo__mark')).toHaveLength(0);
+        expect(board.querySelectorAll('.swapping-cargo__cover')).toHaveLength(4);
 
         const reconstruct = screen.getByRole('button', { name: 'Reconstruct' });
         fireEvent.keyDown(reconstruct, { key: 'Enter', repeat: true });
@@ -175,6 +177,10 @@ describe('Swapping phase views', () => {
         expect(screen.getByRole('list', { name: 'Your submitted arrangement' })).toBeTruthy();
         expect(screen.getByRole('list', { name: 'Correct arrangement' })).toBeTruthy();
         expect(screen.getByText('Show step-by-step solution')).toBeTruthy();
+        const log = screen.getByText('Show step-by-step solution').closest('details');
+        expect(log).not.toBeNull();
+        log!.open = true;
+        fireEvent(log!, new Event('toggle'));
         expect(screen.getByRole('list', { name: 'Starting arrangement' })).toBeTruthy();
         expect(screen.getByText('Swap position 1 and position 3')).toBeTruthy();
     });

@@ -10,6 +10,8 @@ import type {
     SwappingConfig,
 } from '../../model/swapping/types';
 import Board from './Board';
+import RailwayScene from './RailwayScene';
+import { RadioArt } from './RailwayArt';
 
 export interface InstructionProps {
     config: SwappingConfig;
@@ -79,40 +81,54 @@ export default function Instruction({
                 </button>
             </div>
 
-            <Board
-                config={config}
-                tokens={[]}
-                highlights={derivedHighlights}
-                ariaLabel="Empty board with affected positions highlighted"
-            />
+            <header className="swapping-section-heading">
+                <p className="swapping-eyebrow">02 / Radio dispatch</p>
+                <h2>All changes happen behind the covers.</h2>
+                <p>Read the instruction below, make the change in your head, then continue.</p>
+            </header>
+            <RailwayScene mood="sealed" message="Bay numbers stay put. Highlights identify positions, never where the hidden cargo went.">
+                <Board config={config} concealed highlights={derivedHighlights}
+                    ariaLabel="Covered bays with affected positions highlighted" />
+            </RailwayScene>
 
-            <article className="swapping-instruction-card" aria-live="polite" aria-atomic="true">
-                <p className="swapping-eyebrow">Keep every token in memory</p>
-                <h2 id="swapping-instruction-title">
-                    {card.operations.length === 2 ? 'Apply in this order' : 'Make this change'}
-                </h2>
-                <ol className={card.operations.length === 1 ? 'is-single' : undefined}>
-                    {card.operations.map((operation, index) => (
-                        <li
-                            key={`${operation.type}-${index}`}
-                            aria-label={describeAccessibleAtomicOperation(operation, config.layout)}
-                        >
-                            <span aria-hidden="true">
-                                {describeAtomicOperation(operation, config.layout)}
-                            </span>
-                        </li>
-                    ))}
-                </ol>
-            </article>
+            <div className="swapping-radio">
+                <RadioArt />
+                <article key={cardIndex} className="swapping-instruction-card" aria-live="polite" aria-atomic="true">
+                    <p className="swapping-eyebrow">Incoming dispatch · keep every mark in memory</p>
+                    <h2 id="swapping-instruction-title">
+                        {card.operations.length === 2 ? 'Apply in this order' : 'Make this change'}
+                    </h2>
+                    <ol className={card.operations.length === 1 ? 'is-single' : undefined}>
+                        {card.operations.map((operation, index) => (
+                            <li
+                                key={`${operation.type}-${index}`}
+                                aria-label={describeAccessibleAtomicOperation(operation, config.layout)}
+                            >
+                                <span aria-hidden="true">
+                                    {describeAtomicOperation(operation, config.layout)}
+                                </span>
+                            </li>
+                        ))}
+                    </ol>
+                    {card.operations.some((operation) => operation.type === 'shift-span') && (
+                        <p className="swapping-instruction-note">The mark at the end wraps to the other end of the selected span. Everything outside the span stays put.</p>
+                    )}
+                    {card.operations.length === 2 && <p className="swapping-instruction-note">Apply step 2 to the arrangement produced by step 1.</p>}
+                </article>
+            </div>
 
-            <button
-                type="button"
-                className="swapping-button is-primary"
-                onClick={onDone}
-                onKeyDown={blockRepeatedActivation}
-            >
-                {isLast ? 'Reconstruct' : 'Done'}
-            </button>
+            <div className="swapping-action-strip">
+                <p>{isLast ? 'Last dispatch. When every listed change is done, rebuild the final arrangement.' : 'No rush. Continue only after making every listed change.'}</p>
+                <button
+                    type="button"
+                    className="swapping-button is-primary"
+                    onClick={onDone}
+                    autoFocus
+                    onKeyDown={blockRepeatedActivation}
+                >
+                    {isLast ? 'Reconstruct' : 'Done'}
+                </button>
+            </div>
         </section>
     );
 }

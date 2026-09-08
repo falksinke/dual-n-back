@@ -1,5 +1,7 @@
 import type { SwappingConfig } from '../../model/swapping/types';
 import Board from './Board';
+import RailwayScene from './RailwayScene';
+import { RadioArt } from './RailwayArt';
 
 export type AudioEncodingStatus = 'playing' | 'ready' | 'error';
 
@@ -34,32 +36,40 @@ export default function AudioEncoding({
     return (
         <section className="swapping-play swapping-audio" aria-labelledby="swapping-audio-title">
             <div className="swapping-play__topline">
-                <span>Playback pass {replayCount + 1}</span>
+                <span>01 / Playback pass {replayCount + 1}</span>
                 <button type="button" className="swapping-button is-quiet" onClick={onPause}>
                     Pause
                 </button>
             </div>
             <header className="swapping-section-heading">
-                <p className="swapping-eyebrow">Spoken-letter sequence</p>
+                <p className="swapping-eyebrow">Spoken-letter cargo · audio only</p>
                 <h2 id="swapping-audio-title">
-                    {status === 'error' ? 'Playback stopped' : 'Listen to every position'}
+                    {status === 'error' ? 'The radio needs a moment.' : 'Listen to every numbered bay.'}
                 </h2>
                 <p>
                     {isPlaying
-                        ? 'Keep each letter in its numbered position.'
+                        ? 'Keep each spoken letter in its numbered position. Every clip will play in full.'
                         : status === 'ready'
-                          ? 'Replay if needed, or hide the sequence when you are ready.'
+                          ? 'The full pass is finished. Replay if needed, or choose Ready for your first dispatch.'
                           : 'No letter was recorded as an answer. Retry this playback or return to setup.'}
                 </p>
             </header>
 
-            <Board config={config} tokens={[]} ariaLabel="Empty numbered audio positions" />
-
-            <div className="swapping-audio__progress" aria-live="polite">
-                <progress max={config.length} value={heard} aria-label="Audio sequence progress" />
-                <span>
-                    {heard} of {config.length} positions played
-                </span>
+            <RailwayScene mood={status === 'error' ? 'error' : 'audio'}
+                message={status === 'error' ? 'No cargo has been scored. Retry the radio, or start again from the dispatch desk.' : 'Listen for the mark. The covers stay closed throughout spoken-letter encoding.'}>
+                <Board config={config} concealed ariaLabel="Covered numbered audio positions" />
+            </RailwayScene>
+            <div className="swapping-radio swapping-radio--audio">
+                <RadioArt />
+                <div className="swapping-audio__progress" aria-live="polite">
+                    <p className="swapping-eyebrow">{status === 'ready' ? 'Transmission complete' : status === 'error' ? 'Transmission interrupted' : 'Receiving cargo marks'}</p>
+                    <progress max={config.length} value={heard} aria-label="Audio sequence progress" />
+                    <span>
+                        {status === 'ready' ? `${config.length} of ${config.length} positions received`
+                            : heard === 0 ? 'Waiting for the first position…'
+                            : `Position ${heard} of ${config.length}` }
+                    </span>
+                </div>
             </div>
 
             {status === 'error' ? (
@@ -68,7 +78,7 @@ export default function AudioEncoding({
                         {error ?? 'The audio could not be played.'}
                     </p>
                     <div className="swapping-controls">
-                        <button type="button" className="swapping-button is-primary" onClick={onRetry}>
+                        <button type="button" className="swapping-button is-primary" autoFocus onClick={onRetry}>
                             Retry
                         </button>
                         <button type="button" className="swapping-button is-secondary" onClick={onBack}>

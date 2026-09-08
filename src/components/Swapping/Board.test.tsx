@@ -66,4 +66,26 @@ describe('Swapping Board', () => {
         const slot = screen.getByLabelText('position 1: Shape 1');
         expect(slot.querySelector('img')?.getAttribute('alt')).toBe('');
     });
+    it('renders identical covers without accepting any cargo data', () => {
+        const { container } = render(<Board config={sequenceConfig} concealed ariaLabel="Sealed cargo" />);
+        const board = screen.getByRole('list', { name: 'Sealed cargo' });
+        expect(within(board).getAllByLabelText(/covered/)).toHaveLength(3);
+        const covers = Array.from(board.querySelectorAll('.swapping-cargo__cover'));
+        expect(covers).toHaveLength(3);
+        expect(new Set(covers.map((cover) => cover.outerHTML)).size).toBe(1);
+        expect(container.querySelectorAll('img, .swapping-cargo__mark')).toHaveLength(0);
+        expect(board.outerHTML).not.toContain('letter:');
+    });
+
+    it('keeps twelve sequence positions in one explicit track instead of a mobile grid', () => {
+        render(<Board config={{ ...sequenceConfig, length: 12, pattern: 'repeated' }} concealed />);
+        const board = screen.getByRole('list', { name: 'Swapping board' });
+        expect(board.getAttribute('style')).toContain('--swapping-columns: 12');
+        expect(board.getAttribute('style')).not.toContain('--swapping-mobile-columns');
+        expect(within(board).getAllByRole('listitem').map((slot) => slot.getAttribute('aria-label')))
+            .toEqual(Array.from({ length: 12 }, (_, index) => `position ${index + 1}, covered`));
+        expect(screen.getByRole('region', { name: 'Continuous track; scroll to see all positions' })).toHaveProperty('tabIndex', 0);
+        expect(screen.getByRole('button', { name: 'Scroll to later positions' })).toBeTruthy();
+    });
+
 });

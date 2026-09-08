@@ -6,6 +6,7 @@ import {
     SWAPPING_PRESETS,
     createPresetConfig,
     getGridSize,
+    getArrangementSize,
 } from '../../model/swapping';
 import type {
     GridLayout,
@@ -15,6 +16,8 @@ import type {
     SwappingContent,
     SwappingLayout,
 } from '../../model/swapping/types';
+import Board from './Board';
+import RailwayScene from './RailwayScene';
 
 export interface SetupProps {
     config: SwappingConfig;
@@ -78,169 +81,181 @@ export default function Setup({
 
     return (
         <section className="swapping-setup" aria-labelledby="swapping-setup-title">
-            <header className="swapping-heading">
-                <p className="swapping-eyebrow">Working memory practice</p>
-                <h2 id="swapping-setup-title">Set up a round</h2>
-                <p>
-                    Memorise the arrangement, apply each position-based instruction, then rebuild
-                    the final order.
-                </p>
-            </header>
+            <div className="swapping-setup__world">
+                <header className="swapping-heading">
+                    <p className="swapping-eyebrow">A railway job for your working memory</p>
+                    <h2 id="swapping-setup-title">The night shift is yours.</h2>
+                    <p>Inspect the cargo. Close the covers. Follow the radio instructions in your head, then put every mark in its final bay.</p>
+                </header>
+                <RailwayScene mood="dispatch" message="Take your time. The last train leaves when you are ready.">
+                    <div className="swapping-dispatch-preview">
+                        <p>{getArrangementSize(config)} fixed bays · {config.layout === 'sequence' ? 'one continuous track' : 'top-down loading yard'}</p>
+                        <Board config={config} concealed ariaLabel="Empty bays awaiting a new round" />
+                    </div>
+                </RailwayScene>
+                <p className="swapping-setup__note">The Swapping exercise, at a little station after dark. No timer. No moving cargo to follow—only the arrangement in your mind.</p>
+            </div>
 
-            <section className="swapping-panel" aria-labelledby="swapping-presets-title">
-                <div className="swapping-section-heading">
-                    <h2 id="swapping-presets-title">Choose a starting point</h2>
-                    <p>You can adjust every setting below.</p>
+            <div className="swapping-dispatch-desk">
+                <div className="swapping-dispatch-desk__heading">
+                    <span className="swapping-eyebrow">Northline / dispatch sheet</span>
+                    <h2>Set up a round</h2>
                 </div>
-                <div className="swapping-presets">
-                    {SWAPPING_PRESETS.map((preset) => (
-                        <button
-                            type="button"
-                            className="swapping-choice-button"
-                            key={preset.id}
-                            onClick={() =>
-                                onChange(createPresetConfig(preset.id, config.content, config.layout))
-                            }
-                        >
-                            <strong>{preset.label}</strong>
-                            <span>
-                                {preset.operationCount} operation
-                                {preset.operationCount === 1 ? '' : 's'} · {preset.tier}
-                            </span>
-                        </button>
-                    ))}
-                </div>
-            </section>
-
-            <section className="swapping-panel swapping-setup__custom" aria-labelledby="swapping-custom-title">
-                <div className="swapping-section-heading">
-                    <h2 id="swapping-custom-title">Custom round</h2>
-                    <p>Starting load and manipulation difficulty change independently.</p>
-                </div>
-
-                <div className="swapping-form-grid">
-                    <label className="swapping-field">
-                        <span>Content</span>
-                        <select
-                            value={config.content}
-                            onChange={(event) => update({ content: event.target.value as SwappingContent })}
-                        >
-                            {CONTENT_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-
-                    <label className="swapping-field">
-                        <span>Arrangement</span>
-                        <select
-                            value={config.layout}
-                            onChange={(event) => chooseLayout(event.target.value as SwappingLayout)}
-                        >
-                            {LAYOUT_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-
-                    {config.layout === 'sequence' && (
-                        <label className="swapping-field">
-                            <span>Starting items</span>
-                            <select
-                                value={config.length}
-                                onChange={(event) => update({ length: Number(event.target.value) })}
+                <section className="swapping-setup__presets" aria-labelledby="swapping-presets-title">
+                    <div className="swapping-section-heading">
+                        <h2 id="swapping-presets-title">Choose a starting point</h2>
+                        <p>Presets are starting points, not calibrated ability levels.</p>
+                    </div>
+                    <div className="swapping-presets">
+                        {SWAPPING_PRESETS.map((preset) => (
+                            <button
+                                type="button"
+                                className="swapping-choice-button"
+                                key={preset.id}
+                                onClick={() =>
+                                    onChange(createPresetConfig(preset.id, config.content, config.layout))
+                                }
                             >
-                                {Array.from(
-                                    { length: MAX_SEQUENCE_LENGTH - MIN_SEQUENCE_LENGTH + 1 },
-                                    (_, index) => MIN_SEQUENCE_LENGTH + index
-                                ).map((length) => (
-                                    <option key={length} value={length}>
-                                        {length}
+                                <strong>{preset.label}</strong>
+                                <span>
+                                    {preset.operationCount} operation
+                                    {preset.operationCount === 1 ? '' : 's'} · {preset.tier}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </section>
+
+                <section className="swapping-setup__custom" aria-labelledby="swapping-custom-title">
+                    <div className="swapping-section-heading">
+                        <h2 id="swapping-custom-title">Your cargo & instructions</h2>
+                        <p>Starting load and manipulation difficulty change independently.</p>
+                    </div>
+
+                    <div className="swapping-form-grid">
+                        <label className="swapping-field">
+                            <span>Content</span>
+                            <select
+                                value={config.content}
+                                onChange={(event) => update({ content: event.target.value as SwappingContent })}
+                            >
+                                {CONTENT_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
                                     </option>
                                 ))}
                             </select>
                         </label>
+
+                        <label className="swapping-field">
+                            <span>Arrangement</span>
+                            <select
+                                value={config.layout}
+                                onChange={(event) => chooseLayout(event.target.value as SwappingLayout)}
+                            >
+                                {LAYOUT_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        {config.layout === 'sequence' && (
+                            <label className="swapping-field">
+                                <span>Starting items</span>
+                                <select
+                                    value={config.length}
+                                    onChange={(event) => update({ length: Number(event.target.value) })}
+                                >
+                                    {Array.from(
+                                        { length: MAX_SEQUENCE_LENGTH - MIN_SEQUENCE_LENGTH + 1 },
+                                        (_, index) => MIN_SEQUENCE_LENGTH + index
+                                    ).map((length) => (
+                                        <option key={length} value={length}>
+                                            {length}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        )}
+
+                        <label className="swapping-field">
+                            <span>Starting pattern</span>
+                            <select
+                                value={config.pattern}
+                                onChange={(event) => update({ pattern: event.target.value as StartingPattern })}
+                            >
+                                <option value="unique">Unique</option>
+                                <option value="repeated">Repeated</option>
+                            </select>
+                        </label>
+
+                        <label className="swapping-field">
+                            <span>Operation tier</span>
+                            <select
+                                value={config.tier}
+                                onChange={(event) => update({ tier: event.target.value as OperationTier })}
+                            >
+                                <option value="basic">Basic</option>
+                                <option value="group">Group</option>
+                                <option value="compound">Compound</option>
+                            </select>
+                        </label>
+
+                        <label className="swapping-field">
+                            <span>Atomic operations</span>
+                            <select
+                                value={config.operationCount}
+                                onChange={(event) => update({ operationCount: Number(event.target.value) })}
+                            >
+                                {Array.from(
+                                    { length: MAX_OPERATION_COUNT - MIN_OPERATION_COUNT + 1 },
+                                    (_, index) => MIN_OPERATION_COUNT + index
+                                ).map((count) => (
+                                    <option key={count} value={count}>
+                                        {count}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    </div>
+
+                    <aside className="swapping-example" aria-label="Operation example">
+                        <strong>{config.tier[0].toUpperCase() + config.tier.slice(1)} example</strong>
+                        <span>{getTierExample(config)}</span>
+                    </aside>
+
+                    {config.content === 'audio' && (
+                        <div className="swapping-sample">
+                            <button type="button" className="swapping-button is-secondary" onClick={onSample}>
+                                Play voice sample
+                            </button>
+                            {sampleStatus && (
+                                <span className="swapping-status" role="status">
+                                    {sampleStatus}
+                                </span>
+                            )}
+                        </div>
                     )}
 
-                    <label className="swapping-field">
-                        <span>Starting pattern</span>
-                        <select
-                            value={config.pattern}
-                            onChange={(event) => update({ pattern: event.target.value as StartingPattern })}
-                        >
-                            <option value="unique">Unique</option>
-                            <option value="repeated">Repeated</option>
-                        </select>
-                    </label>
+                    {validationError != null && (
+                        <p className="swapping-error" id="swapping-start-error" role="alert">
+                            {validationError}
+                        </p>
+                    )}
 
-                    <label className="swapping-field">
-                        <span>Operation tier</span>
-                        <select
-                            value={config.tier}
-                            onChange={(event) => update({ tier: event.target.value as OperationTier })}
-                        >
-                            <option value="basic">Basic</option>
-                            <option value="group">Group</option>
-                            <option value="compound">Compound</option>
-                        </select>
-                    </label>
-
-                    <label className="swapping-field">
-                        <span>Atomic operations</span>
-                        <select
-                            value={config.operationCount}
-                            onChange={(event) => update({ operationCount: Number(event.target.value) })}
-                        >
-                            {Array.from(
-                                { length: MAX_OPERATION_COUNT - MIN_OPERATION_COUNT + 1 },
-                                (_, index) => MIN_OPERATION_COUNT + index
-                            ).map((count) => (
-                                <option key={count} value={count}>
-                                    {count}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                </div>
-
-                <aside className="swapping-example" aria-label="Operation example">
-                    <strong>{config.tier[0].toUpperCase() + config.tier.slice(1)} example</strong>
-                    <span>{getTierExample(config)}</span>
-                </aside>
-
-                {config.content === 'audio' && (
-                    <div className="swapping-sample">
-                        <button type="button" className="swapping-button is-secondary" onClick={onSample}>
-                            Play voice sample
-                        </button>
-                        {sampleStatus && (
-                            <span className="swapping-status" role="status">
-                                {sampleStatus}
-                            </span>
-                        )}
-                    </div>
-                )}
-
-                {validationError != null && (
-                    <p className="swapping-error" id="swapping-start-error" role="alert">
-                        {validationError}
-                    </p>
-                )}
-
-                <button
-                    type="button"
-                    className="swapping-button is-primary swapping-start"
-                    onClick={onStart}
-                    disabled={validationError != null}
-                    aria-describedby={validationError == null ? undefined : 'swapping-start-error'}
-                >
-                    Start round
-                </button>
-            </section>
+                    <button
+                        type="button"
+                        className="swapping-button is-primary swapping-start"
+                        onClick={onStart}
+                        disabled={validationError != null}
+                        aria-describedby={validationError == null ? undefined : 'swapping-start-error'}
+                    >
+                        Start round
+                    </button>
+                </section>
+            </div>
         </section>
     );
 }
