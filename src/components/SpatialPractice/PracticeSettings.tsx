@@ -18,13 +18,13 @@ const FRACTIONS = ['Off', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞', '1'];
 
 export default function PracticeSettings(props: PracticeSettingsProps) {
     const toggles = [
-        { label: 'New sequence after each correct recall', value: props.newSequence, change: props.onNewSequenceChange },
-        { label: 'Increase speed after correct recall', value: props.increaseSpeed, change: props.onIncreaseSpeedChange },
-        { label: 'Math problem before recall', value: props.mathEnabled, change: props.onMathEnabledChange },
+        { label: 'New sequence after a correct route', value: props.newSequence, change: props.onNewSequenceChange },
+        { label: 'Increase speed after a correct route', value: props.increaseSpeed, change: props.onIncreaseSpeedChange },
+        { label: 'Postage maths before recall', value: props.mathEnabled, change: props.onMathEnabledChange },
     ];
     return (
         <fieldset className="spatial-practice__options" disabled={props.disabled}>
-            <legend>Practice settings</legend>
+            <legend>Dispatch settings</legend>
             <div className="spatial-practice__settings">
                 <label htmlFor="spatial-sequence-length">Sequence length</label>
                 <select id="spatial-sequence-length" value={props.length}
@@ -36,17 +36,20 @@ export default function PracticeSettings(props: PracticeSettingsProps) {
             </div>
             <div className="spatial-practice__settings">
                 <label htmlFor="spatial-interference">Interference</label>
-                <select id="spatial-interference" value={props.interference}
+                <select id="spatial-interference" value={props.interference} aria-describedby="spatial-interference-help"
                     onChange={(event) => props.onInterferenceChange(Number(event.target.value))}>
                     {INTERFERENCE_CHANCE_OPTIONS.map((value, index) => (
                         <option key={value} value={value}>{FRACTIONS[index]}</option>
                     ))}
                 </select>
             </div>
+            <p id="spatial-interference-help" className="spatial-practice__setting-help">
+                Higher interference can bring recent locations into a new route.
+            </p>
             {toggles.map(({ label, value, change }) => (
                 <label key={label} className="spatial-practice__sequence-option">
                     <input type="checkbox" checked={value} onChange={(event) => change(event.target.checked)} />
-                    {label}
+                    <span>{label}</span>
                 </label>
             ))}
         </fieldset>

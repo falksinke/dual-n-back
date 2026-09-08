@@ -2,9 +2,11 @@ import { useRef, useState } from 'react';
 import { useMountEffect } from '../../hooks/useMountEffect';
 import './SpatialPractice.scss';
 import { PracticeSounds } from './sounds';
-import { CELL_COUNT, createSequence } from './sequence';
+import { createSequence } from './sequence';
 import MathChallenge from './MathChallenge';
 import PracticeSettings from './PracticeSettings';
+import FireflyVillage from './FireflyVillage';
+import { FireflyMark } from './VillageArt';
 
 interface SpatialPracticeProps {
     onExit: () => void;
@@ -18,6 +20,7 @@ const ACTIVE_PORTION = 0.7;
 const SUCCESS_PAUSE_MS = 1000;
 
 const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
+    const sceneRef = useRef<HTMLDivElement>(null);
     const [length, setLength] = useState(5);
     const [increaseSpeed, setIncreaseSpeed] = useState(true);
     const [interference, setInterference] = useState(0);
@@ -43,6 +46,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const updatePhase = (next: Phase): void => {
         phaseRef.current = next;
         setPhase(next);
+        // Focus the neutral scene, never an expected window. This also removes a
+        // previous response's focus ring before a new presentation or pause.
+        if (next !== 'idle') sceneRef.current?.focus({ preventScroll: true });
     };
 
     const cancelScheduled = (): void => {
@@ -65,6 +71,10 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
 
     const playSequence = (nextSequence: number[], speed: number): void => {
         cancelScheduled();
+        // Setup sits below the village on narrow screens. Bring the targets into
+        // view synchronously, not through an animation or an extra cue delay.
+        sceneRef.current?.querySelector<HTMLElement>('.firefly-village__grid')
+            ?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
         recallRef.current = [];
         setRecall([]);
         updatePhase('showing');
@@ -113,6 +123,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         setRecall([]);
         setItemMs(INITIAL_ITEM_MS);
         updatePhase('idle');
+        sceneRef.current?.focus({ preventScroll: true });
     };
 
     const chooseCell = (cell: number): void => {
@@ -195,80 +206,117 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         };
     });
 
+    const titles: Record<Phase, string> = {
+        idle: 'The night post is ready.',
+        showing: 'Follow the firefly.',
+        math: 'A little postage check.',
+        recall: 'Your turn, courier.',
+        success: 'Every letter, home.',
+        retry: 'Not this address.',
+        paused: 'The village can wait.',
+    };
     const status = phase === 'idle'
-        ? 'Choose a length, then start.'
+        ? 'Watch the windows light up. Then deliver your letters in the same order.'
         : phase === 'showing'
-            ? 'Watch — remember the order.'
+            ? 'Remember the order. Wait for the firefly to finish before delivering.'
             : phase === 'math'
-                ? 'Solve the math problem, then recall the sequence.'
-            : phase === 'recall'
-                ? `Your turn — item ${recall.length + 1} of ${length}.`
-                : phase === 'success'
-                    ? `Correct! ${newSequenceOnSuccess ? 'New sequence' : 'Same sequence'} next${!increaseSpeed ? ' at the same speed.' : itemMs === MIN_ITEM_MS ? ' at top speed.' : ', faster.'}`
-                : phase === 'retry'
-                    ? `Not quite — wrong square at step ${recall.length}. Replay to try again.`
-                    : 'Practice paused while the tab was hidden. Replay to continue.';
+                ? 'Work out the change, then deliver the route from memory.'
+                : phase === 'recall'
+                    ? `${recall.length} of ${length} delivered. Tap the next window from memory.`
+                    : phase === 'success'
+                        ? `Correct! ${newSequenceOnSuccess ? 'New sequence' : 'Same sequence'} next${!increaseSpeed ? ' at the same speed.' : itemMs === MIN_ITEM_MS ? ' at top speed.' : ', faster.'}`
+                        : phase === 'retry'
+                            ? `Wrong address at delivery ${recall.length}. Replay the route at the same pace.`
+                            : 'Paused when you left the page. Replay when you’re ready to see the whole route from the beginning.';
+    const sceneNote = phase === 'recall' ? `Deliver from memory · ${recall.length}/${length}`
+        : phase === 'showing' ? 'Watch the firefly'
+            : phase === 'math' ? 'Postage check'
+                : phase === 'success' ? 'Route delivered ✓'
+                    : phase === 'retry' ? 'Wrong address · replay to try again'
+                        : phase === 'paused' ? 'Route paused' : 'The village is ready';
+    // Only a completed tap is projected into the art; sequence stays in this owner.
+    const tapFeedback = pressedCell === null ? null : {
+        cell: pressedCell, correct: phase !== 'retry', id: recall.length,
+    };
+    const wrongCell = phase === 'retry' ? recall[recall.length - 1] ?? null : null;
 
     return (
-        <section className={`spatial-practice is-${phase}`} aria-labelledby="spatial-practice-title">
+        <section className={`spatial-practice firefly-post is-${phase}`} aria-labelledby="spatial-practice-title">
             <header className="spatial-practice__header">
-                <div>
-                    <p className="spatial-practice__eyebrow">Beginner rehearsal</p>
-                    <h1 id="spatial-practice-title">Spatial sequence practice</h1>
+                <div className="spatial-practice__brand">
+                    <span className="spatial-practice__emblem" aria-hidden="true"><FireflyMark /></span>
+                    <div>
+                        <p className="spatial-practice__eyebrow">Spatial sequence</p>
+                        <h1 id="spatial-practice-title">Firefly Post</h1>
+                    </div>
                 </div>
-                <button type="button" className="spatial-practice__back" onClick={exit}>Back to N-Back</button>
+                <button type="button" className="spatial-practice__back" onClick={exit}>
+                    <span aria-hidden="true">←</span> All exercises
+                </button>
             </header>
 
-            <PracticeSettings length={length} onLengthChange={changeLength}
-                newSequence={newSequenceOnSuccess} onNewSequenceChange={setNewSequenceOnSuccess}
-                increaseSpeed={increaseSpeed} onIncreaseSpeedChange={setIncreaseSpeed}
-                interference={interference} onInterferenceChange={setInterference}
-                mathEnabled={mathEnabled} onMathEnabledChange={setMathEnabled}
-                disabled={phase !== 'idle'} />
-            <p className="spatial-practice__instruction">
-                Watch and listen, then tap every square in order, including repeated positions.
-                A mistake lets you retry at the same speed.
+            <div className="spatial-practice__body">
+                <div className="spatial-practice__scene" ref={sceneRef} tabIndex={-1}
+                    role="group" aria-label="Night-delivery village"
+                    aria-describedby="spatial-practice-status spatial-practice-help">
+                    <div className="spatial-practice__scene-note" aria-hidden="true">{sceneNote}</div>
+                    <FireflyVillage phase={phase} activeCell={activeCell} activeOrder={activeOrder}
+                        tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell} />
+                </div>
+
+                <aside className="spatial-practice__dispatch" aria-label="Post-office dispatch">
+                    <p className="spatial-practice__eyebrow">The night shift</p>
+                    <div className="spatial-practice__status" role="status" aria-live="polite" aria-atomic="true">
+                        <h2><span className="spatial-practice__feedback-icon" aria-hidden="true">
+                            {phase === 'success' ? '✓' : phase === 'retry' ? '×' : phase === 'paused' ? 'Ⅱ' : null}
+                        </span>{titles[phase]}</h2>
+                        <p id="spatial-practice-status">{status}</p>
+                    </div>
+                    <dl className="spatial-practice__route-facts">
+                        <div><dt>Letters</dt><dd>{sequence.length || length}</dd></div>
+                        <div><dt>{phase === 'success' ? 'Next pace' : 'Pace'}</dt><dd>{itemMs}<small> ms / window</small></dd></div>
+                    </dl>
+
+                    <div className="spatial-practice__controls">
+                        {phase === 'idle' ? (
+                            <button type="button" className="is-primary" onClick={startNewSequence}>
+                                Start route <span aria-hidden="true">→</span>
+                            </button>
+                        ) : (
+                            <>
+                                {(phase === 'retry' || phase === 'paused') && (
+                                    <button type="button" className="is-primary" onClick={replaySequence}>Replay route</button>
+                                )}
+                                <button type="button" onClick={startNewSequence}>New sequence</button>
+                                <button type="button" onClick={stop}>Stop / reset</button>
+                            </>
+                        )}
+                    </div>
+                    <p id="spatial-practice-help" className="spatial-practice__instruction">
+                        Tap once per letter, in order. A window may appear more than once.
+                    </p>
+
+                    <div className="spatial-practice__setup">
+                        <PracticeSettings length={length} onLengthChange={changeLength}
+                            newSequence={newSequenceOnSuccess} onNewSequenceChange={setNewSequenceOnSuccess}
+                            increaseSpeed={increaseSpeed} onIncreaseSpeedChange={setIncreaseSpeed}
+                            interference={interference} onInterferenceChange={setInterference}
+                            mathEnabled={mathEnabled} onMathEnabledChange={setMathEnabled}
+                            disabled={phase !== 'idle'} />
+                        <p className="spatial-practice__settings-note">
+                            {phase === 'idle' ? 'Set your route before heading out.' : 'Stop / reset to change dispatch settings.'}
+                        </p>
+                    </div>
+                </aside>
+            </div>
+
+            <p className="spatial-practice__keyboard-hint">
+                <span>Tab to a window; arrow keys move focus.</span>
+                <span>Enter or Space delivers. Touch: tap a window.</span>
             </p>
-
-            <div className="spatial-practice__status" role="status" aria-live="polite">
-                <strong><span className="spatial-practice__feedback-icon" aria-hidden="true">
-                    {phase === 'success' ? '✓' : phase === 'retry' ? '×' : null}
-                </span>{status}</strong>
-                <span>Speed: {itemMs} ms per position</span>
-                <span>Recall: {recall.length}/{sequence.length || length}</span>
-            </div>
-
-            <div className="spatial-practice__grid" aria-label="Spatial sequence grid">
-                {Array.from({ length: CELL_COUNT }, (_, cell) => (
-                    <button
-                        key={cell}
-                        type="button"
-                        className={`spatial-practice__cell${activeCell === cell ? ' is-active' : ''}${pressedCell === cell ? ' is-pressed' : ''}${phase === 'retry' && recall[recall.length - 1] === cell ? ' is-wrong' : ''}`}
-                        onClick={() => chooseCell(cell)}
-                        disabled={phase !== 'recall'}
-                        aria-label={`Position ${cell + 1}`}
-                    >
-                        {activeCell === cell ? activeOrder : phase === 'retry' && recall[recall.length - 1] === cell ? '×' : pressedCell === cell ? '•' : null}
-                    </button>
-                ))}
-            </div>
-
             {phase === 'math' && <MathChallenge
                 onSolved={() => { if (phaseRef.current === 'math') updatePhase('recall'); }}
                 onAbort={stop} />}
-            <div className="spatial-practice__controls">
-                {phase === 'idle' ? (
-                    <button type="button" className="is-primary" onClick={startNewSequence}>Start</button>
-                ) : (
-                    <>
-                        {(phase === 'retry' || phase === 'paused') && (
-                            <button type="button" className="is-primary" onClick={replaySequence}>Replay sequence</button>
-                        )}
-                        <button type="button" onClick={startNewSequence}>New sequence</button>
-                        <button type="button" onClick={stop}>Stop / reset</button>
-                    </>
-                )}
-            </div>
         </section>
     );
 };

@@ -1,0 +1,368 @@
+/* Illustration palette is intentionally nocturnal in both app themes. */
+.firefly-village {
+    --fp-ink: #303247;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border: 1px solid #55556b;
+    border-radius: var(--space-lg);
+    background: linear-gradient(180deg, #222640 0%, #383d57 68%, #454a60 100%);
+    box-shadow: 0 10px 30px rgb(22 25 43 / 12%);
+    color: #f1e0c4;
+
+    &__sky {
+        position: relative;
+        height: clamp(6rem, 24vw, 10rem);
+        pointer-events: none;
+    }
+
+    &__sky-art { display: block; width: 100%; height: 100%; }
+
+    &__town {
+        position: relative;
+        width: calc(100% - var(--space-lg) - var(--space-lg));
+        max-width: min(30rem, max(10rem, calc(100dvh - 12rem)));
+        margin-inline: auto;
+    }
+
+    &__facades {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space-sm);
+        pointer-events: none;
+    }
+
+    &__house {
+        position: relative;
+        min-width: 0;
+        border-inline: 2px solid #37394b;
+        background: var(--house-wall);
+        box-shadow: inset -6px 0 rgb(36 36 54 / 12%);
+
+        &.is-clay { --house-wall: #a58a80; --house-mortar: #8c7474; }
+        &.is-sage { --house-wall: #8c9a90; --house-mortar: #718780; }
+        &.is-plum { --house-wall: #9b8696; --house-mortar: #857185; }
+
+        &::after {
+            content: '';
+            position: absolute;
+            inset-inline: 0;
+            bottom: 0;
+            height: 7px;
+            background: #625d70;
+            border-top: 2px solid rgb(235 217 186 / 25%);
+        }
+    }
+
+    &__roof {
+        display: block;
+        position: absolute;
+        bottom: 100%;
+        left: -7%;
+        width: 114%;
+        height: auto;
+        overflow: visible;
+    }
+
+    &__masonry {
+        position: absolute;
+        inset: 0;
+        /* Fixed plaster details, not delivery markers. */
+        background:
+            linear-gradient(var(--house-mortar), var(--house-mortar)) 5% 29% / 19% 2px no-repeat,
+            linear-gradient(var(--house-mortar), var(--house-mortar)) 90% 37% / 23% 2px no-repeat,
+            linear-gradient(var(--house-mortar), var(--house-mortar)) 2% 65% / 26% 2px no-repeat,
+            linear-gradient(var(--house-mortar), var(--house-mortar)) 82% 95% / 21% 2px no-repeat;
+    }
+
+    &__drainpipe {
+        position: absolute;
+        inset-block: 0;
+        right: 0;
+        width: 3px;
+        background: #5d5c6b;
+        opacity: .6;
+    }
+
+    &__grid {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(3, minmax(0, 1fr));
+        gap: var(--space-sm);
+        min-width: 0;
+        flex-shrink: 0;
+        scroll-margin-block: var(--space-xl);
+    }
+
+    &__street {
+        position: relative;
+        height: clamp(6rem, 14vw, 8.5rem);
+        border-top: 3px solid #686679;
+        background: linear-gradient(#535768, #42485e);
+        pointer-events: none;
+    }
+
+    &__cobbles {
+        position: absolute;
+        inset: 0;
+        background:
+            linear-gradient(#747384, #747384) 9% 81% / 7% 2px no-repeat,
+            linear-gradient(#747384, #747384) 30% 90% / 5% 2px no-repeat,
+            linear-gradient(#747384, #747384) 54% 77% / 9% 2px no-repeat,
+            linear-gradient(#747384, #747384) 66% 95% / 4% 2px no-repeat,
+            linear-gradient(#747384, #747384) 94% 89% / 7% 2px no-repeat;
+    }
+
+    &__post-office {
+        position: absolute;
+        left: 14%;
+        bottom: var(--space-md);
+        width: clamp(4.75rem, 14vw, 8rem);
+        height: auto;
+    }
+
+    &__lamp {
+        position: absolute;
+        right: 11%;
+        bottom: var(--space-md);
+        width: clamp(2rem, 5vw, 3rem);
+        height: auto;
+    }
+
+    &__plant {
+        position: absolute;
+        bottom: var(--space-sm);
+        width: clamp(1.75rem, 5vw, 3rem);
+        height: auto;
+
+        &--left { left: 3%; }
+        &--right { right: 3%; }
+    }
+
+    &__cat {
+        position: absolute;
+        right: 18%;
+        bottom: var(--space-sm);
+        width: clamp(2.75rem, 7vw, 4.5rem);
+        height: auto;
+    }
+
+    &__caption {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-xs) var(--space-md);
+        padding: var(--space-sm) var(--space-md);
+        border-top: 1px solid #555d73;
+        background: #292e47;
+        color: #c7c7d3;
+        font-size: .7rem;
+        line-height: 1.5;
+    }
+}
+
+.firefly-window {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: var(--radius-md);
+    appearance: none;
+    background: transparent;
+    color: #f7d89c;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    /* No fill / opacity transition: the full 30% blank must really be blank. */
+    transition: none;
+
+    &:disabled { opacity: 1; cursor: default; }
+
+    &:focus-visible {
+        outline: 3px dashed #fff1cf;
+        outline-offset: -3px;
+        box-shadow: inset 0 0 0 5px #303247;
+    }
+
+    &__frame { display: block; width: 100%; height: 100%; pointer-events: none; }
+    &__outer { fill: #b8aea4; }
+    &__pane { fill: #35485c; }
+    &__shutters { fill: #718390; }
+    &__curtains { fill: #667084; }
+    &__mullions { stroke: #a6a7a5; }
+
+    &.is-active {
+        .firefly-window__outer { fill: #f1c879; }
+        .firefly-window__pane { fill: #ffe2a2; }
+        .firefly-window__curtains { fill: #dbab6e; }
+        .firefly-window__mullions { stroke: #af8158; }
+    }
+
+    &__cue-brackets { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+    &__firefly {
+        position: absolute;
+        top: 5%;
+        left: 4%;
+        width: 29%;
+        height: auto;
+        pointer-events: none;
+        /* Appears in place. Never interpolates between locations. */
+    }
+
+    &__order {
+        position: absolute;
+        top: 3%;
+        right: 3%;
+        display: grid;
+        place-items: center;
+        width: clamp(1.5rem, 3vw, 2rem);
+        aspect-ratio: 1;
+        border: 2px solid #303247;
+        border-radius: 50%;
+        background: #fff0c8;
+        color: #343145;
+        font-size: clamp(1rem, 2vw, 1.375rem);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        pointer-events: none;
+    }
+
+    &__delivery {
+        position: absolute;
+        top: 54%;
+        left: 28%;
+        width: 44%;
+        color: #fff1ce;
+        pointer-events: none;
+        animation: firefly-letter-in 160ms ease-in both;
+
+        > svg { display: block; width: 100%; height: auto; }
+    }
+
+    &__check {
+        position: absolute;
+        top: -38%;
+        right: -17%;
+        display: grid;
+        place-items: center;
+        width: clamp(1.1rem, 2.5vw, 1.75rem);
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: #dceaca;
+        color: #294b45;
+        border: 2px solid #334a4c;
+        font-weight: 700;
+        font-size: clamp(.85rem, 2vw, 1.1rem);
+    }
+
+    &.is-wrong .firefly-window__outer { fill: #db9d89; }
+
+    &__return {
+        position: absolute;
+        left: 35%;
+        top: 38%;
+        display: grid;
+        place-items: center;
+        width: 30%;
+        aspect-ratio: 1;
+        border: 2px solid #e8b69a;
+        border-radius: 50%;
+        background: #724e5c;
+        color: #fff0d5;
+        font-size: clamp(1.1rem, 3vw, 2rem);
+        font-weight: 700;
+        pointer-events: none;
+    }
+}
+
+.firefly-courier {
+    position: absolute;
+    left: 46%;
+    bottom: var(--space-sm);
+    width: clamp(4rem, 10vw, 5.5rem);
+    height: auto;
+    overflow: visible;
+    pointer-events: none;
+
+    &__figure { transform-origin: 60px 148px; }
+    &__head { transform-origin: 58px 59px; }
+
+    &.is-idle .firefly-courier__figure { animation: firefly-breathe 5s ease-in-out infinite; }
+    &.is-deliver .firefly-courier__head { animation: firefly-nod 160ms ease-out; }
+    &.is-success .firefly-courier__figure { animation: firefly-courier-cheer 600ms ease-out; }
+    &__celebration { transform-origin: 60px 70px; animation: firefly-spark 650ms ease-out both; }
+    &.is-rest .firefly-courier__head { transform: rotate(-5deg); }
+}
+
+/* Only idle has ambient motion. Showing, maths, recall and paused are settled. */
+.firefly-village.is-idle .firefly-village__cat-body {
+    transform-origin: 50px 50px;
+    animation: firefly-breathe 6s ease-in-out infinite;
+}
+
+@keyframes firefly-letter-in {
+    from { transform: translateY(-9%) scale(1); opacity: 1; }
+    70% { opacity: 1; }
+    to { transform: translateY(30%) scale(.78); opacity: 0; }
+}
+
+@keyframes firefly-breathe {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-1.5px); }
+}
+
+@keyframes firefly-nod {
+    0%, 100% { transform: rotate(0); }
+    50% { transform: rotate(5deg); }
+}
+
+@keyframes firefly-courier-cheer {
+    0%, 100% { transform: translateY(0); }
+    35% { transform: translateY(-5px); }
+    60% { transform: translateY(0); }
+    80% { transform: translateY(-2px); }
+}
+
+@keyframes firefly-spark {
+    from { opacity: 0; transform: scale(.75); }
+    20%, 65% { opacity: 1; }
+    to { opacity: 0; transform: scale(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .firefly-village *, .firefly-village *::before, .firefly-village *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+    .firefly-window__delivery { opacity: 1; transform: none; }
+    .firefly-courier__celebration { opacity: 1; transform: none; }
+    /* JS still owns 70/30 cues, the 180ms tap response and 1000ms success. */
+}
+
+@media (forced-colors: active) {
+    .firefly-village { border-color: CanvasText; }
+    .firefly-window {
+        outline: 1px solid ButtonText;
+        outline-offset: -1px;
+        .firefly-window__frame { opacity: .35; }
+        &:focus-visible { outline: 3px dashed Highlight; }
+        &.is-active { outline: 4px solid Highlight; }
+        &__order, &__check, &__return { forced-color-adjust: none; }
+        &__cue-brackets { color: Highlight; }
+    }
+}
