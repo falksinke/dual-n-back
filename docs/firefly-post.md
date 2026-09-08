@@ -2,7 +2,7 @@
 
 Firefly Post is the village-themed interface for the existing **Spatial sequence** exercise. It still mounts as `SpatialPractice({ onExit })` and uses the internal mode ID `spatial`.
 
-This handoff is an **integration overlay**, not a runnable application. It was made from `firefly-post-source.zip`, whose `START-HERE.md` identifies the local snapshot as `codex/remember-decide` at `b48ef1414757d5558230f64e04e994e9d06c7588`. No default branch, deployment, backend or unrelated game was used as a substitute for that snapshot.
+Firefly Post is integrated into the current application from the local `firefly-post-source.zip` snapshot, whose `START-HERE.md` identifies `codex/remember-decide` at `b48ef1414757d5558230f64e04e994e9d06c7588`. No default branch, deployment, backend or unrelated game was used as a substitute for that snapshot.
 
 ## Village and interaction
 
@@ -77,9 +77,9 @@ All paths in the ZIP are repository-relative; there is no `source/` prefix.
 | `src/components/TrainerHome/index.tsx` | Only the `spatial` entry changes: **Firefly Post**, **Spatial sequence**, and its description. |
 | `docs/firefly-post.md` | This flow, integration and manual-check documentation. |
 
-Overlay or merge these files into the real application; do not replace the entire `SpatialPractice` directory with only this overlay. Keep its existing `sequence.ts` and `sounds.ts`.
+These files are now integrated in the application alongside the existing `sequence.ts` and `sounds.ts`.
 
-No new dependency is required. Integration still needs the existing React/Howler/Sass environment, `src/audio/unlockAudio.ts`, `src/hooks/useMountEffect.ts`, `src/model/interference.ts`, shared theme/layout tokens and `public/assets/sounds/piano/{c5,e4,a4,c4}.wav`. These were supplied in the source snapshot and are unchanged, so they are not duplicated in the changed-files ZIP. In particular, the snapshot notes that `useMountEffect.ts` and `interference.ts` are local **untracked prerequisites**; ensure they are included in any eventual clean checkout/release through the normal project process.
+No new dependency is required. Firefly Post uses the application’s existing React/Howler/Sass environment, `src/audio/unlockAudio.ts`, `src/hooks/useMountEffect.ts`, `src/model/interference.ts`, shared theme/layout tokens and `public/assets/sounds/piano/{c5,e4,a4,c4}.wav`. The currently untracked `useMountEffect.ts` and `interference.ts` remain prerequisites for a clean checkout or release and should be accounted for through the normal project process without requiring unrelated work to be staged.
 
 `App.tsx`, `App.scss`, theme files, shared interference semantics, sequence generation, sound code, package/config files and all other games were not changed. If `TrainerHome/index.tsx` has diverged due to concurrent work on another exercise, merge only its `spatial` entry rather than overwriting other entries with the snapshot version.
 
