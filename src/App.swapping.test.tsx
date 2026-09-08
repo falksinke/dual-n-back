@@ -52,7 +52,7 @@ describe('working memory trainer navigation', () => {
         fireEvent.keyDown(document, { key: ' ' });
         expect(model.startGame).toHaveBeenCalledTimes(1);
         fireEvent.click(screen.getByRole('button', { name: 'All exercises' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Swapping' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Midnight Shunting' }));
         expect(screen.getByRole('region', { name: 'Swapping mode' })).toBeTruthy();
         fireEvent.keyDown(document, { key: ' ' });
         expect(model.startGame).toHaveBeenCalledTimes(1);
@@ -65,10 +65,10 @@ describe('working memory trainer navigation', () => {
 
     it('opens spatial practice and returns to the shared home', () => {
         render(<App />);
-        fireEvent.click(screen.getByRole('button', { name: 'Spatial sequence' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Firefly Post' }));
         expect(screen.getByRole('region', { name: 'Spatial Practice mode' })).toBeTruthy();
         expect(screen.queryByRole('region', { name: 'Swapping mode' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Exit practice' }));
-        expect(screen.getByRole('button', { name: 'Swapping' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Midnight Shunting' })).toBeTruthy();
     });
 });

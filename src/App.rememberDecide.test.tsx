@@ -48,15 +48,15 @@ afterEach(cleanup);
 describe('Remember & Decide navigation', () => {
     it('opens as a peer mode, exits home, and leaves the other entries routed explicitly', () => {
         render(<App />);
-        fireEvent.click(screen.getByRole('button', { name: 'Remember & Decide' }));
+        fireEvent.click(screen.getByRole('button', { name: 'The Moth Keeper' }));
         expect(screen.getByRole('region', { name: 'Remember and Decide' })).toBeTruthy();
         expect(screen.queryByRole('region', { name: 'Swapping mode' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Exit remember and decide' }));
 
-        fireEvent.click(screen.getByRole('button', { name: 'Spatial sequence' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Firefly Post' }));
         expect(screen.getByRole('region', { name: 'Spatial Practice mode' })).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Exit spatial' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Swapping' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Midnight Shunting' }));
         expect(screen.getByRole('region', { name: 'Swapping mode' })).toBeTruthy();
     });
 
@@ -64,7 +64,7 @@ describe('Remember & Decide navigation', () => {
         render(<App />);
         fireEvent.keyDown(document, { key: ' ' });
         expect(model.startGame).not.toHaveBeenCalled();
-        fireEvent.click(screen.getByRole('button', { name: 'Remember & Decide' }));
+        fireEvent.click(screen.getByRole('button', { name: 'The Moth Keeper' }));
         fireEvent.keyDown(document, { key: ' ' });
         expect(model.startGame).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: 'Exit remember and decide' }));
@@ -76,10 +76,10 @@ describe('Remember & Decide navigation', () => {
     it('resets local mode state when reopened without changing N-back history', () => {
         const savedHistory = model.state.results.all;
         render(<App />);
-        fireEvent.click(screen.getByRole('button', { name: 'Remember & Decide' }));
+        fireEvent.click(screen.getByRole('button', { name: 'The Moth Keeper' }));
         fireEvent.change(screen.getByRole('textbox', { name: 'Local answer' }), { target: { value: 'in progress' } });
         fireEvent.click(screen.getByRole('button', { name: 'Exit remember and decide' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Remember & Decide' }));
+        fireEvent.click(screen.getByRole('button', { name: 'The Moth Keeper' }));
         expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Local answer' }).value).toBe('');
         expect(model.state.results.all).toBe(savedHistory);
     });
