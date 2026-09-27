@@ -52,6 +52,8 @@ On non-idle phase transitions, focus moves to the **neutral village group**, nev
 
 The village precedes the dispatch slip in document order. At wide sizes the slip sits beside the village; on narrow screens it sits below it. Both stay mounted across phases, so changing a status, control or setting does not reflow the window map. Before a presentation, the controller requests a synchronous nearest scroll of the entire response grid when needed, so starting from setup below the scene does not intentionally add a delay or require a flight animation. It does not scroll to an individual answer.
 
+After a wrong address or a pause, **Replay route** and **New sequence** also appear beside the status at the top of the village. These native buttons reuse the dispatch actions, wrap on narrow screens and have 44 px minimum touch targets. The toolbar sits over the sky without moving the window map.
+
 The grid explicitly specifies both `repeat(3, minmax(0, 1fr))` columns and rows, has a 1:1 aspect ratio, and does not shrink as a flex child. Buttons fill equal square cells and have 44 px minimum dimensions. SVG and transient markers do not contribute intrinsic row height. Town width also has a viewport-height cap for shorter screens. Very short viewports can still require scrolling to the dispatch controls.
 
 Layout gaps, margins and padding use the supplied `--space-xs`, `--space-sm`, `--space-md`, `--space-lg` and `--space-xl` tokens. Pixel/percentage values inside art describe illustration geometry, stroke widths, sizes or animation offsets.

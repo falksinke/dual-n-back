@@ -79,12 +79,21 @@
     &:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 }
 
-.spatial-practice__scene-note {
+.spatial-practice__scene-toolbar {
     position: absolute;
     top: var(--space-sm);
-    left: var(--space-sm);
+    inset-inline: var(--space-sm);
     z-index: 1;
-    max-width: calc(100% - var(--space-sm) - var(--space-sm));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-xs);
+    pointer-events: none;
+}
+
+.spatial-practice__scene-note {
+    max-width: 100%;
     display: flex;
     align-items: center;
     gap: var(--space-xs);
@@ -179,6 +188,32 @@
         }
         &:hover { border-color: var(--primary); }
         &.is-primary:hover { background: #f6dcaf; border-color: #a37e50; }
+    }
+}
+
+.spatial-practice.firefly-post .spatial-practice__controls--scene {
+    gap: var(--space-xs);
+    pointer-events: auto;
+
+    button {
+        padding: var(--space-xs) var(--space-sm);
+        font-size: .875rem;
+        font-weight: 500;
+        line-height: 1.4;
+        white-space: nowrap;
+
+        &:not(.is-primary) {
+            border-color: #70667c;
+            background: #292e47;
+            color: #f2dfba;
+            &:hover { border-color: var(--primary); }
+        }
+
+        &.is-primary {
+            flex-basis: auto;
+            justify-content: center;
+            font-weight: 600;
+        }
     }
 }
 

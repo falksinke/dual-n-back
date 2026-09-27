@@ -259,7 +259,15 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                 <div className="spatial-practice__scene" ref={sceneRef} tabIndex={-1}
                     role="group" aria-label="Night-delivery village"
                     aria-describedby="spatial-practice-status spatial-practice-help">
-                    <div className="spatial-practice__scene-note" aria-hidden="true">{sceneNote}</div>
+                    <div className="spatial-practice__scene-toolbar">
+                        <div className="spatial-practice__scene-note" aria-hidden="true">{sceneNote}</div>
+                        {(phase === 'retry' || phase === 'paused') && (
+                            <div className="spatial-practice__controls spatial-practice__controls--scene">
+                                <button type="button" className="is-primary" onClick={replaySequence}>Replay route</button>
+                                <button type="button" onClick={startNewSequence}>New sequence</button>
+                            </div>
+                        )}
+                    </div>
                     <FireflyVillage phase={phase} activeCell={activeCell} activeOrder={activeOrder}
                         tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell} />
                 </div>
