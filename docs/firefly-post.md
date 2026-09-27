@@ -40,7 +40,7 @@ The generator and history-based interference rules are unchanged. Repeated locat
 
 It does not receive the hidden sequence, expected next destination, history or recall array. Its only ref is an array of native buttons for keyboard focus. `Courier` receives a pose derived from the phase and already-completed feedback, never any location. There are no destination-dependent SVG titles, hidden ARIA hints, data attributes or route-related decorative cues.
 
-The original 180 ms press-feedback lifetime also limits the envelope response. A key based on the current recall count restarts that response for repeated taps on the same window. It never blocks input or queues a delivery animation. The 160 ms envelope animation and 600–650 ms celebration animations are cosmetic only. Removing their phase/feedback also removes or stops their animation; they cannot restart a presentation.
+The original 180 ms press-feedback lifetime also limits the envelope response. Each accepted tap plays the full response bleep, derived from the presentation bleep at two semitones lower. A key based on the current recall count restarts that response for repeated taps on the same window. It never blocks input or queues a delivery animation. The 160 ms envelope animation and 600–650 ms celebration animations are cosmetic only. Removing their phase/feedback also removes or stops their animation; they cannot restart a presentation.
 
 Ambient breathing is limited to idle. During showing the cat, courier and sky are still. Reduced motion removes cosmetic animations without changing the controller's durations.
 
@@ -79,7 +79,7 @@ All paths in the ZIP are repository-relative; there is no `source/` prefix.
 
 These files are now integrated in the application alongside the existing `sequence.ts` and `sounds.ts`.
 
-No new dependency is required. Firefly Post uses the application’s existing React/Howler/Sass environment, `src/audio/unlockAudio.ts`, `src/hooks/useMountEffect.ts`, `src/model/interference.ts`, shared theme/layout tokens, `public/assets/sounds/ui/stimulus-bleep.wav` for presented windows and `public/assets/sounds/piano/{e4,a4,c4}.wav` for feedback. The currently untracked `useMountEffect.ts` and `interference.ts` remain prerequisites for a clean checkout or release and should be accounted for through the normal project process without requiring unrelated work to be staged.
+No new dependency is required. Firefly Post uses the application’s existing React/Howler/Sass environment, `src/audio/unlockAudio.ts`, `src/hooks/useMountEffect.ts`, `src/model/interference.ts`, shared theme/layout tokens, `public/assets/sounds/ui/stimulus-bleep.wav` for presented windows, `public/assets/sounds/ui/response-bleep.wav` for taps and `public/assets/sounds/piano/{a4,c4}.wav` for round feedback. The currently untracked `useMountEffect.ts` and `interference.ts` remain prerequisites for a clean checkout or release and should be accounted for through the normal project process without requiring unrelated work to be staged.
 
 The initial village integration left `App.tsx`, `App.scss`, theme files, shared interference semantics, sequence generation, sound code, package/config files and all other games unchanged. If `TrainerHome/index.tsx` has diverged due to concurrent work on another exercise, merge only its `spatial` entry rather than overwriting other entries with the snapshot version.
 
