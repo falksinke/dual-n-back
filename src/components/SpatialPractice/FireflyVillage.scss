@@ -187,7 +187,6 @@
     cursor: pointer;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    /* No fill / opacity transition: the full 30% blank must really be blank. */
     transition: none;
 
     &:disabled { opacity: 1; cursor: default; }
@@ -205,7 +204,16 @@
     &__curtains { fill: #667084; }
     &__mullions { stroke: #a6a7a5; }
 
+    &__outer, &__pane, &__curtains, &__mullions {
+        /* Even at the 300ms pace, this finishes within the 90ms blank. */
+        transition: fill 60ms linear, stroke 60ms linear;
+    }
+
     &.is-active {
+        .firefly-window__outer, .firefly-window__pane,
+        .firefly-window__curtains, .firefly-window__mullions {
+            transition-duration: 160ms;
+        }
         .firefly-window__outer { fill: #f1c879; }
         .firefly-window__pane { fill: #ffe2a2; }
         .firefly-window__curtains { fill: #dbab6e; }
