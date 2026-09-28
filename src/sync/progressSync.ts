@@ -470,7 +470,7 @@ export async function applyProfile(rawProfile: string): Promise<void> {
         emitStatus({ kind: 'linked', lastSyncedAt: doc.updatedAt });
     } catch (error) {
         if (selectionGeneration !== profileSelectionGeneration) return;
-        if (status.kind !== 'error') {
+        if (status.kind !== 'error' && status.kind !== 'conflict') {
             emitStatus({
                 kind: 'error',
                 message: error instanceof Error ? error.message : 'Could not select profile',
@@ -576,7 +576,7 @@ export async function useCloudProgress(): Promise<void> {
     } catch (error) {
         if (loadProfile() !== profile) return;
         setProgressDirty(true);
-        emitStatus({ kind: error instanceof ProgressConflictError ? 'conflict' : 'error',
+        emitStatus({ kind: 'conflict',
             message: error instanceof Error ? error.message : 'Could not load cloud progress',
             lastSyncedAt });
         throw error;
