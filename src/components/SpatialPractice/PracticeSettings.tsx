@@ -4,6 +4,8 @@ import type { HiddenPlacement } from './sequence';
 interface PracticeSettingsProps {
     length: number;
     onLengthChange: (value: number) => void;
+    middleWindowEnabled: boolean;
+    onMiddleWindowChange: (value: boolean) => void;
     endback: boolean;
     onEndbackChange: (value: boolean) => void;
     hiddenCount: number;
@@ -40,6 +42,11 @@ export default function PracticeSettings(props: PracticeSettingsProps) {
                     ))}
                 </select>
             </div>
+            <label className="spatial-practice__sequence-option">
+                <input type="checkbox" checked={props.middleWindowEnabled}
+                    onChange={(event) => props.onMiddleWindowChange(event.target.checked)} />
+                <span>Middle window · turn off to make it a balcony</span>
+            </label>
             <label className="spatial-practice__sequence-option">
                 <input type="checkbox" checked={props.endback}
                     onChange={(event) => props.onEndbackChange(event.target.checked)} />

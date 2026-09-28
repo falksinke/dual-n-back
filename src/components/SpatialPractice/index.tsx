@@ -24,6 +24,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const settingsDialogRef = useRef<HTMLDialogElement>(null);
     const settingsButtonRef = useRef<HTMLButtonElement>(null);
     const [length, setLength] = useState(5);
+    const [middleWindowEnabled, setMiddleWindowEnabled] = useState(true);
     const [endback, setEndback] = useState(false);
     const [hiddenCount, setHiddenCount] = useState(1);
     const [hiddenPlacement, setHiddenPlacement] = useState<HiddenPlacement>('first');
@@ -105,7 +106,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     };
 
     const startNewSequence = (): void => {
-        const nextSequence = createSequence(length, sequenceRef.current, historyRef.current, interference);
+        const nextSequence = createSequence(length, sequenceRef.current, historyRef.current, interference, middleWindowEnabled);
         hiddenPositionsRef.current = new Set();
         sequenceRef.current = nextSequence;
         itemMsRef.current = INITIAL_ITEM_MS;
@@ -162,9 +163,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             const run = runRef.current;
             // Select the next pattern now so a background pause resumes the intended round.
             const next = endback
-                ? advanceEndbackSequence(sequenceRef.current, interference)
+                ? advanceEndbackSequence(sequenceRef.current, interference, middleWindowEnabled)
                 : newSequenceOnSuccess
-                    ? createSequence(length, sequenceRef.current, historyRef.current, interference) : sequenceRef.current;
+                    ? createSequence(length, sequenceRef.current, historyRef.current, interference, middleWindowEnabled) : sequenceRef.current;
             sequenceRef.current = next;
             hiddenPositionsRef.current = endback
                 ? chooseHiddenPositions(length, hiddenCount, hiddenPlacement) : new Set();
@@ -310,6 +311,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                         </svg>
                     </button>
                     <FireflyVillage phase={phase} activeCell={activeCell} activeOrder={activeOrder}
+                        middleWindowEnabled={middleWindowEnabled}
                         tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell}
                         onNewSequence={startNewSequence} onReset={stop} />
                 </div>
@@ -365,6 +367,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                         aria-label="Close settings" onClick={() => settingsDialogRef.current?.close()}>×</button>
                 </div>
                 <PracticeSettings length={length} onLengthChange={changeLength}
+                    middleWindowEnabled={middleWindowEnabled} onMiddleWindowChange={setMiddleWindowEnabled}
                     endback={endback} onEndbackChange={setEndback}
                     hiddenCount={hiddenCount} onHiddenCountChange={setHiddenCount}
                     hiddenPlacement={hiddenPlacement} onHiddenPlacementChange={setHiddenPlacement}

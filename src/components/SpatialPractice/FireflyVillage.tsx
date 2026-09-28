@@ -1,5 +1,5 @@
 import { useRef, type KeyboardEvent } from 'react';
-import { CELL_COUNT } from './sequence';
+import { CELL_COUNT, MIDDLE_CELL } from './sequence';
 import { Courier, EnvelopeMark, FireflyMark, HouseRoof, NightSky, Planter, PostOffice, SleepingCat, StreetLamp } from './VillageArt';
 import './FireflyVillage.scss';
 
@@ -9,6 +9,7 @@ export interface FireflyVillageProps {
     activeOrder: number | null;
     tapFeedback: { cell: number; correct: boolean; id: number } | null;
     wrongCell: number | null;
+    middleWindowEnabled: boolean;
     onChoose: (cell: number) => void;
     onNewSequence: () => void;
     onReset: () => void;
@@ -16,8 +17,24 @@ export interface FireflyVillageProps {
 
 const HOUSES = ['clay', 'sage', 'plum'] as const;
 
+function MiddleBalcony() {
+    return <div className="firefly-balcony" role="img" aria-label="Middle balcony, no deliveries">
+        <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+            <rect x="18" y="13" width="84" height="91" rx="8" fill="#b8aea4" stroke="#34364c" strokeWidth="3" />
+            <path d="M25 22h70v67H25Z" fill="#35485c" />
+            <path d="M60 22v67M27 66h66" stroke="#a6a7a5" strokeWidth="4" />
+            <path d="m29 24 14 0-14 28Zm62 0H77l14 28Z" fill="#c7d1d9" opacity=".12" />
+            <circle cx="54" cy="60" r="2" fill="#efd09b" />
+            <circle cx="66" cy="60" r="2" fill="#efd09b" />
+            <path d="M11 77h98v8H11Z" fill="#d0b7a0" stroke="#4e495b" strokeWidth="2" />
+            <path d="M17 85v26m86-26v26M32 85v24m14-24v24m14-24v24m14-24v24m14-24v24" stroke="#4e495b" strokeWidth="4" />
+            <path d="M10 110h100v6H10Z" fill="#b89b83" stroke="#4e495b" strokeWidth="2" />
+        </svg>
+    </div>;
+}
+
 /** A view of the current pulse and the player's last tap only — no hidden route. */
-export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, onChoose, onNewSequence, onReset }: FireflyVillageProps) {
+export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, middleWindowEnabled, onChoose, onNewSequence, onReset }: FireflyVillageProps) {
     const windowsRef = useRef<Array<HTMLButtonElement | null>>([]);
     const courierPose = phase === 'idle' ? 'idle'
         : phase === 'success' ? 'success'
@@ -40,6 +57,7 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
             default: return; // Enter / Space remain native button activation.
         }
         event.preventDefault();
+        if (!middleWindowEnabled && next === MIDDLE_CELL) next += next - cell;
         windowsRef.current[next]?.focus({ preventScroll: true });
     };
 
@@ -53,8 +71,11 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
                     <span className="firefly-village__drainpipe" />
                 </div>)}
             </div>
-            <div className="firefly-village__grid" role="group" aria-label="Nine delivery windows" aria-describedby="spatial-practice-help">
+            <div className="firefly-village__grid" role="group"
+                aria-label={middleWindowEnabled ? 'Nine delivery windows' : 'Eight delivery windows and a middle balcony'}
+                aria-describedby="spatial-practice-help">
                 {Array.from({ length: CELL_COUNT }, (_, cell) => {
+                    if (cell === MIDDLE_CELL && !middleWindowEnabled) return <MiddleBalcony key={cell} />;
                     const active = phase === 'showing' && activeCell === cell && activeOrder !== null;
                     const delivered = (phase === 'recall' || phase === 'success')
                         && tapFeedback?.cell === cell && tapFeedback.correct;
