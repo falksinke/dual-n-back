@@ -10,12 +10,14 @@ export interface FireflyVillageProps {
     tapFeedback: { cell: number; correct: boolean; id: number } | null;
     wrongCell: number | null;
     onChoose: (cell: number) => void;
+    onNewSequence: () => void;
+    onReset: () => void;
 }
 
 const HOUSES = ['clay', 'sage', 'plum'] as const;
 
 /** A view of the current pulse and the player's last tap only — no hidden route. */
-export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, onChoose }: FireflyVillageProps) {
+export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, onChoose, onNewSequence, onReset }: FireflyVillageProps) {
     const windowsRef = useRef<Array<HTMLButtonElement | null>>([]);
     const courierPose = phase === 'idle' ? 'idle'
         : phase === 'success' ? 'success'
@@ -98,8 +100,14 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
             <SleepingCat />
             <Courier pose={courierPose} />
         </div>
-        <div className="firefly-village__caption" aria-hidden="true">
-            <span>F I R E F L Y &nbsp; P O S T</span><span>Letters after lights-out</span>
+        <div className="firefly-village__caption">
+            <span aria-hidden="true">F I R E F L Y &nbsp; P O S T</span>
+            {phase === 'idle' ? <span aria-hidden="true">Letters after lights-out</span> : (
+                <div className="firefly-village__caption-actions">
+                    <button type="button" onClick={onNewSequence}>New sequence</button>
+                    <button type="button" onClick={onReset}>Stop / reset</button>
+                </div>
+            )}
         </div>
     </div>;
 }

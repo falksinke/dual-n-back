@@ -286,7 +286,8 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                         )}
                     </div>
                     <FireflyVillage phase={phase} activeCell={activeCell} activeOrder={activeOrder}
-                        tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell} />
+                        tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell}
+                        onNewSequence={startNewSequence} onReset={stop} />
                 </div>
 
                 <aside className="spatial-practice__dispatch" aria-label="Post-office dispatch">

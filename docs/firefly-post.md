@@ -39,6 +39,7 @@ The standard generator and history-based interference rules are unchanged. Repea
 - The phase and current visible target/ordinal.
 - The current completed-tap feedback and, on retry, the already-reported wrong location.
 - A callback for the player's chosen button.
+- Callbacks for New sequence and Stop / reset in the village caption.
 
 It does not receive the hidden sequence, expected next destination, history or recall array. Its only ref is an array of native buttons for keyboard focus. `Courier` receives a pose derived from the phase and already-completed feedback, never any location. There are no destination-dependent SVG titles, hidden ARIA hints, data attributes or route-related decorative cues.
 
@@ -55,6 +56,8 @@ On non-idle phase transitions, focus moves to the **neutral village group**, nev
 The village precedes the dispatch slip in document order. At wide sizes the slip sits beside the village; on narrow screens it sits below it. Both stay mounted across phases, so changing a status, control or setting does not reflow the window map. Before a presentation, the controller requests a synchronous nearest scroll of the entire response grid when needed, so starting from setup below the scene does not intentionally add a delay or require a flight animation. It does not scroll to an individual answer.
 
 After a wrong address or a pause, **Replay route** and **New sequence** also appear beside the status at the top of the village. These native buttons reuse the dispatch actions, wrap on narrow screens and have 44 px minimum touch targets. The toolbar sits over the sky without moving the window map.
+
+While a route is active, **New sequence** and **Stop / reset** also sit in the village's bottom caption bar, so they remain reachable when the upper sky and dispatch slip are offscreen. They call the same controller actions as the dispatch buttons; the window map stays fixed.
 
 The grid explicitly specifies both `repeat(3, minmax(0, 1fr))` columns and rows, has a 1:1 aspect ratio, and does not shrink as a flex child. Buttons fill equal square cells and have 44 px minimum dimensions. SVG and transient markers do not contribute intrinsic row height. Town width also has a viewport-height cap for shorter screens. Very short viewports can still require scrolling to the dispatch controls.
 
