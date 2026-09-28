@@ -102,12 +102,14 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
         </div>
         <div className="firefly-village__caption">
             <span aria-hidden="true">F I R E F L Y &nbsp; P O S T</span>
-            {phase === 'idle' ? <span aria-hidden="true">Letters after lights-out</span> : (
-                <div className="firefly-village__caption-actions">
+            <div className="firefly-village__caption-actions">
+                {phase === 'idle' ? (
+                    <button type="button" onClick={onNewSequence}>Start route <span aria-hidden="true">→</span></button>
+                ) : <>
                     <button type="button" onClick={onNewSequence}>New sequence</button>
                     <button type="button" onClick={onReset}>Stop / reset</button>
-                </div>
-            )}
+                </>}
+            </div>
         </div>
     </div>;
 }

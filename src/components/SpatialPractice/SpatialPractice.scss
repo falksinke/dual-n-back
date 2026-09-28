@@ -82,7 +82,8 @@
 .spatial-practice__scene-toolbar {
     position: absolute;
     top: var(--space-sm);
-    inset-inline: var(--space-sm);
+    inset-inline-start: var(--space-sm);
+    inset-inline-end: calc(var(--space-sm) + 44px + var(--space-xs));
     z-index: 1;
     display: flex;
     flex-wrap: wrap;
@@ -90,6 +91,27 @@
     justify-content: space-between;
     gap: var(--space-xs);
     pointer-events: none;
+}
+
+.spatial-practice__scene-settings {
+    position: absolute;
+    top: var(--space-sm);
+    right: var(--space-sm);
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: var(--space-xs);
+    border: 1px solid #c7a26d;
+    border-radius: var(--radius-full);
+    background: #292e47;
+    color: #efd09b;
+    box-shadow: 0 2px 8px rgb(17 20 33 / 35%);
+    cursor: pointer;
+    svg { width: 1.375rem; height: 1.375rem; }
+    &:hover:not(:disabled) { background: #3d3a55; }
+    &:disabled { opacity: .65; cursor: default; }
 }
 
 .spatial-practice__scene-note {
@@ -235,20 +257,12 @@
     &:hover { background: var(--fp-paper); border-color: var(--primary); }
 }
 
-.spatial-practice__instruction, .spatial-practice__settings-note,
+.spatial-practice__instruction,
 .spatial-practice__setting-help, .spatial-practice__keyboard-hint {
     margin: 0;
     color: var(--fp-muted);
     font-size: .775rem;
     line-height: 1.6;
-}
-
-.spatial-practice__setup {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-    padding-block-start: var(--space-md);
-    border-top: 1px dashed var(--border);
 }
 
 .spatial-practice__options {
@@ -262,6 +276,57 @@
     legend { margin-bottom: var(--space-sm); padding: 0; font-size: .875rem; font-weight: 600; }
     &:disabled { opacity: .65; }
 }
+
+.spatial-practice__settings-dialog {
+    width: min(28rem, calc(100vw - var(--space-md) - var(--space-md)));
+    max-height: calc(100dvh - var(--space-md) - var(--space-md));
+    overflow-y: auto;
+    padding: var(--space-lg);
+    border: 1px solid #8f806d;
+    border-top: 5px solid #c7a26d;
+    border-radius: var(--radius-md);
+    background: linear-gradient(160deg, #353b50, #292e47);
+    color: #f2e5ce;
+    box-shadow: 0 18px 70px rgb(17 19 34 / 45%);
+
+    &::backdrop { background: rgb(19 22 38 / 80%); }
+    .spatial-practice__eyebrow { color: #d3bb90; }
+    .spatial-practice__options { gap: var(--space-sm); }
+    .spatial-practice__options legend { color: #f2dfba; }
+    .spatial-practice__setting-help { color: #c7c7d3; }
+    .spatial-practice__settings select {
+        border-color: #70667c;
+        background: #292e47;
+        color: #f2e5ce;
+    }
+    .spatial-practice__sequence-option input { accent-color: #efd09b; }
+}
+
+.spatial-practice__settings-dialog-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+    h2 { margin: 0; font: 400 1.75rem / 1.2 Georgia, 'Times New Roman', serif; }
+}
+
+.spatial-practice__settings-close {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid #70667c;
+    border-radius: var(--radius-md);
+    background: #292e47;
+    color: #f2dfba;
+    cursor: pointer;
+    &:hover { border-color: #efd09b; }
+}
+
+.spatial-practice.firefly-post .spatial-practice__settings-close { font-size: 1.5rem; }
 
 .spatial-practice__settings {
     display: flex;
@@ -318,6 +383,7 @@
     .spatial-practice__header { gap: var(--space-sm); }
     .spatial-practice__back { padding-inline: var(--space-sm); }
     .spatial-practice__dispatch { padding-inline: var(--space-md); }
+    .spatial-practice__settings-dialog { padding: var(--space-md); }
 }
 
 @media (prefers-reduced-motion: reduce) {

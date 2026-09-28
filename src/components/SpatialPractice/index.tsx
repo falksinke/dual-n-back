@@ -21,6 +21,8 @@ const SUCCESS_PAUSE_MS = 1000;
 
 const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const sceneRef = useRef<HTMLDivElement>(null);
+    const settingsDialogRef = useRef<HTMLDialogElement>(null);
+    const settingsButtonRef = useRef<HTMLButtonElement>(null);
     const [length, setLength] = useState(5);
     const [endback, setEndback] = useState(false);
     const [hiddenCount, setHiddenCount] = useState(1);
@@ -75,7 +77,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
 
     const playSequence = (nextSequence: number[], speed: number): void => {
         cancelScheduled();
-        // Setup sits below the village on narrow screens. Bring the targets into
+        // Dispatch controls can sit below the village on narrow screens. Bring targets into
         // view synchronously, not through an animation or an extra cue delay.
         sceneRef.current?.querySelector<HTMLElement>('.firefly-village__grid')
             ?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
@@ -193,6 +195,10 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         onExit();
     };
 
+    const openSettings = (): void => {
+        if (phaseRef.current === 'idle') settingsDialogRef.current?.showModal();
+    };
+
     useMountEffect(() => {
         soundsRef.current = new PracticeSounds();
         const handleVisibility = (): void => {
@@ -208,9 +214,17 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                 updatePhase('paused');
             }
         };
+        const handleEscape = (event: KeyboardEvent): void => {
+            if (event.key !== 'Escape' || event.defaultPrevented || phaseRef.current === 'idle'
+                || document.querySelector('dialog[open]')) return;
+            event.preventDefault();
+            stop();
+        };
         document.addEventListener('visibilitychange', handleVisibility);
+        document.addEventListener('keydown', handleEscape);
         return () => {
             document.removeEventListener('visibilitychange', handleVisibility);
+            document.removeEventListener('keydown', handleEscape);
             soundsRef.current?.dispose();
             soundsRef.current = null;
             runRef.current += 1;
@@ -285,6 +299,16 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                             </div>
                         )}
                     </div>
+                    <button ref={settingsButtonRef} type="button" className="spatial-practice__scene-settings"
+                        aria-label="Firefly Post settings" title={phase === 'idle' ? 'Settings' : 'Stop the route to change settings'}
+                        disabled={phase !== 'idle'} onClick={openSettings}>
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                            <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                            <circle cx="9" cy="7" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
+                            <circle cx="15" cy="12" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
+                            <circle cx="10" cy="17" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
+                        </svg>
+                    </button>
                     <FireflyVillage phase={phase} activeCell={activeCell} activeOrder={activeOrder}
                         tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell}
                         onNewSequence={startNewSequence} onReset={stop} />
@@ -321,28 +345,35 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                     <p id="spatial-practice-help" className="spatial-practice__instruction">
                         Tap once per letter, in order. A window may appear more than once.
                     </p>
-
-                    <div className="spatial-practice__setup">
-                        <PracticeSettings length={length} onLengthChange={changeLength}
-                            endback={endback} onEndbackChange={setEndback}
-                            hiddenCount={hiddenCount} onHiddenCountChange={setHiddenCount}
-                            hiddenPlacement={hiddenPlacement} onHiddenPlacementChange={setHiddenPlacement}
-                            newSequence={newSequenceOnSuccess} onNewSequenceChange={setNewSequenceOnSuccess}
-                            increaseSpeed={increaseSpeed} onIncreaseSpeedChange={setIncreaseSpeed}
-                            interference={interference} onInterferenceChange={setInterference}
-                            mathEnabled={mathEnabled} onMathEnabledChange={setMathEnabled}
-                            disabled={phase !== 'idle'} />
-                        <p className="spatial-practice__settings-note">
-                            {phase === 'idle' ? 'Set your route before heading out.' : 'Stop / reset to change dispatch settings.'}
-                        </p>
-                    </div>
                 </aside>
             </div>
 
             <p className="spatial-practice__keyboard-hint">
                 <span>Tab to a window; arrow keys move focus.</span>
                 <span>Enter or Space delivers. Touch: tap a window.</span>
+                <span>Escape stops the route.</span>
             </p>
+            <dialog ref={settingsDialogRef} className="spatial-practice__settings-dialog"
+                aria-labelledby="spatial-settings-title"
+                onClose={() => settingsButtonRef.current?.focus({ preventScroll: true })}>
+                <div className="spatial-practice__settings-dialog-header">
+                    <div>
+                        <p className="spatial-practice__eyebrow">Keeper's notebook</p>
+                        <h2 id="spatial-settings-title">Tonight's route</h2>
+                    </div>
+                    <button type="button" className="spatial-practice__settings-close"
+                        aria-label="Close settings" onClick={() => settingsDialogRef.current?.close()}>×</button>
+                </div>
+                <PracticeSettings length={length} onLengthChange={changeLength}
+                    endback={endback} onEndbackChange={setEndback}
+                    hiddenCount={hiddenCount} onHiddenCountChange={setHiddenCount}
+                    hiddenPlacement={hiddenPlacement} onHiddenPlacementChange={setHiddenPlacement}
+                    newSequence={newSequenceOnSuccess} onNewSequenceChange={setNewSequenceOnSuccess}
+                    increaseSpeed={increaseSpeed} onIncreaseSpeedChange={setIncreaseSpeed}
+                    interference={interference} onInterferenceChange={setInterference}
+                    mathEnabled={mathEnabled} onMathEnabledChange={setMathEnabled}
+                    disabled={phase !== 'idle'} />
+            </dialog>
             {phase === 'math' && <MathChallenge
                 onSolved={() => { if (phaseRef.current === 'math') updatePhase('recall'); }}
                 onAbort={stop} />}
