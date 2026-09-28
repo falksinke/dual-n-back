@@ -54,8 +54,8 @@ export default function MathChallenge({ onSolved, onAbort }: MathChallengeProps)
                     onChange={(event) => { setAnswer(event.target.value); setIncorrect(false); }} />
                 {incorrect && <p id="practice-math-error" role="alert">Not quite. Try the postage calculation again; your route is still waiting.</p>}
                 <div className="practice-math__actions">
-                    <button type="submit">Check change</button>
-                    <button type="button" onClick={onAbort}>Cancel round</button>
+                    <div className="haptic-host"><button type="submit">Check change</button></div>
+                    <div className="haptic-host"><button type="button" onClick={onAbort}>Cancel round</button></div>
                 </div>
             </form>
         </dialog>

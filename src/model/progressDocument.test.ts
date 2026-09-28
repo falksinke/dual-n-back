@@ -9,6 +9,7 @@ import {
     progressDocumentFromParts,
 } from './progressDocument';
 import { createDefaultPersistableSettings } from './settingsPersistence';
+import { createDefaultFireflyProgress } from './fireflyProgress';
 import { createDefaultUiPreferences } from './uiPreferences';
 import { createDefaultCurriculumLadder } from './adaptiveCurriculum';
 
@@ -44,6 +45,18 @@ describe('progressDocument', () => {
         expect(doc.uiPreferences.visitCount).toBe(3);
         expect(doc.uiPreferences.hapticFeedbackEnabled).toBe(false);
         expect(doc.version).toBe(1);
+        expect(doc.fireflyPost).toEqual(createDefaultFireflyProgress());
+    });
+
+    it('retains Firefly settings and checkpoint through profile-document normalization', () => {
+        const fireflyPost = createDefaultFireflyProgress();
+        fireflyPost.updatedAt = '2026-09-28T10:00:00.000Z';
+        fireflyPost.settings.isiMs = 1400;
+        fireflyPost.settings.increaseSpeed = false;
+        fireflyPost.route = { streak: 2, sequence: [0, 1, 2, 3, 4],
+            hiddenPositions: [], history: [0, 1, 2, 3, 4], itemMs: 1400 };
+
+        expect(normalizeProgressDocument({ fireflyPost }).fireflyPost).toEqual(fireflyPost);
     });
 
     it('migrates a legacy v3-only ladder field into cyclicLadder', () => {

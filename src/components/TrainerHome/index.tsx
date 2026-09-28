@@ -1,12 +1,13 @@
 import type { ThemeMode } from '../../themes/config';
 import './TrainerHome.scss';
 
-export type TrainingMode = 'nback' | 'spatial' | 'swapping' | 'remember-decide';
+export type TrainingMode = 'nback' | 'spatial' | 'swapping' | 'remember-decide' | 'spatial-suite';
 
 const modes: { id: TrainingMode; title: string; focus: string; description: string }[] = [
     { id: 'nback', title: 'N-back', focus: 'Track and update', description: 'Follow a stream of items and spot matches from earlier in the sequence.' },
     { id: 'swapping', title: 'Midnight Shunting', focus: 'Hold and transform', description: 'The Swapping exercise, in a miniature railway yard. Remember cargo marks, follow mental shunting instructions, then rebuild the order.' },
     { id: 'spatial', title: 'Firefly Post', focus: 'Spatial sequence', description: 'Watch a firefly light the village windows, then deliver letters in the same order from memory.' },
+    { id: 'spatial-suite', title: 'Spatial suite', focus: 'Hold, update, relate', description: 'Five spatial n-back games (Drift, Pattern, Wayfinder, Shift, Relay) in short mixed sessions that adapt as you improve.' },
     { id: 'remember-decide', title: 'The Moth Keeper', focus: 'Remember and inspect', description: 'Remember firefly landing places in a night greenhouse while inspecting moth markings for vertical symmetry.' },
 ];
 

@@ -28,6 +28,7 @@ import StatisticsPanel from './components/StatisticsPanel';
 import SpatialPractice from './components/SpatialPractice';
 import Swapping from './components/Swapping';
 import RememberDecide from './components/RememberDecide';
+import SpatialSuite from './components/SpatialSuite';
 import TrainerHome, { type TrainingMode } from './components/TrainerHome';
 
 interface NBackAppProps {
@@ -251,7 +252,7 @@ const App = () => {
 
     if (trainingMode === 'spatial') {
         return (
-            <main className="practice-shell">
+            <main className="practice-shell practice-shell--firefly">
                 <SpatialPractice onExit={goHome} />
             </main>
         );
@@ -261,6 +262,14 @@ const App = () => {
         return (
             <main className="practice-shell">
                 <Swapping onExit={goHome} />
+            </main>
+        );
+    }
+
+    if (trainingMode === 'spatial-suite') {
+        return (
+            <main className="practice-shell">
+                <SpatialSuite onExit={goHome} />
             </main>
         );
     }

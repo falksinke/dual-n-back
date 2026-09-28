@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none" color="currentColor">
+  <g fill="currentColor" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="128" cy="128" r="22" fill="currentColor" stroke="none"/>
+<path d="M 206.00 128.00 A 78.00 78.00 0 1 1 50.00 128.00 A 78.00 78.00 0 1 1 206.00 128.00 M 186.00 128.00 A 58.00 58.00 0 1 0 70.00 128.00 A 58.00 58.00 0 1 0 186.00 128.00 Z" fill="currentColor" stroke="none" fill-rule="evenodd"/>
+  </g>
+</svg>

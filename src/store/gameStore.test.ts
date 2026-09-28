@@ -18,15 +18,44 @@ import {
 } from '../model/ladderPersistence';
 import { GameResult } from '../model/GameResult';
 import { createInitialAdaptiveSession } from './adaptiveSession';
+import {
+    persistableSettingsFromStoreSettings,
+} from '../model/settingsPersistence';
+import {
+    saveDailyProgress,
+    trainingDayKey,
+} from '../model/dailyProgress';
+import { idleRestTimer } from '../model/restTimer';
 
 async function finishCountdown() {
     await vi.advanceTimersByTimeAsync(COUNTDOWN_START * COUNTDOWN_TICK_MS);
 }
 
+function seedDailyProgress(completedCount: number) {
+    const dayKey = trainingDayKey(new Date());
+    const data = { version: 1 as const, dayKey, completedCount };
+    saveDailyProgress(data);
+    useGameStore.setState({ dailyProgress: data });
+}
+
 describe('gameStore', () => {
+    let memoryStore: Map<string, string>;
+
     beforeEach(() => {
         vi.useFakeTimers();
+        memoryStore = new Map();
+        vi.stubGlobal('localStorage', {
+            getItem: (key: string) => (memoryStore.has(key) ? memoryStore.get(key)! : null),
+            setItem: (key: string, value: string) => {
+                memoryStore.set(key, value);
+            },
+            removeItem: (key: string) => {
+                memoryStore.delete(key);
+            },
+            clear: () => memoryStore.clear(),
+        });
         vi.spyOn(useGameStore.getState().speech, 'play').mockImplementation(() => undefined);
+        seedDailyProgress(0);
         useGameStore.setState({
             game: null,
             countdown: null,
@@ -49,6 +78,7 @@ describe('gameStore', () => {
             lastControllerAction: null,
             blockModalities: null,
             freePlaySettingsSnapshot: null,
+            restTimer: idleRestTimer(0),
             teachIntroDismissed: false,
             teachOptOutWarnShown: false,
             teachDecideTrialCount: 0,
@@ -68,8 +98,10 @@ describe('gameStore', () => {
                 positionGrid: '3x3',
                 displayVariableNCenter: false,
                 answerGraceMs: 250,
+                stepwisePacing: false,
                 useFullScreen: false,
                 mode: 'dual',
+                tripleModalities: ['position', 'color', 'audio'],
                 audioPack: 'letters',
                 interferenceChance: 0.125,
                 variableN: false,
@@ -77,6 +109,19 @@ describe('gameStore', () => {
                 playMode: 'free',
                 useBlockQuotas: false,
                 useJaeggiQuotas: true,
+                dailyRounds: 20,
+                dailySessions: 4,
+                freePlayAutoProgress: false,
+                freePlayPromotePct: 80,
+                freePlayDemotePct: 80,
+                freePlayFailsToDemote: 3,
+                freePlayDemoteRequiresConsecutive: true,
+                freePlayFailStreak: 0,
+            },
+            dailyProgress: {
+                version: 1,
+                dayKey: trainingDayKey(new Date()),
+                completedCount: 0,
             },
         });
     });
@@ -84,6 +129,7 @@ describe('gameStore', () => {
     afterEach(() => {
         useGameStore.getState().cancelGame();
         vi.useRealTimers();
+        vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
 
@@ -118,6 +164,42 @@ describe('gameStore', () => {
 
         await vi.advanceTimersByTimeAsync(1000);
         expect(useGameStore.getState().boardState.positionIndex).toBe(-1);
+    });
+
+    it('shows unclaimed targets as errors before the next onset with instant feedback', async () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+        useGameStore.setState((state) => ({
+            settings: {
+                ...state.settings,
+                level: 1,
+                trials: 3,
+                isiMin: 1000,
+                isiMax: 1000,
+                answerGraceMs: 250,
+                activeFeedback: true,
+                useJaeggiQuotas: true,
+            },
+        }));
+
+        useGameStore.getState().startGame();
+        await finishCountdown();
+
+        // Warm-up trial: 1,050ms claim window + 200ms feedback reserve.
+        await vi.advanceTimersByTimeAsync(1050);
+        await vi.advanceTimersByTimeAsync(200);
+
+        // Jaeggi planning puts the guaranteed target on the first scorable trial
+        // for this deterministic RNG. Leaving it unclaimed must paint both buttons.
+        await vi.advanceTimersByTimeAsync(1050);
+        expect(useGameStore.getState().btns).toMatchObject({
+            position: ButtonState.Error,
+            audio: ButtonState.Error,
+        });
+
+        await vi.advanceTimersByTimeAsync(199);
+        expect(useGameStore.getState().btns.position).toBe(ButtonState.Error);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(useGameStore.getState().btns.position).toBe(ButtonState.None);
     });
 
     it('cancel clears game without pushing results', async () => {
@@ -170,6 +252,41 @@ describe('gameStore', () => {
         expect(useGameStore.getState().boardState.colorId).not.toBeNull();
 
         useGameStore.getState().cancelGame();
+    });
+
+    it('updates idle chrome when Triple modalities change', () => {
+        useGameStore.getState().setMode('triple');
+        useGameStore.getState().setTripleModalities(['color', 'image', 'audio']);
+        expect(useGameStore.getState().settings.tripleModalities).toEqual([
+            'color',
+            'image',
+            'audio',
+        ]);
+        expect(useGameStore.getState().activeModalities).toEqual(['color', 'image', 'audio']);
+        expect(useGameStore.getState().btns).toMatchObject({
+            color: ButtonState.None,
+            image: ButtonState.None,
+            audio: ButtonState.None,
+        });
+        expect(useGameStore.getState().btns.position).toBeUndefined();
+    });
+
+    it('freezes Triple modality chrome mid-session', async () => {
+        useGameStore.getState().setMode('triple');
+        useGameStore.getState().startGame();
+        await finishCountdown();
+        expect(useGameStore.getState().activeModalities).toEqual(['position', 'color', 'audio']);
+
+        useGameStore.getState().setTripleModalities(['color', 'image', 'audio']);
+        expect(useGameStore.getState().settings.tripleModalities).toEqual([
+            'color',
+            'image',
+            'audio',
+        ]);
+        expect(useGameStore.getState().activeModalities).toEqual(['position', 'color', 'audio']);
+
+        useGameStore.getState().cancelGame();
+        expect(useGameStore.getState().activeModalities).toEqual(['color', 'image', 'audio']);
     });
 
     it('snapshots mode and interference at session start', async () => {
@@ -694,6 +811,27 @@ describe('gameStore', () => {
         expect(useGameStore.getState().results.last).toBe(result);
     });
 
+    it('blocks continue until the selected post-round rest ends', () => {
+        useGameStore.setState({ restTimer: idleRestTimer(1) });
+        useGameStore.getState().pushGameResult(
+            new GameResult(
+                {
+                    audio: { success: 1, failed: 0 },
+                    position: { success: 1, failed: 0 },
+                },
+                ['position', 'audio']
+            )
+        );
+
+        expect(useGameStore.getState().restTimer.endsAtMs).toBe(Date.now() + 60_000);
+        useGameStore.getState().startGame();
+        expect(useGameStore.getState().countdown).toBeNull();
+
+        vi.advanceTimersByTime(60_000);
+        useGameStore.getState().startGame();
+        expect(useGameStore.getState().countdown).toBe(COUNTDOWN_START);
+    });
+
     it('advances cyclic acquisition after walkthrough block then continues on next startGame', async () => {
         useGameStore.getState().setPlayMode('cyclic');
         useGameStore.getState().startGame();
@@ -798,5 +936,240 @@ describe('gameStore', () => {
 
         expect(useGameStore.getState().cyclicLadder.dual.stage).toBe('fixed_fast');
         expect(useGameStore.getState().lastControllerAction?.action).toBe('hold');
+    });
+
+    it('increments daily progress on free-play block end', () => {
+        seedDailyProgress(2);
+        useGameStore.setState({
+            settings: {
+                ...useGameStore.getState().settings,
+                dailyRounds: 20,
+                freePlayAutoProgress: false,
+            },
+        });
+        const result = new GameResult(
+            {
+                audio: { success: 1, failed: 0 },
+                position: { success: 1, failed: 0 },
+            },
+            ['position', 'audio']
+        );
+        useGameStore.getState().pushGameResult(result);
+        expect(useGameStore.getState().dailyProgress.completedCount).toBe(3);
+        expect(useGameStore.getState().lastControllerAction).toBeNull();
+    });
+
+    it('promotes free-play level with auto progress without changing trials', () => {
+        seedDailyProgress(0);
+        useGameStore.setState({
+            settings: {
+                ...useGameStore.getState().settings,
+                level: 3,
+                trials: 30,
+                isiMin: 1000,
+                isiMax: 1500,
+                interferenceChance: 0.125,
+                freePlayAutoProgress: true,
+                freePlayPromotePct: 80,
+                freePlayFailsToDemote: 3,
+                freePlayFailStreak: 1,
+            },
+        });
+        const result = new GameResult(
+            {
+                audio: { success: 8, failed: 0 },
+                position: { success: 8, failed: 0 },
+            },
+            ['position', 'audio']
+        );
+        useGameStore.getState().pushGameResult(result);
+        const { settings, lastControllerAction, dailyProgress } = useGameStore.getState();
+        expect(settings.level).toBe(4);
+        expect(settings.trials).toBe(30);
+        expect(settings.isiMin).toBe(1000);
+        expect(settings.isiMax).toBe(1500);
+        expect(settings.interferenceChance).toBe(0.125);
+        expect(settings.freePlayFailStreak).toBe(0);
+        expect(lastControllerAction?.action).toBe('promote');
+        expect(dailyProgress.completedCount).toBe(1);
+    });
+
+    it('keeps low trial counts after auto-promote persist/reload', () => {
+        seedDailyProgress(0);
+        useGameStore.setState({
+            settings: {
+                ...useGameStore.getState().settings,
+                level: 3,
+                trials: 6,
+                freePlayAutoProgress: true,
+                freePlayPromotePct: 80,
+                freePlayFailsToDemote: 3,
+                freePlayFailStreak: 0,
+            },
+        });
+        useGameStore.getState().pushGameResult(
+            new GameResult(
+                {
+                    audio: { success: 8, failed: 0 },
+                    position: { success: 8, failed: 0 },
+                },
+                ['position', 'audio']
+            )
+        );
+        expect(useGameStore.getState().settings.level).toBe(4);
+        expect(useGameStore.getState().settings.trials).toBe(6);
+        const snap = persistableSettingsFromStoreSettings(
+            useGameStore.getState().settings as unknown as Record<string, unknown>
+        );
+        expect(snap.level).toBe(4);
+        expect(snap.trials).toBe(6);
+    });
+
+    it('demotes free-play after failsToDemote consecutive low Match%', () => {
+        useGameStore.setState({
+            settings: {
+                ...useGameStore.getState().settings,
+                level: 3,
+                trials: 24,
+                freePlayAutoProgress: true,
+                freePlayPromotePct: 80,
+                freePlayFailsToDemote: 2,
+                freePlayFailStreak: 1,
+            },
+        });
+        const fail = new GameResult(
+            {
+                audio: { success: 1, failed: 4 },
+                position: { success: 1, failed: 4 },
+            },
+            ['position', 'audio']
+        );
+        useGameStore.getState().pushGameResult(fail);
+        expect(useGameStore.getState().settings.level).toBe(2);
+        expect(useGameStore.getState().settings.trials).toBe(24);
+        expect(useGameStore.getState().lastControllerAction?.action).toBe('demote');
+    });
+
+    it('does not count cancel toward daily progress', () => {
+        seedDailyProgress(4);
+        useGameStore.setState({
+            game: { cancel: vi.fn() } as never,
+        });
+        useGameStore.getState().cancelGame();
+        expect(useGameStore.getState().dailyProgress.completedCount).toBe(4);
+    });
+
+    it('counts adaptive block ends toward daily progress', () => {
+        seedDailyProgress(1);
+        useGameStore.setState({
+            settings: {
+                ...useGameStore.getState().settings,
+                freePlayAutoProgress: true,
+            },
+            ladder: {
+                ...useGameStore.getState().ladder,
+                dual: { levelIndex: 2, failStreak: 0 },
+            },
+        });
+        useGameStore.getState().setPlayMode('adaptive');
+        useGameStore.setState({
+            adaptiveSession: {
+                ...createInitialAdaptiveSession(),
+                phase: 'playing',
+            },
+        });
+        const ok = new GameResult(
+            {
+                audio: { success: 8, failed: 0 },
+                position: { success: 8, failed: 0 },
+            },
+            ['position', 'audio']
+        );
+        useGameStore.getState().pushGameResult(ok);
+        expect(useGameStore.getState().dailyProgress.completedCount).toBe(2);
+        expect(useGameStore.getState().lastControllerAction?.action).toBe('promote');
+        expect(useGameStore.getState().lastBlockRole).toBe('match');
+    });
+
+    it('resets freePlayFailStreak on manual level change', () => {
+        useGameStore.setState({
+            settings: {
+                ...useGameStore.getState().settings,
+                freePlayFailStreak: 2,
+            },
+        });
+        useGameStore.getState().increaseLevel();
+        expect(useGameStore.getState().settings.freePlayFailStreak).toBe(0);
+    });
+
+    it('does not increment daily progress at cap', () => {
+        seedDailyProgress(20);
+        useGameStore.setState({
+            settings: {
+                ...useGameStore.getState().settings,
+                dailyRounds: 20,
+            },
+        });
+        useGameStore.getState().pushGameResult(
+            new GameResult(
+                {
+                    audio: { success: 1, failed: 0 },
+                    position: { success: 1, failed: 0 },
+                },
+                ['position', 'audio']
+            )
+        );
+        expect(useGameStore.getState().dailyProgress.completedCount).toBe(20);
+    });
+
+    it('holds each trial in paced mode and continues on demand', async () => {
+        useGameStore.setState((state) => ({
+            settings: {
+                ...state.settings,
+                level: 1,
+                trials: 2,
+                isiMin: 1000,
+                isiMax: 1000,
+                answerGraceMs: 0,
+                stepwisePacing: true,
+            },
+        }));
+
+        useGameStore.getState().startGame();
+        await finishCountdown();
+
+        // First onset freezes the trial clock and opens the continue gate.
+        expect(useGameStore.getState().stepwisePaused).toBe(true);
+        const session = useGameStore.getState().game!;
+        expect(session.isPaused).toBe(true);
+
+        // Claims stay open while held.
+        expect(session.addChoice('position')).toBe(true);
+
+        // A long wait does not advance to the next stimulus.
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(useGameStore.getState().boardState.currentTrials).toBe(2);
+
+        useGameStore.getState().continueStepwise();
+        expect(useGameStore.getState().stepwisePaused).toBe(false);
+        expect(session.isPaused).toBe(false);
+
+        // Scoring + feedback reserve, then the second onset re-arms the gate.
+        await vi.advanceTimersByTimeAsync(400);
+        expect(useGameStore.getState().boardState.currentTrials).toBe(1);
+        expect(useGameStore.getState().stepwisePaused).toBe(true);
+
+        // Final continue completes the block and clears the flag.
+        useGameStore.getState().continueStepwise();
+        await vi.advanceTimersByTimeAsync(400);
+        expect(useGameStore.getState().game).toBeNull();
+        expect(useGameStore.getState().results.last).not.toBeNull();
+        expect(useGameStore.getState().stepwisePaused).toBe(false);
+    });
+
+    it('continueStepwise is a no-op when no gate is held', async () => {
+        useGameStore.getState().continueStepwise();
+        expect(useGameStore.getState().game).toBeNull();
+        expect(useGameStore.getState().stepwisePaused).toBe(false);
     });
 });

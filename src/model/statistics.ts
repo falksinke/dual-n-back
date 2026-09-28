@@ -95,7 +95,7 @@ function trainingDayKey(date: Date): string {
 }
 
 function isModeId(value: unknown): value is ModeId {
-    return value === 'dual' || value === 'triple' || value === 'quad';
+    return value === 'single' || value === 'dual' || value === 'triple' || value === 'quad';
 }
 
 function isNBackDistribution(value: unknown): value is NBackDistributionEntry[] {

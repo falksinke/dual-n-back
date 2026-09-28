@@ -1,4 +1,5 @@
 import { INTERFERENCE_CHANCE_OPTIONS } from '../../model/interference';
+import { MAX_FIREFLY_ISI_MS, MIN_FIREFLY_ISI_MS } from '../../model/fireflyProgress';
 import type { HiddenPlacement } from './sequence';
 
 interface PracticeSettingsProps {
@@ -16,6 +17,8 @@ interface PracticeSettingsProps {
     onNewSequenceChange: (value: boolean) => void;
     increaseSpeed: boolean;
     onIncreaseSpeedChange: (value: boolean) => void;
+    isiMs: number;
+    onIsiMsChange: (value: number) => void;
     interference: number;
     onInterferenceChange: (value: number) => void;
     mathEnabled: boolean;
@@ -42,6 +45,22 @@ export default function PracticeSettings(props: PracticeSettingsProps) {
                     ))}
                 </select>
             </div>
+            <div className="spatial-practice__settings">
+                <label htmlFor="spatial-isi">{props.increaseSpeed ? 'Starting interval' : 'Static ISI'} (ms)</label>
+                <input key={props.isiMs} id="spatial-isi" type="number" min={MIN_FIREFLY_ISI_MS}
+                    max={MAX_FIREFLY_ISI_MS} step="1" defaultValue={props.isiMs}
+                    onBlur={(event) => {
+                        const value = event.currentTarget.valueAsNumber;
+                        if (Number.isInteger(value) && value >= MIN_FIREFLY_ISI_MS && value <= MAX_FIREFLY_ISI_MS) {
+                            props.onIsiMsChange(value);
+                        } else {
+                            event.currentTarget.value = String(props.isiMs);
+                        }
+                    }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
+            </div>
+            <p className="spatial-practice__setting-help">
+                Time from one window cue to the next, 300–5000 ms. Turn off speed increase to keep it fixed.
+            </p>
             <label className="spatial-practice__sequence-option">
                 <input type="checkbox" checked={props.middleWindowEnabled}
                     onChange={(event) => props.onMiddleWindowChange(event.target.checked)} />

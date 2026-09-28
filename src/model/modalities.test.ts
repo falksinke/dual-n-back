@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
     DEFAULT_KEYS,
     MODE_PRESETS,
+    TRIPLE_COMBINATIONS,
+    type ModalityId,
     getModalitiesForMode,
     modalityFromKey,
+    normalizeTripleModalities,
+    resolveModalities,
+    tripleCombinationLabel,
 } from './modalities';
 
 describe('modalities', () => {
@@ -18,6 +23,44 @@ describe('modalities', () => {
 
     it('quad preset is position, color, image, audio', () => {
         expect(MODE_PRESETS.quad).toEqual(['position', 'color', 'image', 'audio']);
+    });
+
+    it('lists all four Triple combinations', () => {
+        expect(TRIPLE_COMBINATIONS).toHaveLength(4);
+        expect(TRIPLE_COMBINATIONS).toContainEqual(['color', 'image', 'audio']);
+    });
+
+    it('normalizes Triple modalities and rejects invalid sets', () => {
+        expect(normalizeTripleModalities(['audio', 'color', 'image'])).toEqual([
+            'color',
+            'image',
+            'audio',
+        ]);
+        expect(normalizeTripleModalities(['position', 'audio'])).toEqual(
+            getModalitiesForMode('triple')
+        );
+        expect(normalizeTripleModalities(null)).toEqual(getModalitiesForMode('triple'));
+        expect(normalizeTripleModalities(['position', 'position', 'audio'])).toEqual(
+            getModalitiesForMode('triple')
+        );
+    });
+
+    it('resolves Dual/Quad from presets and Triple from custom set', () => {
+        expect(resolveModalities('dual')).toEqual(['position', 'audio']);
+        expect(resolveModalities('quad')).toEqual(['position', 'color', 'image', 'audio']);
+        expect(resolveModalities('triple', ['color', 'image', 'audio'])).toEqual([
+            'color',
+            'image',
+            'audio',
+        ]);
+        expect(resolveModalities('triple', ['bogus'] as unknown as ModalityId[])).toEqual(
+            getModalitiesForMode('triple')
+        );
+    });
+
+    it('labels Triple combinations', () => {
+        expect(tripleCombinationLabel(['color', 'image', 'audio'])).toBe('Color·Image·Audio');
+        expect(tripleCombinationLabel(['position', 'color', 'audio'])).toBe('Pos·Color·Audio');
     });
 
     it('maps keys to active modalities case-insensitively', () => {

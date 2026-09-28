@@ -267,8 +267,28 @@
         margin: var(--result-gap-section) 0 0;
         padding-top: var(--result-gap);
         display: flex;
+        flex-wrap: wrap;
+        align-items: center;
         justify-content: center;
+        gap: var(--result-gap);
         background: var(--resultBackground);
+    }
+
+    .result-download-log {
+        min-height: var(--touch-min);
+        padding: 7px 11px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--textBackground);
+        font: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+
+        &:focus-visible {
+            outline: var(--focus-ring-width) solid var(--focus-ring-color);
+            outline-offset: var(--focus-ring-offset);
+        }
     }
 }
 

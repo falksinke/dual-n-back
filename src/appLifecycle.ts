@@ -8,6 +8,7 @@ import {
     useGameStore,
 } from './store/gameStore';
 import { clearStimulusTimers } from './store/stimulusPresentation';
+import { pullIfNewer } from './sync/progressSync';
 
 let bound = false;
 let sessionSuspended = false;
@@ -33,8 +34,11 @@ function resumeSessionFromBackground(): void {
     resumeAudioFromBackground();
     resumeCountdownForBackground(useGameStore.getState, useGameStore.setState);
 
-    const game = useGameStore.getState().game;
-    if (game && typeof game.resume === 'function') {
+    // Paced mode keeps its user gate across background/foreground — resuming
+    // here would auto-continue the held trial without Space.
+    const state = useGameStore.getState();
+    const game = state.game;
+    if (game && typeof game.resume === 'function' && !state.stepwisePaused) {
         game.resume();
     }
 }
@@ -51,6 +55,8 @@ export function bindAppLifecyclePause(): void {
         if (document.visibilityState === 'hidden') {
             pauseSessionForBackground();
         } else {
+            useGameStore.getState().ensureDailyProgressCurrent();
+            void pullIfNewer();
             resumeSessionFromBackground();
         }
     });
@@ -66,6 +72,8 @@ export function bindAppLifecyclePause(): void {
 
     window.addEventListener('pageshow', () => {
         if (document.visibilityState === 'visible') {
+            useGameStore.getState().ensureDailyProgressCurrent();
+            void pullIfNewer();
             resumeSessionFromBackground();
         }
     });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { countModalityTargets } from './blockQuotas';
+import { scaleJaeggiTargets } from './jaeggiQuotas';
 import { getModalitiesForMode } from './modalities';
 import { makeVariableNList } from './variableN';
 import {
@@ -49,9 +50,11 @@ describe('variableNQuotas', () => {
         const scorable = effectiveNs
             .map((n, t) => (isScorableTrial(t, n) ? t : -1))
             .filter((t) => t >= 0);
+        const expected = scaleJaeggiTargets(scorable.length);
         const counts = countModalityTargets(result.trials, scorable, modalities);
-        expect(counts.position).toBe(4);
-        expect(counts.audio).toBe(4);
+        expect(counts.position).toBe(expected.perModality);
+        expect(counts.audio).toBe(expected.perModality);
+        expect(result.counts).toEqual(expected);
 
         for (const m of modalities) {
             for (let t = 0; t < gameLength; t++) {
@@ -79,6 +82,11 @@ describe('variableNQuotas', () => {
             random: mulberry32(99),
         });
 
+        const scorable = effectiveNs
+            .map((n, t) => (isScorableTrial(t, n) ? t : -1))
+            .filter((t) => t >= 0);
+        const expectedTargets = scaleJaeggiTargets(scorable.length).perModality;
+
         for (const m of modalities) {
             let targets = 0;
             let lures = 0;
@@ -90,7 +98,7 @@ describe('variableNQuotas', () => {
                     expect(result.trials[t].byModality[m]?.lureOffset).toBeDefined();
                 }
             }
-            expect(targets).toBe(6);
+            expect(targets).toBe(expectedTargets);
             expect(lures).toBeGreaterThan(0);
             expect(result.lureCounts[m]).toBe(lures);
         }

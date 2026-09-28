@@ -1,22 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import './SessionPrimaryButton.scss';
 
 interface SessionPrimaryButtonProps {
     label: string;
+    disabled?: boolean;
 }
 
 /** Touch-friendly Start / Continue; Space remains available via keyboard controls. */
-const SessionPrimaryButton = ({ label }: SessionPrimaryButtonProps) => {
+const SessionPrimaryButton = ({ label, disabled = false }: SessionPrimaryButtonProps) => {
     const startGame = useGameStore((state) => state.startGame);
-    const blocked = useGameStore(
+    const sessionBlocked = useGameStore(
         (state) => state.game !== null || state.countdown !== null
     );
+    const blocked = sessionBlocked || disabled;
     const [pressed, setPressed] = useState(false);
-
-    useEffect(() => {
-        if (blocked) setPressed(false);
-    }, [blocked]);
 
     const clearPress = () => setPressed(false);
     const startPress = () => {

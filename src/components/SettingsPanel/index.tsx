@@ -1,8 +1,16 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useModalA11y } from '../../hooks/useModalA11y';
 import { useGameStore } from '../../store/gameStore';
-import { ModeId, ModalityId, TRIPLE_COMBINATIONS, tripleCombinationLabel } from '../../model/modalities';
+import {
+    ALL_MODALITIES,
+    MODALITY_LABELS,
+    ModeId,
+    ModalityId,
+    TRIPLE_COMBINATIONS,
+    tripleCombinationLabel,
+} from '../../model/modalities';
 import { AudioPackId } from '../../model/audioPacks';
+import type { ImageDifficulty } from '../../model/imageSet';
 import { msToSecondsLabel } from '../../model/isi';
 import { FAILS_TO_DEMOTE_STAGE } from '../../model/adaptiveController';
 import { settingsFromCurriculum } from '../../model/adaptiveCurriculum';
@@ -15,10 +23,11 @@ import {
     loadUiPreferences,
     setHapticFeedbackEnabled,
 } from '../../model/uiPreferences';
-import { loadPlayerCode } from '../../model/playerCode';
+import { loadProfile } from '../../model/profile';
 import {
-    applyPlayerCode,
+    applyProfile,
     getSyncStatus,
+    listProfiles,
     subscribeSyncStatus,
     type SyncStatus,
 } from '../../sync/progressSync';
@@ -46,6 +55,7 @@ interface SettingsPanelProps {
 }
 
 const MODE_OPTIONS: { id: ModeId; label: string }[] = [
+    { id: 'single', label: 'Single' },
     { id: 'dual', label: 'Dual' },
     { id: 'triple', label: 'Triple' },
     { id: 'quad', label: 'Quad' },
@@ -54,6 +64,11 @@ const MODE_OPTIONS: { id: ModeId; label: string }[] = [
 const PACK_OPTIONS: { id: AudioPackId; label: string }[] = [
     { id: 'letters', label: 'Letters' },
     { id: 'piano', label: 'Piano' },
+];
+
+const IMAGE_DIFFICULTY_OPTIONS: { id: ImageDifficulty; label: string }[] = [
+    { id: 'easy', label: 'Easy' },
+    { id: 'hard', label: 'Hard' },
 ];
 
 const PLAY_MODE_OPTIONS: { id: 'free' | 'adaptive' | 'cyclic'; label: string }[] = [
@@ -95,13 +110,14 @@ function syncStatusLabel(status: SyncStatus): string {
 const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelProps) => {
     const panelRef = useRef<HTMLDivElement>(null);
     const ladderInfoId = useId();
-    const playerCodeInputId = useId();
+    const profileInputId = useId();
     const [ladderInfoOpen, setLadderInfoOpen] = useState(false);
     const [sectionOpen, setSectionOpen] = useState(DEFAULT_SECTION_OPEN);
     const [hapticFeedbackEnabled, setHapticFeedbackEnabledState] = useState(
         () => loadUiPreferences().hapticFeedbackEnabled
     );
-    const [playerCodeDraft, setPlayerCodeDraft] = useState(() => loadPlayerCode() ?? '');
+    const [profileDraft, setProfileDraft] = useState(() => loadProfile() ?? '');
+    const [profiles, setProfiles] = useState<string[]>([]);
     const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => getSyncStatus());
     const [applyBusy, setApplyBusy] = useState(false);
     const showIosHapticsHint = isIOS();
@@ -117,8 +133,12 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
         (state) => state.settings.displayVariableNCenter
     );
     const mode = useGameStore((state) => state.settings.mode);
+    const singleModality = useGameStore((state) => state.settings.singleModality);
+    const showPositionRecency = useGameStore((state) => state.settings.showPositionRecency);
+    const rotatingBoard = useGameStore((state) => state.settings.rotatingBoard);
     const tripleModalities = useGameStore((state) => state.settings.tripleModalities);
     const audioPack = useGameStore((state) => state.settings.audioPack);
+    const imageDifficulty = useGameStore((state) => state.settings.imageDifficulty);
     const interferenceChance = useGameStore((state) => state.settings.interferenceChance);
     const variableN = useGameStore((state) => state.settings.variableN);
     const variableNHoldTrials = useGameStore((state) => state.settings.variableNHoldTrials);
@@ -137,14 +157,20 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
     const setIsiMax = useGameStore((state) => state.setIsiMax);
     const setIsiBoth = useGameStore((state) => state.setIsiBoth);
     const setAnswerGraceMs = useGameStore((state) => state.setAnswerGraceMs);
+    const stepwisePacing = useGameStore((state) => state.settings.stepwisePacing);
+    const setStepwisePacing = useGameStore((state) => state.setStepwisePacing);
     const setAllowCenterStimulus = useGameStore((state) => state.setAllowCenterStimulus);
     const setPositionGrid = useGameStore((state) => state.setPositionGrid);
     const setDisplayVariableNCenter = useGameStore(
         (state) => state.setDisplayVariableNCenter
     );
     const setMode = useGameStore((state) => state.setMode);
+    const setSingleModality = useGameStore((state) => state.setSingleModality);
+    const setShowPositionRecency = useGameStore((state) => state.setShowPositionRecency);
+    const setRotatingBoard = useGameStore((state) => state.setRotatingBoard);
     const setTripleModalities = useGameStore((state) => state.setTripleModalities);
     const setAudioPack = useGameStore((state) => state.setAudioPack);
+    const setImageDifficulty = useGameStore((state) => state.setImageDifficulty);
     const cycleInterferenceChance = useGameStore((state) => state.cycleInterferenceChance);
     const setVariableN = useGameStore((state) => state.setVariableN);
     const cycleVariableNHoldTrials = useGameStore((state) => state.cycleVariableNHoldTrials);
@@ -159,13 +185,21 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
     const setDailySessions = useGameStore((state) => state.setDailySessions);
     const freePlayAutoProgress = useGameStore((state) => state.settings.freePlayAutoProgress);
     const freePlayPromotePct = useGameStore((state) => state.settings.freePlayPromotePct);
+    const freePlayDemotePct = useGameStore((state) => state.settings.freePlayDemotePct);
     const freePlayFailsToDemote = useGameStore(
         (state) => state.settings.freePlayFailsToDemote
     );
+    const freePlayDemoteRequiresConsecutive = useGameStore(
+        (state) => state.settings.freePlayDemoteRequiresConsecutive
+    );
     const setFreePlayAutoProgress = useGameStore((state) => state.setFreePlayAutoProgress);
     const setFreePlayPromotePct = useGameStore((state) => state.setFreePlayPromotePct);
+    const setFreePlayDemotePct = useGameStore((state) => state.setFreePlayDemotePct);
     const setFreePlayFailsToDemote = useGameStore(
         (state) => state.setFreePlayFailsToDemote
+    );
+    const setFreePlayDemoteRequiresConsecutive = useGameStore(
+        (state) => state.setFreePlayDemoteRequiresConsecutive
     );
     const activeFeedback = useGameStore((state) => state.settings.activeFeedback);
     const setActiveFeedback = useGameStore((state) => state.setActiveFeedback);
@@ -175,7 +209,8 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
     const isFreePlay = playMode === 'free';
     const isLadderMode = isMatchAdaptive || isCyclic;
     const pinCenterNoPosition =
-        mode === 'triple' && !tripleModalities.includes('position');
+        (mode === 'single' && singleModality !== 'position') ||
+        (mode === 'triple' && !tripleModalities.includes('position'));
     const isTwoByTwo = isFreePlay && positionGrid === '2x2' && !pinCenterNoPosition;
     const matchProgressLevel = settingsFromLevel(matchLadder.levelIndex);
     const cyclicProgressLevel = settingsFromCurriculum(cyclicLadder);
@@ -194,7 +229,7 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
             setLadderInfoOpen(false);
             return;
         }
-        setPlayerCodeDraft(loadPlayerCode() ?? '');
+        setProfileDraft(loadProfile() ?? '');
         setSyncStatus(getSyncStatus());
     }, [open]);
 
@@ -204,12 +239,14 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
         });
     }, []);
 
-    const onApplyPlayerCode = async () => {
+    const onApplyProfile = async (profile = profileDraft) => {
         if (applyBusy) return;
         setApplyBusy(true);
         try {
-            await applyPlayerCode(playerCodeDraft);
-            setPlayerCodeDraft(loadPlayerCode() ?? playerCodeDraft.trim());
+            await applyProfile(profile);
+            const selected = loadProfile() ?? profile.trim();
+            setProfileDraft(selected);
+            setProfiles(await listProfiles());
             fireKind('selection');
         } catch {
             // Status text already updated in progressSync.
@@ -221,6 +258,9 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
 
     const toggleSection = (id: SettingsSectionId) => {
         setSectionOpen((prev) => ({ ...prev, [id]: !prev[id] }));
+        if (id === 'sync' && !sectionOpen.sync) {
+            void listProfiles().then(setProfiles).catch(() => undefined);
+        }
     };
 
     const pathLabel =
@@ -234,8 +274,8 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
           } · ${dailyRounds}r/${dailySessions}s`
         : `${pathLabel} · ${modeLabel} · n=${level} · ${trials} trials · ${dailyRounds}r/${dailySessions}s`;
     const timingSummary = isLadderMode
-        ? `${msToSecondsLabel(progressLevel.isiMin)}–${msToSecondsLabel(progressLevel.isiMax)}s · +${answerGraceMs}ms`
-        : `${msToSecondsLabel(isiMin)}–${msToSecondsLabel(isiMax)}s · +${answerGraceMs}ms`;
+        ? `${msToSecondsLabel(progressLevel.isiMin)}–${msToSecondsLabel(progressLevel.isiMax)}s · +${answerGraceMs}ms${stepwisePacing ? ' · paced' : ''}`
+        : `${msToSecondsLabel(isiMin)}–${msToSecondsLabel(isiMax)}s · +${answerGraceMs}ms${stepwisePacing ? ' · paced' : ''}`;
     const challengeSummary = isLadderMode
         ? `Quotas ${useBlockQuotas ? 'on' : 'off'} · VN switch ${formatVariableNHold(variableNHoldTrials)}`
         : `${formatInterference(interferenceChance)} · VN ${variableN ? 'on' : 'off'}`;
@@ -317,7 +357,7 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                         <div className="settings-row">
                             <div className="settings-row-copy">
                                 <span className="settings-row-label">Mode</span>
-                                <span className="settings-row-hint">Dual · Triple · Quad</span>
+                                <span className="settings-row-hint">Single · Dual · Triple · Quad</span>
                             </div>
                             <div className="settings-segment">
                                 {MODE_OPTIONS.map((option) => (
@@ -334,6 +374,35 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                 ))}
                             </div>
                         </div>
+
+                        {mode === 'single' && (
+                            <div className="settings-row">
+                                <div className="settings-row-copy">
+                                    <span className="settings-row-label">Single stream</span>
+                                    <span className="settings-row-hint">
+                                        Used in Free-play, Adaptive, and Cyclic
+                                    </span>
+                                </div>
+                                <div className="settings-segment settings-segment--wrap">
+                                    {ALL_MODALITIES.map((modality) => (
+                                        <div
+                                            key={modality}
+                                            className="segment-btn-host haptic-host"
+                                        >
+                                            <button
+                                                type="button"
+                                                className={`segment-btn${singleModality === modality ? ' is-active' : ''}`}
+                                                data-haptic="light"
+                                                aria-pressed={singleModality === modality}
+                                                onClick={() => setSingleModality(modality)}
+                                            >
+                                                {MODALITY_LABELS[modality]}
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {mode === 'triple' && (
                             <div className="settings-row">
@@ -384,6 +453,30 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                             className={`segment-btn${audioPack === option.id ? ' is-active' : ''}`}
                                             data-haptic="light"
                                             onClick={() => setAudioPack(option.id)}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="settings-row">
+                            <div className="settings-row-copy">
+                                <span className="settings-row-label">Image set</span>
+                                <span className="settings-row-hint">
+                                    Easy has 150 simple forms · Hard has 250 abstract forms
+                                </span>
+                            </div>
+                            <div className="settings-segment">
+                                {IMAGE_DIFFICULTY_OPTIONS.map((option) => (
+                                    <div key={option.id} className="segment-btn-host haptic-host">
+                                        <button
+                                            type="button"
+                                            className={`segment-btn${imageDifficulty === option.id ? ' is-active' : ''}`}
+                                            data-haptic="light"
+                                            aria-pressed={imageDifficulty === option.id}
+                                            onClick={() => setImageDifficulty(option.id)}
                                         >
                                             {option.label}
                                         </button>
@@ -521,10 +614,45 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                         <div className="settings-row">
                                             <div className="settings-row-copy">
                                                 <span className="settings-row-label">
-                                                    Fails to demote
+                                                    Demote below
                                                 </span>
                                                 <span className="settings-row-hint">
-                                                    Consecutive blocks below promote %
+                                                    Match % threshold
+                                                </span>
+                                            </div>
+                                            <div className="settings-stepper">
+                                                <button
+                                                    type="button"
+                                                    className="step-btn"
+                                                    onClick={() =>
+                                                        setFreePlayDemotePct(freePlayDemotePct - 5)
+                                                    }
+                                                    aria-label="Decrease demote percent"
+                                                >
+                                                    −
+                                                </button>
+                                                <span className="step-value">
+                                                    {freePlayDemotePct}%
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    className="step-btn"
+                                                    onClick={() =>
+                                                        setFreePlayDemotePct(freePlayDemotePct + 5)
+                                                    }
+                                                    aria-label="Increase demote percent"
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="settings-row">
+                                            <div className="settings-row-copy">
+                                                <span className="settings-row-label">
+                                                    Blocks to demote
+                                                </span>
+                                                <span className="settings-row-hint">
+                                                    Blocks below demote threshold
                                                 </span>
                                             </div>
                                             <div className="settings-stepper">
@@ -554,6 +682,33 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                                     aria-label="Increase fails to demote"
                                                 >
                                                     +
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="settings-row">
+                                            <div className="settings-row-copy">
+                                                <span className="settings-row-label">
+                                                    Require consecutive blocks
+                                                </span>
+                                                <span className="settings-row-hint">
+                                                    Reset the count after a block at or above the demote threshold
+                                                </span>
+                                            </div>
+                                            <div className="settings-toggle-host haptic-host">
+                                                <button
+                                                    type="button"
+                                                    className={`settings-toggle${freePlayDemoteRequiresConsecutive ? ' is-on' : ''}`}
+                                                    role="switch"
+                                                    aria-checked={freePlayDemoteRequiresConsecutive}
+                                                    aria-label="Require consecutive demotion blocks"
+                                                    data-haptic="light"
+                                                    onClick={() =>
+                                                        setFreePlayDemoteRequiresConsecutive(
+                                                            !freePlayDemoteRequiresConsecutive
+                                                        )
+                                                    }
+                                                >
+                                                    <span className="settings-toggle-knob" />
                                                 </button>
                                             </div>
                                         </div>
@@ -802,6 +957,27 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                 </span>
                             </div>
                             <AnswerGraceSlider valueMs={answerGraceMs} onChange={setAnswerGraceMs} />
+                        </div>
+
+                        <div className="settings-row">
+                            <div className="settings-row-copy">
+                                <span className="settings-row-label">Paced mode</span>
+                                <span className="settings-row-hint">
+                                    Freeze after each stimulus · Space or tap to continue
+                                </span>
+                            </div>
+                            <div className="settings-toggle-host haptic-host">
+                                <button
+                                    type="button"
+                                    className={`settings-toggle${stepwisePacing ? ' is-on' : ''}`}
+                                    role="switch"
+                                    aria-checked={stepwisePacing}
+                                    aria-label="Paced mode"
+                                    onClick={() => setStepwisePacing(!stepwisePacing)}
+                                >
+                                    <span className="settings-toggle-knob" />
+                                </button>
+                            </div>
                         </div>
                     </SettingsSection>
 
@@ -1068,6 +1244,54 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                 </button>
                             </div>
                         </div>
+
+                        <div
+                            className={`settings-row${mode !== 'single' || singleModality !== 'position' ? ' is-disabled' : ''}`}
+                        >
+                            <div className="settings-row-copy">
+                                <span className="settings-row-label">Position recency</span>
+                                <span className="settings-row-hint">
+                                    Number each square by how many stimuli ago it last appeared
+                                </span>
+                            </div>
+                            <div className="settings-toggle-host haptic-host">
+                                <button
+                                    type="button"
+                                    className={`settings-toggle${showPositionRecency ? ' is-on' : ''}`}
+                                    role="switch"
+                                    aria-checked={showPositionRecency}
+                                    aria-label="Position recency"
+                                    disabled={mode !== 'single' || singleModality !== 'position'}
+                                    onClick={() => setShowPositionRecency(!showPositionRecency)}
+                                >
+                                    <span className="settings-toggle-knob" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className={`settings-row${!isFreePlay ? ' is-disabled' : ''}`}>
+                            <div className="settings-row-copy">
+                                <span className="settings-row-label">Rotating board</span>
+                                <span className="settings-row-hint">
+                                    {isFreePlay
+                                        ? 'Now and then the board spins a quarter, half or three-quarter turn. Positions turn with it: match by place on the board, not on screen'
+                                        : 'Free play only'}
+                                </span>
+                            </div>
+                            <div className="settings-toggle-host haptic-host">
+                                <button
+                                    type="button"
+                                    className={`settings-toggle${rotatingBoard ? ' is-on' : ''}`}
+                                    role="switch"
+                                    aria-checked={rotatingBoard}
+                                    aria-label="Rotating board"
+                                    disabled={!isFreePlay}
+                                    onClick={() => setRotatingBoard(!rotatingBoard)}
+                                >
+                                    <span className="settings-toggle-knob" />
+                                </button>
+                            </div>
+                        </div>
                     </SettingsSection>
 
                     <SettingsSection
@@ -1081,7 +1305,7 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             <div className="settings-row-copy">
                                 <span className="settings-row-label">Instant match feedback</span>
                                 <span className="settings-row-hint">
-                                    Green/red on press · off waits until trial end
+                                    Green/red on press · misses still flash at trial end
                                 </span>
                             </div>
                             <div className="settings-toggle-host haptic-host">
@@ -1140,31 +1364,48 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                     >
                         <div className="settings-row settings-row--stack">
                             <div className="settings-row-copy">
-                                <span className="settings-row-label">Player code</span>
+                                <span className="settings-row-label">Profile</span>
                                 <span className="settings-row-hint">
-                                    Same code on another device loads this progress. Anyone with the
-                                    code can change it.
+                                    Create or select a private profile. Use the same profile on each device.
                                 </span>
                             </div>
+                            {profiles.length > 0 && (
+                                <div className="settings-profile-list" role="list" aria-label="Profiles">
+                                    {profiles.map((profile) => (
+                                        <button
+                                            key={profile}
+                                            type="button"
+                                            className={`settings-profile-chip${loadProfile() === profile ? ' is-active' : ''}`}
+                                            disabled={applyBusy}
+                                            onClick={() => {
+                                                setProfileDraft(profile);
+                                                void onApplyProfile(profile);
+                                            }}
+                                        >
+                                            {profile}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             <div className="settings-player-code">
-                                <label className="visually-hidden" htmlFor={playerCodeInputId}>
-                                    Player code
+                                <label className="visually-hidden" htmlFor={profileInputId}>
+                                    Profile name
                                 </label>
                                 <input
-                                    id={playerCodeInputId}
+                                    id={profileInputId}
                                     className="settings-player-code-input"
                                     type="text"
                                     autoComplete="off"
                                     spellCheck={false}
-                                    minLength={6}
-                                    maxLength={64}
-                                    placeholder="Enter a code"
-                                    value={playerCodeDraft}
-                                    onChange={(e) => setPlayerCodeDraft(e.target.value)}
+                                    minLength={1}
+                                    maxLength={40}
+                                    placeholder="New profile name"
+                                    value={profileDraft}
+                                    onChange={(e) => setProfileDraft(e.target.value)}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
-                                            void onApplyPlayerCode();
+                                            void onApplyProfile();
                                         }
                                     }}
                                 />
@@ -1173,10 +1414,10 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                                         type="button"
                                         className="settings-player-code-apply"
                                         data-haptic="light"
-                                        disabled={applyBusy || playerCodeDraft.trim().length < 6}
-                                        onClick={() => void onApplyPlayerCode()}
+                                        disabled={applyBusy || profileDraft.trim().length < 1}
+                                        onClick={() => void onApplyProfile()}
                                     >
-                                        {applyBusy ? '…' : 'Apply'}
+                                        {applyBusy ? '…' : profiles.includes(profileDraft.trim()) ? 'Select' : 'Create'}
                                     </button>
                                 </div>
                             </div>

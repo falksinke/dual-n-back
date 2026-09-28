@@ -19,6 +19,12 @@ const BoardSquare = ({ index }: BoardSquareProps) => {
     const displayVariableNCenter = useGameStore(
         (state) => state.settings.displayVariableNCenter
     );
+    const showPositionRecency = useGameStore((state) => state.settings.showPositionRecency);
+    const mode = useGameStore((state) => state.settings.mode);
+    const singleModality = useGameStore((state) => state.settings.singleModality);
+    const positionRecency = useGameStore(
+        (state) => state.boardState.positionRecency[index] ?? null
+    );
     const allowCenterStimulus = useGameStore((state) => state.settings.allowCenterStimulus);
     const inSession = useGameStore(
         (state) => state.game !== null || state.countdown !== null
@@ -38,6 +44,13 @@ const BoardSquare = ({ index }: BoardSquareProps) => {
             : null;
 
     const fillColor = showColor ? getColorHex(colorId) : undefined;
+    const recencyLabel =
+        showPositionRecency &&
+        mode === 'single' &&
+        singleModality === 'position' &&
+        inSession
+            ? positionRecency
+            : null;
 
     return (
         <div
@@ -58,6 +71,11 @@ const BoardSquare = ({ index }: BoardSquareProps) => {
                     aria-label={`${centerN}-back`}
                 >
                     {centerN}
+                </span>
+            )}
+            {recencyLabel != null && (
+                <span className="position-recency" aria-label={`${recencyLabel}-back`}>
+                    {recencyLabel}
                 </span>
             )}
             <div

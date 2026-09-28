@@ -11,6 +11,7 @@ type StoreBoard = {
     currentTrials: number;
     nForTrial: number;
     stimulusEpoch: number;
+    positionRecency: Array<number | null>;
 };
 
 type StoreSlice = {
@@ -52,7 +53,8 @@ const showStimulus = (
     getStore: StoreGetter,
     setStore: StoreSetter,
     boardState: BoardState,
-    playAudio: boolean
+    playAudio: boolean,
+    positionRecency: Array<number | null>
 ): void => {
     setStore((state) => ({
         boardState: {
@@ -63,6 +65,7 @@ const showStimulus = (
             imageId: boardState.imageId ?? null,
             currentTrials: boardState.currentTrials,
             nForTrial: boardState.nForTrial,
+            positionRecency,
             stimulusEpoch: state.boardState.stimulusEpoch + 1,
         },
     }));
@@ -83,7 +86,8 @@ const showStimulus = (
 export const presentBoardStimulus = (
     getStore: StoreGetter,
     setStore: StoreSetter,
-    boardState: BoardState
+    boardState: BoardState,
+    positionRecency: Array<number | null> = []
 ): void => {
     clearStimulusTimers();
 
@@ -92,7 +96,7 @@ export const presentBoardStimulus = (
         prev.positionIndex !== -1 && prev.positionIndex === boardState.positionIndex;
 
     if (!sameCellStillLit) {
-        showStimulus(getStore, setStore, boardState, true);
+        showStimulus(getStore, setStore, boardState, true, positionRecency);
         return;
     }
 
@@ -106,12 +110,13 @@ export const presentBoardStimulus = (
             currentTrials: boardState.currentTrials,
             nForTrial: boardState.nForTrial,
             audioToken: boardState.audioToken,
+            positionRecency,
         },
     }));
     getStore().speech.play(boardState.audioToken);
 
     retriggerTimeout = setTimeout(() => {
         retriggerTimeout = null;
-        showStimulus(getStore, setStore, boardState, false);
+        showStimulus(getStore, setStore, boardState, false, positionRecency);
     }, STIMULUS_RETRIGGER_GAP_MS);
 };

@@ -17,6 +17,7 @@ const ActionButton = ({ modality }: ActionButtonProps) => {
     const stateClass = useGameStore((state) => state.btns[modality] ?? 'None');
     const selectModality = useGameStore((state) => state.selectModality);
     const inSession = useGameStore((state) => state.game !== null);
+    const isSingleMode = useGameStore((state) => state.settings.mode === 'single');
     const hapticsEnabled = useHapticsEnabled();
     const useIosSwitch =
         hapticsEnabled && inSession && isIOS() && hasSwitchInputSupport();
@@ -32,7 +33,9 @@ const ActionButton = ({ modality }: ActionButtonProps) => {
                 data-haptic="light"
                 onClick={() => selectModality(modality)}
             >
-                <kbd className="match-claim-key">{DEFAULT_KEYS[modality].toUpperCase()}</kbd>
+                <kbd className="match-claim-key">
+                    {isSingleMode ? 'Space' : DEFAULT_KEYS[modality].toUpperCase()}
+                </kbd>
                 <span className="match-claim-label">{MODALITY_LABELS[modality]}</span>
             </button>
             {useIosSwitch && (

@@ -56,8 +56,9 @@
     text-align: center;
 }
 .practice-math__actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.practice-math__actions .haptic-host { flex: 1 1 auto; }
+.practice-math__actions button { width: 100%; }
 
 @media (max-width: 24rem) {
     .practice-math { padding: var(--space-md); }
-    .practice-math__actions button { flex: 1 1 auto; }
 }

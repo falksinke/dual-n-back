@@ -212,6 +212,18 @@ body {
         max(var(--space-lg), var(--safe-bottom)) max(var(--space-md), var(--safe-left));
 }
 
+@media (max-width: 600px) {
+    .practice-shell--firefly {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: manipulation;
+        padding: max(var(--space-lg), var(--safe-top)) max(var(--space-sm), var(--safe-right))
+            max(var(--space-sm), var(--safe-bottom)) max(var(--space-sm), var(--safe-left));
+    }
+}
+
 /* Use the extra portrait height, including Safari's changing browser viewport. */
 @media (max-width: 600px) and (min-height: 700px) {
     .app-container {

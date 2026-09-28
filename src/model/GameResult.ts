@@ -1,6 +1,7 @@
 import { MatchRecap } from './GameHistory';
 import { ModalityId, MODALITY_LABELS } from './modalities';
 import { BlockSdtReport } from './sdtMetrics';
+import type { GameDebugLog } from './gameDebugLog';
 
 /** How often each effective N appeared in a Variable N block. */
 export type NBackDistributionEntry = { n: number; trials: number };
@@ -23,17 +24,21 @@ export class GameResult {
     public readonly sdt: BlockSdtReport | null;
     /** Present when Variable N was on; null for fixed-N blocks. */
     public readonly nBackDistribution: NBackDistributionEntry[] | null;
+    /** Trial-by-trial evidence used to diagnose generation and scoring. */
+    public readonly debugLog: GameDebugLog | null;
 
     constructor(
         recaps: Record<ModalityId, MatchRecap>,
         modalities: ModalityId[],
         sdt: BlockSdtReport | null = null,
-        nBackDistribution: NBackDistributionEntry[] | null = null
+        nBackDistribution: NBackDistributionEntry[] | null = null,
+        debugLog: GameDebugLog | null = null
     ) {
         this.recaps = recaps;
         this.modalities = modalities;
         this.sdt = sdt;
         this.nBackDistribution = nBackDistribution;
+        this.debugLog = debugLog;
     }
 
     /** @deprecated Use recaps.audio — kept for dual-mode compatibility. */

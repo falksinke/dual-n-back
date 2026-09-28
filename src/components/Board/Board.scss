@@ -99,6 +99,51 @@ $thin-border: thin solid var(--boardBorder);
         z-index: 4;
     }
 
+    // Paced-mode continue gate — under the grid; the band above hosts
+    // start / teach chrome (mutually exclusive with the start prompt).
+    .stepwise-continue {
+        position: absolute;
+        top: calc(100% + 16px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 4;
+        display: flex;
+        gap: 8px;
+    }
+
+    .stepwise-continue-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        border-radius: 999px;
+        border: var(--boardBorderStyle);
+        background-color: var(--boardBackground);
+        box-shadow: var(--boardShadowStyle);
+        color: var(--textBackground);
+        font: inherit;
+        font-size: 13px;
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:disabled {
+            cursor: default;
+            opacity: 0.4;
+        }
+
+        &:active {
+            transform: scale(0.97);
+        }
+
+        .stepwise-continue-hint {
+            opacity: 0.65;
+
+            kbd {
+                font: inherit;
+            }
+        }
+    }
+
     /* Anchor above the grid (same pattern as start-prompt) so teach UI never sits in a cell. */
     .teach-top-chrome {
         position: absolute;
@@ -175,6 +220,24 @@ $thin-border: thin solid var(--boardBorder);
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.position-recency {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    z-index: 3;
+    min-width: 20px;
+    padding: 2px 6px;
+    border: thin solid var(--boardBorder);
+    border-radius: 999px;
+    background: var(--boardBackground);
+    color: var(--textBackground);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
 .center-n {
@@ -271,6 +334,17 @@ $thin-border: thin solid var(--boardBorder);
     pointer-events: none;
 }
 
+.board--single-centered {
+    .square-4 {
+        padding: clamp(10px, 3vw, 16px);
+    }
+
+    .stimulus-image {
+        width: 82%;
+        height: 82%;
+    }
+}
+
 .square-0,
 .square-1,
 .square-3,
@@ -314,4 +388,40 @@ $thin-border: thin solid var(--boardBorder);
 
 .row {
     display: flex;
+}
+
+// Rotating board: the board turns as one piece. The accent edge marks the side that
+// started on top, so a turn can be followed even though the grid itself is symmetric.
+.board-container .board.board--rotating {
+    transition-property: transform;
+    transition-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+
+    .board-orientation {
+        position: absolute;
+        top: -10px;
+        left: 12%;
+        right: 12%;
+        height: 3px;
+        border-radius: 999px;
+        background-color: var(--primary);
+        pointer-events: none;
+    }
+
+    // Keep glyphs readable: they spin back so only positions carry the turn.
+    .stimulus-image,
+    .center-n,
+    .position-recency {
+        transform: rotate(calc(-1 * var(--board-turn, 0deg)));
+        transition: transform var(--board-turn-ms, 0ms) cubic-bezier(0.65, 0, 0.35, 1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    // No spin: the board jumps, and the accent edge shows where it went.
+    .board-container .board.board--rotating,
+    .board-container .board.board--rotating .stimulus-image,
+    .board-container .board.board--rotating .center-n,
+    .board-container .board.board--rotating .position-recency {
+        transition-duration: 0ms !important;
+    }
 }

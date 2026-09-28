@@ -18,6 +18,7 @@ import type {
     CurriculumModeLadderSnapshot,
     MatchLadderSnapshot,
 } from '../model/ladderPersistence';
+import type { FreePlayProgressionDecision } from '../model/freePlayAutoProgress';
 import type { BlockSdtReport } from '../model/sdtMetrics';
 
 export type AdaptivePhase = 'idle' | 'playing' | 'interstitial' | 'summary';
@@ -25,7 +26,10 @@ export type AdaptivePhase = 'idle' | 'playing' | 'interstitial' | 'summary';
 /** Playable block roles (teach stages are in-session; assessed is lure/speed path). */
 export type BlockRole = CurriculumBlockRole | 'match' | 'free';
 
-export type LadderControllerAction = CurriculumProgressionDecision | ProgressionDecision;
+export type LadderControllerAction =
+    | CurriculumProgressionDecision
+    | ProgressionDecision
+    | FreePlayProgressionDecision;
 
 export interface AdaptiveSessionState {
     phase: AdaptivePhase;

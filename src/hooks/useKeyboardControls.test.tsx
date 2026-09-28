@@ -29,6 +29,7 @@ describe('useKeyboardControls', () => {
                 positionGrid: '3x3',
                 displayVariableNCenter: false,
                 answerGraceMs: 250,
+                stepwisePacing: false,
                 useFullScreen: false,
                 mode: 'dual',
                 tripleModalities: ['position', 'color', 'audio'],
@@ -164,6 +165,60 @@ describe('useKeyboardControls', () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         expect(useGameStore.getState().countdown).toBeNull();
         expect(useGameStore.getState().game).toBeNull();
+        unmount();
+    });
+
+    it('continues a paced-mode pause on space instead of canceling', async () => {
+        useGameStore.setState((state) => ({
+            settings: {
+                ...state.settings,
+                level: 2,
+                trials: 3,
+                isiMin: 1000,
+                isiMax: 1000,
+                answerGraceMs: 0,
+                stepwisePacing: true,
+            },
+        }));
+        useGameStore.getState().startGame();
+        await finishCountdown();
+
+        expect(useGameStore.getState().stepwisePaused).toBe(true);
+        const session = useGameStore.getState().game!;
+        expect(session.isPaused).toBe(true);
+
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+        expect(useGameStore.getState().stepwisePaused).toBe(false);
+        expect(useGameStore.getState().game).not.toBeNull();
+        expect(session.isPaused).toBe(false);
+
+        useGameStore.getState().cancelGame();
+        unmount();
+    });
+
+    it('uses space as the match key during single n-back', async () => {
+        useGameStore.setState((state) => ({
+            activeModalities: ['color'],
+            settings: {
+                ...state.settings,
+                mode: 'single',
+                singleModality: 'color',
+            },
+        }));
+        useGameStore.getState().startGame();
+        await finishCountdown();
+        const session = useGameStore.getState().game!;
+        const addChoiceSpy = vi.spyOn(session, 'addChoice');
+
+        const { unmount } = renderHook(() => useKeyboardControls());
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+        expect(addChoiceSpy).toHaveBeenCalledWith('color');
+        expect(useGameStore.getState().game).not.toBeNull();
+
+        useGameStore.getState().cancelGame();
         unmount();
     });
 

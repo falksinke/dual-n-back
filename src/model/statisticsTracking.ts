@@ -7,6 +7,7 @@ import {
 import type { ModalityId } from './modalities';
 import type { GameStore, PlayMode } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
+import { noteLocalProgressChanged } from '../sync/noteLocal';
 
 export interface StatisticsRoundContext {
     startedAt: Date;
@@ -81,6 +82,7 @@ export function bindStatisticsTracking(): () => void {
                     )
                 );
             }
+            noteLocalProgressChanged();
             activeRound = null;
         } else if (previousGameActive && !gameActive) {
             activeRound = null;

@@ -2,10 +2,11 @@ import { Game, ResultMatch, type TeachRevealPayload } from '../model/Game';
 import { BoardState } from '../model/types';
 import { GameResult } from '../model/GameResult';
 import { ButtonState } from '../model/enums/buttonState';
-import { ModalityId } from '../model/modalities';
+import { ModalityId, resolveModalities } from '../model/modalities';
 import { GameStore } from './gameStore';
 import { clearStimulusTimers, presentBoardStimulus } from './stimulusPresentation';
 import { settingsFromCurriculum } from '../model/adaptiveCurriculum';
+import { playStimulusBleep } from '../audio/stimulusBleep';
 
 type StoreGetter = () => GameStore;
 type StoreSetter = (
@@ -63,11 +64,28 @@ const defaultBoardReset = {
     currentTrials: -1,
     nForTrial: -1,
     stimulusEpoch: 0,
+    positionRecency: [] as Array<number | null>,
+};
+
+type StepwiseFrame = {
+    boardState: BoardState;
+    positionRecency: Array<number | null>;
+};
+
+/**
+ * Paced mode: freeze the trial clock at onset; stimulus/feedback visuals keep
+ * their natural timing while claims stay open until Space/tap continues.
+ */
+const engageStepwisePause = (getStore: StoreGetter, setStore: StoreSetter): void => {
+    getStore().game?.pause({ allowClaims: true });
+    setStore({ stepwisePaused: true });
 };
 
 export class GameSession extends Game {
     private getStore: StoreGetter;
     private setStore: StoreSetter;
+    private stepwiseFrames: StepwiseFrame[] = [];
+    private stepwiseFrameIndex = -1;
 
     constructor(getStore: StoreGetter, setStore: StoreSetter) {
         const store = getStore();
@@ -87,13 +105,22 @@ export class GameSession extends Game {
                     settings.playMode === 'free' ? settings.positionGrid : '3x3',
                 allowCenterStimulus: settings.allowCenterStimulus,
                 mode: settings.mode,
-                modalities: store.blockModalities ?? undefined,
-                interferenceChance: settings.interferenceChance,
+                modalities:
+                    store.blockModalities ??
+                    resolveModalities(
+                        settings.mode,
+                        settings.tripleModalities,
+                        settings.singleModality
+                    ),
+                interferenceChance:
+                    settings.interferenceChance === 'easy' ? 0 : settings.interferenceChance,
+                avoidAccidentalLures: settings.interferenceChance === 'easy',
                 variableN: settings.variableN,
                 variableNHoldTrials: settings.variableNHoldTrials,
                 activeFeedback: settings.activeFeedback,
                 answerGraceMs: settings.answerGraceMs,
                 audioPack: settings.audioPack,
+                imageDifficulty: settings.imageDifficulty,
                 lureStage: settings.lureStage,
                 useBlockQuotas:
                     settings.useBlockQuotas && settings.lureStage != null ? true : undefined,
@@ -124,6 +151,62 @@ export class GameSession extends Game {
         super.resume();
     }
 
+    private playOnsetCue(): void {
+        const { settings, activeModalities } = this.getStore();
+        if (
+            settings.mode === 'single' &&
+            !activeModalities.includes('audio')
+        ) {
+            playStimulusBleep();
+        }
+    }
+
+    private presentFrame(frame: StepwiseFrame): void {
+        presentBoardStimulus(
+            this.getStore,
+            this.setStore,
+            frame.boardState,
+            frame.positionRecency
+        );
+        this.playOnsetCue();
+    }
+
+    private recordStepwiseFrame(
+        boardState: BoardState,
+        positionRecency: Array<number | null>
+    ): void {
+        this.stepwiseFrames.push({
+            boardState: { ...boardState },
+            positionRecency: [...positionRecency],
+        });
+        this.stepwiseFrameIndex = this.stepwiseFrames.length - 1;
+    }
+
+    public canStepBackward(): boolean {
+        return this.isPaused && this.stepwiseFrameIndex > 0;
+    }
+
+    public isReviewingStepwiseHistory(): boolean {
+        return this.stepwiseFrameIndex >= 0 && this.stepwiseFrameIndex < this.stepwiseFrames.length - 1;
+    }
+
+    public stepBackward(): void {
+        if (!this.canStepBackward()) return;
+        this.stepwiseFrameIndex -= 1;
+        const frame = this.stepwiseFrames[this.stepwiseFrameIndex];
+        if (frame) this.presentFrame(frame);
+    }
+
+    public stepForward(): void {
+        if (this.isReviewingStepwiseHistory()) {
+            this.stepwiseFrameIndex += 1;
+            const frame = this.stepwiseFrames[this.stepwiseFrameIndex];
+            if (frame) this.presentFrame(frame);
+            return;
+        }
+        super.stepForward();
+    }
+
     public cancel(): void {
         if (this.getStore().settings.useFullScreen && document.fullscreenElement) {
             document.exitFullscreen?.().catch(() => undefined);
@@ -139,7 +222,8 @@ export class GameSession extends Game {
     }
 
     public selectModality(modality: ModalityId): void {
-        if (!this.isGameInProgress) return;
+        // A reviewed frame is visual history; claims still belong to the live trial.
+        if (!this.isGameInProgress || this.isReviewingStepwiseHistory()) return;
         const accepted = this.addChoice(modality);
         if (!accepted) return;
         if (this.getStore().settings.activeFeedback) {
@@ -223,7 +307,10 @@ export class GameSession extends Game {
             setStore(teachUpdates);
         }
 
-        presentBoardStimulus(getStore, setStore, boardState);
+        const positionRecency = getStore().game?.getPositionRecency() ?? [];
+        getStore().game?.recordStepwiseFrame(boardState, positionRecency);
+        presentBoardStimulus(getStore, setStore, boardState, positionRecency);
+        getStore().game?.playOnsetCue();
 
         if (playMode === 'cyclic') {
             const ladder = store.cyclicLadder[mode];
@@ -232,7 +319,11 @@ export class GameSession extends Game {
                 // Hold stimulus on-screen; clock stays frozen until NEXT → Continue.
                 clearStimulusTimers();
                 getStore().game?.pause({ allowClaims: true });
+            } else if (store.settings.stepwisePacing) {
+                engageStepwisePause(getStore, setStore);
             }
+        } else if (store.settings.stepwisePacing) {
+            engageStepwisePause(getStore, setStore);
         }
     };
 

@@ -40,7 +40,8 @@
     transition: none;
 
     &:disabled {
-        opacity: 0.45;
+        /* Idle: readable, clearly inactive — not washed out into the background. */
+        opacity: 0.72;
         cursor: default;
     }
 

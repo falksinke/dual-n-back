@@ -1,5 +1,6 @@
 import SettingsPanel from '../SettingsPanel';
 import DailyProgressDots from '../DailyProgressDots';
+import { useGameStore } from '../../store/gameStore';
 import './Topbar.scss';
 import './StatisticsTrigger.scss';
 import './PracticeNavigation.scss';
@@ -68,12 +69,50 @@ const Topbar = ({
     onHapticsEnabledChange,
     ariaHidden = false,
 }: TopbarProps) => {
+    const level = useGameStore((state) => state.settings.level);
+    const playMode = useGameStore((state) => state.settings.playMode);
+    const decreaseLevel = useGameStore((state) => state.decreaseLevel);
+    const increaseLevel = useGameStore((state) => state.increaseLevel);
+
     return (
         <>
             <header className="topbar" aria-hidden={ariaHidden || undefined}>
                 <div className="brand">
                     <span className="brand-mark" aria-hidden="true" />
                     <h1 className="title">N-Back</h1>
+                    {playMode === 'free' && (
+                        <div className="quick-level" aria-label={`N-back level ${level}`}>
+                            <button
+                                type="button"
+                                className="quick-level__button"
+                                aria-label="Decrease N-back level"
+                                data-haptic="light"
+                                disabled={ariaHidden || level <= 1}
+                                onClick={decreaseLevel}
+                                onKeyDown={(event) => {
+                                    if (event.key === ' ') event.stopPropagation();
+                                }}
+                            >
+                                <span aria-hidden="true">↓</span>
+                            </button>
+                            <span className="quick-level__value" aria-live="polite">
+                                {level}
+                            </span>
+                            <button
+                                type="button"
+                                className="quick-level__button"
+                                aria-label="Increase N-back level"
+                                data-haptic="light"
+                                disabled={ariaHidden}
+                                onClick={increaseLevel}
+                                onKeyDown={(event) => {
+                                    if (event.key === ' ') event.stopPropagation();
+                                }}
+                            >
+                                <span aria-hidden="true">↑</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <DailyProgressDots />

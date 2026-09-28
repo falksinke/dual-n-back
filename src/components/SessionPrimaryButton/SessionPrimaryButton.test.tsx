@@ -49,4 +49,12 @@ describe('SessionPrimaryButton', () => {
         render(<SessionPrimaryButton label="Start" />);
         expect(screen.getByRole('button', { name: 'Start' })).toHaveProperty('disabled', true);
     });
+
+    it('can be disabled by a post-round rest timer', () => {
+        render(<SessionPrimaryButton label="Continue" disabled />);
+        expect(screen.getByRole('button', { name: 'Continue' })).toHaveProperty(
+            'disabled',
+            true
+        );
+    });
 });

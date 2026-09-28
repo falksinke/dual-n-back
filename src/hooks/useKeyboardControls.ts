@@ -27,8 +27,10 @@ export const useKeyboardControls = () => {
                 activeModalities,
                 adaptiveSession,
                 settings,
+                stepwisePaused,
                 startGame,
                 cancelGame,
+                continueStepwise,
                 selectModality,
                 decreaseLevel,
                 increaseLevel,
@@ -89,7 +91,13 @@ export const useKeyboardControls = () => {
                         break;
                     }
                     e.preventDefault();
-                    if (interstitialContinue) {
+                    if (inSession && settings.mode === 'single') {
+                        const singleModality = activeModalities[0];
+                        if (singleModality) selectModality(singleModality);
+                    } else if (inSession && stepwisePaused) {
+                        // Paced mode: Space is the continue gate, not an abort.
+                        continueStepwise();
+                    } else if (interstitialContinue) {
                         startGame();
                     } else if (inSession) {
                         cancelGame();

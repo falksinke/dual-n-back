@@ -1,10 +1,14 @@
 import { GameHistory, ModalityStrata } from './GameHistory';
 import { Match } from './Match';
 import { buildNBackDistribution, GameResult } from './GameResult';
-import { AudioPackId, getRandomAudioToken } from './audioPacks';
-import { getRandomColorId } from './colorSet';
-import { getRandomImageId } from './imageSet';
-import { ModalityId, getModalitiesForMode, ModeId } from './modalities';
+import { AudioPackId, getRandomAudioToken, getTokensForPack } from './audioPacks';
+import { COLOR_IDS, getRandomColorId } from './colorSet';
+import {
+    getImageIdsForDifficulty,
+    getRandomImageId,
+    type ImageDifficulty,
+} from './imageSet';
+import { ModalityId, getModalitiesForMode, ModeId, CENTER_POSITION_INDEX } from './modalities';
 import { ModalityPlan, planBlockStimuli, TrialPlanEntry } from './blockQuotas';
 import { planJaeggiStimuli } from './jaeggiQuotas';
 import { getLureStagePolicy, lureOffsetsForStage, LureStageId } from './lureStages';
@@ -16,8 +20,15 @@ import {
     MIN_CLAIM_MS_FOR_FEEDBACK_RESERVE,
 } from './isi';
 import { BoardState, GameDeps, getModalityValue } from './types';
+import { interferenceLureOffsets } from './interference';
 import { clampVariableNHoldTrials, makeVariableNList } from './variableN';
 import { buildEffectiveNs, planVariableNStimuli } from './variableNQuotas';
+import type {
+    GameDebugConfig,
+    GameDebugLog,
+    GameDebugModalityTrial,
+    GameDebugTrial,
+} from './gameDebugLog';
 
 export type ResultMatch = Partial<Record<ModalityId, 'success' | 'failed'>>;
 
@@ -46,16 +57,20 @@ export class Game {
     private readonly allowCenterStimulus: boolean;
     private readonly activeModalities: ModalityId[];
     private readonly interferenceChance: number;
+    private readonly avoidAccidentalLures: boolean;
     private readonly guaranteedMatchChance: number;
     private readonly variableN: boolean;
-    private readonly activeFeedback: boolean;
     private readonly answerGraceMs: number;
     private readonly variableNList: number[];
     private readonly audioPack: AudioPackId;
+    private readonly imageDifficulty: ImageDifficulty;
     private readonly lureStage: LureStageId | null;
     private readonly useBlockQuotas: boolean;
     private readonly useJaeggiQuotas: boolean;
     private readonly trialPlan: TrialPlanEntry[] | null;
+    private readonly debugStartedAtMs: number;
+    private readonly debugConfig: GameDebugConfig;
+    private readonly debugTrials: GameDebugTrial[];
 
     private _isGameInProgress: boolean;
     private _playerChoice: Match | null;
@@ -115,6 +130,20 @@ export class Game {
         return this.activeModalities;
     }
 
+    /** Most recent position lag per square, before the current onset is stored. */
+    getPositionRecency(): Array<number | null> {
+        const history = this.gameHistory.boardStates;
+        const cellCount = this.positionGrid === '2x2' ? 4 : 9;
+        return Array.from({ length: cellCount }, (_, positionIndex) => {
+            for (let index = history.length - 1; index >= 0; index--) {
+                if (history[index]?.positionIndex === positionIndex) {
+                    return history.length - index;
+                }
+            }
+            return null;
+        });
+    }
+
     /** Stored slot values for reveal-first teach (n-back target at trial onset). */
     getTeachRevealForTrial(trialIndex: number): TeachRevealPayload {
         const effectiveN = this.getEffectiveN(trialIndex);
@@ -161,15 +190,35 @@ export class Game {
         this.positionGrid = deps.positionGrid === '2x2' ? '2x2' : '3x3';
         this.allowCenterStimulus = deps.allowCenterStimulus ?? false;
         this.interferenceChance = deps.interferenceChance ?? DEFAULT_INTERFERENCE_CHANCE;
+        this.avoidAccidentalLures = deps.avoidAccidentalLures ?? false;
         this.guaranteedMatchChance = deps.guaranteedMatchChance ?? DEFAULT_GUARANTEED_MATCH_CHANCE;
         this.variableN = deps.variableN ?? false;
-        this.activeFeedback = deps.activeFeedback ?? false;
         // Default 0 so unit tests keep tight timers; GameSession passes settings.
         this.answerGraceMs = clampAnswerGraceMs(deps.answerGraceMs ?? 0);
         this.audioPack = deps.audioPack ?? 'letters';
+        this.imageDifficulty = deps.imageDifficulty ?? 'easy';
         this.lureStage = deps.lureStage ?? null;
         this.useBlockQuotas = deps.useBlockQuotas ?? false;
         this.useJaeggiQuotas = deps.useJaeggiQuotas ?? false;
+        this.debugStartedAtMs = Date.now();
+        this.debugConfig = {
+            level: n,
+            trials: gameLength,
+            isiMinMs: this.isiMin,
+            isiMaxMs: this.isiMax,
+            answerGraceMs: this.answerGraceMs,
+            mode,
+            modalities: [...this.activeModalities],
+            positionGrid: this.positionGrid,
+            allowCenterStimulus: this.allowCenterStimulus,
+            variableN: this.variableN,
+            variableNHoldTrials: clampVariableNHoldTrials(deps.variableNHoldTrials ?? 1),
+            interferenceChance: this.interferenceChance,
+            lureStage: this.lureStage,
+            useBlockQuotas: this.useBlockQuotas,
+            useJaeggiQuotas: this.useJaeggiQuotas,
+        };
+        this.debugTrials = [];
         // N schedule first so targets/lures can respect per-trial effective N.
         this.variableNList = this.variableN
             ? makeVariableNList(
@@ -267,7 +316,6 @@ export class Game {
             // (fixed 1.0s must stay fully pressable).
             if (
                 remainder === 0 &&
-                !this.activeFeedback &&
                 responseMs - BUTTON_FEEDBACK_RESERVE_MS >= MIN_CLAIM_MS_FOR_FEEDBACK_RESERVE
             ) {
                 responseMs -= BUTTON_FEEDBACK_RESERVE_MS;
@@ -281,11 +329,12 @@ export class Game {
             // gap, show during that gap. When carve was skipped (short fixed ISI),
             // still request a reserve flash — GameSession carries it across onset
             // so claim time stays full and pacing stays ISI (no extra delay).
-            this._feedbackMs = !this.activeFeedback
-                ? remainder > 0
+            // Instant-on-press still flashes at claim time; this flash is what
+            // surfaces misses (no press) and reinforces end-of-trial outcomes.
+            this._feedbackMs =
+                remainder > 0
                     ? Math.min(BUTTON_FEEDBACK_MS, remainder)
-                    : BUTTON_FEEDBACK_RESERVE_MS
-                : 0;
+                    : BUTTON_FEEDBACK_RESERVE_MS;
             this._claimsOpen = false;
             this.processChoice();
 
@@ -335,6 +384,18 @@ export class Game {
         if (this.delayResolve != null) {
             this.armCurrentDelay();
         }
+    }
+
+    /**
+     * Stepwise pacing: leave the user continue-gate — resolve the frozen trial
+     * clock immediately so scoring and the next onset happen without waiting
+     * out the rest of the ISI. No-op when not paused.
+     */
+    public stepForward(): void {
+        if (!this._isGameInProgress || !this._paused) return;
+        this._paused = false;
+        this._pauseBlocksClaims = true;
+        this.clearDelay(true);
     }
 
     get isPaused(): boolean {
@@ -460,12 +521,29 @@ export class Game {
         const effectiveN = this.getEffectiveN(trialIndex);
         const strata = this.gameHistory.modalityStrata[trialIndex] ?? {};
         const lureLags = this.gameHistory.modalityLureLags[trialIndex] ?? {};
+        const scorable = trialIndex >= effectiveN;
+        const currentState = this.gameHistory.boardStates[trialIndex];
+        const referenceState = scorable
+            ? this.gameHistory.boardStates[trialIndex - effectiveN]
+            : null;
+        const debugModalities: Partial<Record<ModalityId, GameDebugModalityTrial>> = {};
 
         for (const modality of this.activeModalities) {
             const claimed = this._playerChoice.isClaimed(modality);
 
-            if (trialIndex < effectiveN) {
+            if (!scorable) {
                 if (claimed) match[modality] = 'failed';
+                debugModalities[modality] = {
+                    currentValue: getModalityValue(currentState!, modality),
+                    referenceValue: null,
+                    matched: null,
+                    claimed,
+                    feedback: match[modality] ?? null,
+                    scoreCell: null,
+                    stratum: null,
+                    lureLag: null,
+                    responseTimeMs: claimed ? (this._claimRtMs[modality] ?? null) : null,
+                };
                 continue;
             }
 
@@ -484,9 +562,42 @@ export class Game {
             if (matched || claimed) {
                 match[modality] = matched === claimed ? 'success' : 'failed';
             }
+            debugModalities[modality] = {
+                currentValue: getModalityValue(currentState!, modality),
+                referenceValue: getModalityValue(referenceState!, modality),
+                matched,
+                claimed,
+                feedback: match[modality] ?? null,
+                scoreCell: cell,
+                stratum,
+                lureLag: !matched && stratum === 'lure' ? (lureLags[modality] ?? null) : null,
+                responseTimeMs: claimed ? (this._claimRtMs[modality] ?? null) : null,
+            };
         }
 
+        const scoredAtMs = Date.now();
+        this.debugTrials.push({
+            trialIndex,
+            effectiveN,
+            scorable,
+            referenceTrialIndex: scorable ? trialIndex - effectiveN : null,
+            onsetOffsetMs: Math.max(0, (this._trialOnsetMs ?? scoredAtMs) - this.debugStartedAtMs),
+            scoredOffsetMs: Math.max(0, scoredAtMs - this.debugStartedAtMs),
+            stimulus: { ...currentState! },
+            modalities: debugModalities,
+        });
         this.currentMatch = match;
+    }
+
+    private buildDebugLog(completedAtMs: number): GameDebugLog {
+        return {
+            schemaVersion: 1,
+            startedAt: new Date(this.debugStartedAtMs).toISOString(),
+            completedAt: new Date(completedAtMs).toISOString(),
+            durationMs: Math.max(0, completedAtMs - this.debugStartedAtMs),
+            config: this.debugConfig,
+            trials: this.debugTrials,
+        };
     }
 
     private getGameResult(): GameResult {
@@ -500,7 +611,14 @@ export class Game {
                   this.gameHistory.boardStates.map((state) => state.nForTrial)
               )
             : null;
-        return new GameResult(recaps, this.activeModalities, sdt, nBackDistribution);
+        const completedAtMs = Date.now();
+        return new GameResult(
+            recaps,
+            this.activeModalities,
+            sdt,
+            nBackDistribution,
+            this.buildDebugLog(completedAtMs)
+        );
     }
 
     private resetChoice() {
@@ -523,6 +641,11 @@ export class Game {
         for (const modality of this.activeModalities) {
             const value = this.generateModalityValue(modality, effectiveN);
             this.applyModalityValue(state, modality, value);
+        }
+
+        // Without Position as a match stream, pin visuals to the 3×3 center cell.
+        if (!this.activeModalities.includes('position')) {
+            state.positionIndex = CENTER_POSITION_INDEX;
         }
 
         this.currentState = state;
@@ -554,7 +677,9 @@ export class Game {
         const canUseHistory = historyLen >= effectiveN;
 
         if (!canUseHistory) {
-            return this.getRandomModalityValue(modality);
+            return this.avoidAccidentalLures
+                ? this.getRandomNonMatch(modality, effectiveN, null)
+                : this.getRandomModalityValue(modality);
         }
 
         const trueMatchValue = getModalityValue(
@@ -591,12 +716,16 @@ export class Game {
                     return lure.value;
                 }
             }
-            return this.getRandomNonMatch(modality, trueMatchValue);
+            return this.getRandomNonMatch(modality, effectiveN, trueMatchValue);
         }
 
-        if (r2 < this.interferenceChance && this.sessionLevel > 1) {
-            const offsets =
-                this.sessionLevel < 3 ? [1, this.sessionLevel] : [-1, 1, this.sessionLevel];
+        // Easy sets interferenceChance to 0, so deliberate near-miss injection stays off.
+        if (
+            !this.avoidAccidentalLures &&
+            r2 < this.interferenceChance &&
+            this.sessionLevel > 1
+        ) {
+            const offsets = interferenceLureOffsets(this.sessionLevel);
             const nearMiss = this.tryLure(modality, effectiveN, trueMatchValue, offsets);
             if (nearMiss !== null) {
                 this._pendingStrata[modality] = 'lure';
@@ -605,7 +734,7 @@ export class Game {
             }
         }
 
-        return this.getRandomNonMatch(modality, trueMatchValue);
+        return this.getRandomNonMatch(modality, effectiveN, trueMatchValue);
     }
 
     private generateFromPlan(
@@ -618,6 +747,10 @@ export class Game {
             case 'target':
                 return trueMatchValue;
             case 'lure': {
+                // Easy mode never plants lures — treat planned lures as clean non-matches.
+                if (this.avoidAccidentalLures) {
+                    return this.getRandomNonMatch(modality, effectiveN, trueMatchValue);
+                }
                 const offsets =
                     plan.lureOffset != null
                         ? [plan.lureOffset]
@@ -628,25 +761,101 @@ export class Game {
                     this._pendingLureLags[modality] = lure.lag;
                     return lure.value;
                 }
-                return this.getRandomNonMatch(modality, trueMatchValue);
+                return this.getRandomNonMatch(modality, effectiveN, trueMatchValue);
             }
             case 'clean':
-                return this.getRandomNonMatch(modality, trueMatchValue);
+                return this.getRandomNonMatch(modality, effectiveN, trueMatchValue);
             default:
                 return this.getRandomModalityValue(modality);
         }
     }
 
-    /** Pick a value that does not equal the n-back reference (repair accidental matches). */
+    /** Values that would feel like near-miss lures if shown on a non-match trial. */
+    private forbiddenNonMatchValues(
+        modality: ModalityId,
+        effectiveN: number,
+        trueMatchValue: number | string | null
+    ): Set<number | string> {
+        const forbidden = new Set<number | string>();
+        if (trueMatchValue !== null) {
+            forbidden.add(trueMatchValue);
+        }
+        if (!this.avoidAccidentalLures) {
+            return forbidden;
+        }
+        const historyLen = this.gameHistory.boardStates.length;
+        const windowStart = Math.max(0, historyLen - effectiveN);
+        for (let index = windowStart; index < historyLen; index++) {
+            forbidden.add(getModalityValue(this.gameHistory.boardStates[index], modality));
+        }
+        if (this.sessionLevel <= 1) {
+            return forbidden;
+        }
+        for (const offset of interferenceLureOffsets(this.sessionLevel)) {
+            const lag = effectiveN + offset;
+            if (lag < 1 || lag > historyLen) continue;
+            forbidden.add(
+                getModalityValue(this.gameHistory.boardStates[historyLen - lag], modality)
+            );
+        }
+        return forbidden;
+    }
+
+    /**
+     * Pick a value that does not equal the n-back reference (repair accidental matches).
+     * In Easy mode, also avoid near-miss history values.
+     */
     private getRandomNonMatch(
         modality: ModalityId,
-        trueMatchValue: number | string
+        effectiveN: number,
+        trueMatchValue: number | string | null
     ): number | string {
-        for (let attempt = 0; attempt < 24; attempt++) {
+        const forbidden = this.forbiddenNonMatchValues(modality, effectiveN, trueMatchValue);
+        for (let attempt = 0; attempt < 48; attempt++) {
             const value = this.getRandomModalityValue(modality);
-            if (value !== trueMatchValue) return value;
+            if (!forbidden.has(value)) return value;
+        }
+
+        // Fall back to an available value deterministically when the RNG keeps
+        // returning a forbidden value or the pool is nearly exhausted.
+        const available = this.getModalityValues(modality).filter(
+            (value) => !forbidden.has(value)
+        );
+        if (available.length > 0) {
+            return available[0];
+        }
+
+        // If the active window fills the entire pool, at least avoid a true
+        // n-back match when one exists. Warm-up has no true match yet.
+        if (trueMatchValue !== null) {
+            const nonMatch = this.getModalityValues(modality).find(
+                (value) => value !== trueMatchValue
+            );
+            if (nonMatch !== undefined) return nonMatch;
         }
         return this.getRandomModalityValue(modality);
+    }
+
+    private getModalityValues(modality: ModalityId): Array<number | string> {
+        switch (modality) {
+            case 'position': {
+                const count = this.positionGrid === '2x2' ? 4 : 9;
+                const values: number[] = [];
+                for (let index = 0; index < count; index++) {
+                    if (this.positionGrid === '3x3' && !this.allowCenterStimulus && index === 4) {
+                        continue;
+                    }
+                    values.push(index);
+                }
+                return values;
+            }
+            case 'color':
+                return [...COLOR_IDS];
+            case 'image':
+                return [...getImageIdsForDifficulty(this.imageDifficulty)];
+            case 'audio':
+                return [...getTokensForPack(this.audioPack)];
+        }
     }
 
     private tryLure(
@@ -681,7 +890,7 @@ export class Game {
             case 'color':
                 return getRandomColorId(this.random);
             case 'image':
-                return getRandomImageId(this.random);
+                return getRandomImageId(this.random, this.imageDifficulty);
             case 'audio':
                 return getRandomAudioToken(this.audioPack, this.random);
         }

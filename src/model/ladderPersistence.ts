@@ -58,7 +58,7 @@ export interface StorageLike {
     setItem(key: string, value: string): void;
 }
 
-const MODE_IDS: ModeId[] = ['dual', 'triple', 'quad'];
+const MODE_IDS: ModeId[] = ['single', 'dual', 'triple', 'quad'];
 
 export function createDefaultMatchLadder(): MatchLadderSnapshot {
     return { levelIndex: 0, failStreak: 0 };
@@ -66,6 +66,7 @@ export function createDefaultMatchLadder(): MatchLadderSnapshot {
 
 export function createDefaultMatchLadderByMode(): Record<ModeId, MatchLadderSnapshot> {
     return {
+        single: createDefaultMatchLadder(),
         dual: createDefaultMatchLadder(),
         triple: createDefaultMatchLadder(),
         quad: createDefaultMatchLadder(),
@@ -85,6 +86,7 @@ export function createDefaultModeLadder(): CurriculumModeLadderSnapshot {
 
 export function createDefaultCyclicLadderByMode(): Record<ModeId, CurriculumModeLadderSnapshot> {
     return {
+        single: createDefaultModeLadder(),
         dual: createDefaultModeLadder(),
         triple: createDefaultModeLadder(),
         quad: createDefaultModeLadder(),

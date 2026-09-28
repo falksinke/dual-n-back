@@ -1,12 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash } from 'node:crypto';
 import { Redis } from '@upstash/redis';
+import { normalizePlayerCode, validatePlayerCode } from '../src/model/playerCode';
 import {
-    normalizePlayerCode,
-    PLAYER_CODE_MAX_LENGTH,
-    PLAYER_CODE_MIN_LENGTH,
-    validatePlayerCode,
-} from '../src/model/playerCode';
+    normalizeProfileName,
+    PROFILE_MAX_LENGTH,
+    PROFILE_MIN_LENGTH,
+    validateProfileName,
+} from '../src/model/profile';
 import {
     normalizeProgressDocument,
     type ProgressDocumentV1,
@@ -24,9 +25,15 @@ function getRedis(): Redis {
     return new Redis({ url, token });
 }
 
-function progressKey(code: string): string {
+const PROFILES_KEY = 'nback:v2:profiles';
+
+function legacyProgressKey(code: string): string {
     const hash = createHash('sha256').update(code, 'utf8').digest('hex');
     return `nback:v1:progress:${hash}`;
+}
+
+function progressKey(profile: string): string {
+    return `nback:v2:progress:${encodeURIComponent(profile.toLocaleLowerCase('en-US'))}`;
 }
 
 function clientIp(req: VercelRequest): string {
@@ -40,17 +47,13 @@ function clientIp(req: VercelRequest): string {
     return req.socket?.remoteAddress ?? 'unknown';
 }
 
-function extractPlayerCode(req: VercelRequest): string | null {
-    const auth = req.headers.authorization;
-    if (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) {
-        return normalizePlayerCode(auth.slice(7));
-    }
-    const header = req.headers['x-player-code'];
+function extractProfile(req: VercelRequest): string | null {
+    const header = req.headers['x-profile-name'];
     if (typeof header === 'string') {
-        return normalizePlayerCode(header);
+        return normalizeProfileName(header);
     }
     if (Array.isArray(header) && header[0]) {
-        return normalizePlayerCode(header[0]);
+        return normalizeProfileName(header[0]);
     }
     return null;
 }
@@ -97,28 +100,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         return;
     }
 
-    const code = extractPlayerCode(req);
-    if (code == null || code === '') {
-        sendJson(res, 401, { error: 'Player code required' });
+    const profile = extractProfile(req);
+    if (req.method === 'GET' && profile == null) {
+        try {
+            // Import a legacy save only when this browser already has its code.
+            const auth = req.headers.authorization;
+            const code = typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')
+                ? normalizePlayerCode(auth.slice(7)) : null;
+            if (code != null) {
+                if (validatePlayerCode(code) != null) {
+                    sendJson(res, 400, { error: 'Invalid legacy save' });
+                    return;
+                }
+                const raw = await redis.get<string | ProgressDocumentV1>(legacyProgressKey(code));
+                if (raw == null) {
+                    sendJson(res, 404, { error: 'Legacy save not found' });
+                    return;
+                }
+                sendJson(res, 200, normalizeProgressDocument(
+                    typeof raw === 'string' ? JSON.parse(raw) as unknown : raw
+                ));
+                return;
+            }
+            const profiles = await redis.smembers(PROFILES_KEY);
+            sendJson(res, 200, { profiles: profiles.sort((a, b) => a.localeCompare(b)) });
+        } catch {
+            sendJson(res, 503, { error: 'Progress sync temporarily unavailable' });
+        }
         return;
     }
-    const validationError = validatePlayerCode(code);
+    if (profile == null) {
+        sendJson(res, 400, { error: 'Profile required' });
+        return;
+    }
+    const validationError = validateProfileName(profile);
     if (validationError != null) {
         sendJson(res, 400, {
             error: validationError,
-            minLength: PLAYER_CODE_MIN_LENGTH,
-            maxLength: PLAYER_CODE_MAX_LENGTH,
+            minLength: PROFILE_MIN_LENGTH,
+            maxLength: PROFILE_MAX_LENGTH,
         });
         return;
     }
 
-    const key = progressKey(code);
+    const key = progressKey(profile);
 
     try {
         if (req.method === 'GET') {
             const raw = await redis.get<string | ProgressDocumentV1>(key);
             if (raw == null) {
-                sendJson(res, 404, { error: 'No progress for this player code' });
+                sendJson(res, 404, { error: 'Profile does not exist' });
                 return;
             }
             const doc =
@@ -133,17 +164,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         const incoming = normalizeProgressDocument(req.body);
         const stamped: ProgressDocumentV1 = {
             ...incoming,
-            updatedAt: isIsoDate(incoming.updatedAt)
-                ? incoming.updatedAt
-                : new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
         };
         await redis.set(key, JSON.stringify(stamped));
+        await redis.sadd(PROFILES_KEY, profile.toLocaleLowerCase('en-US'));
         sendJson(res, 200, stamped);
     } catch {
         sendJson(res, 503, { error: 'Progress sync temporarily unavailable' });
     }
-}
-
-function isIsoDate(value: string): boolean {
-    return Number.isFinite(Date.parse(value));
 }

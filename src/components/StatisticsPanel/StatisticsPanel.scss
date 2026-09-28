@@ -240,10 +240,6 @@
     color: var(--textForeground);
 }
 
-.statistics-progress {
-    grid-row: span 2;
-}
-
 .statistics-legend {
     gap: var(--stats-space-md);
     font-size: 0.7rem;

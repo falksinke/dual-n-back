@@ -1,12 +1,19 @@
-import { loadPlayerCode } from '../model/playerCode';
+import { loadProfile } from '../model/profile';
 import { setProgressDirty } from './localFlags';
 import { scheduleProgressPush } from './pushQueue';
 
-/** Mark dirty and schedule a server push when a player code is linked. */
+let localChangeSerial = 0;
+
+export function getLocalChangeSerial(): number {
+    return localChangeSerial;
+}
+
+/** Mark dirty and schedule a server push when a profile is selected. */
 export function noteLocalProgressChanged(): void {
-    if (loadPlayerCode() == null) {
+    if (loadProfile() == null) {
         return;
     }
+    localChangeSerial += 1;
     setProgressDirty(true);
     scheduleProgressPush();
 }

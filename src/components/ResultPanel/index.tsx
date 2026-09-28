@@ -1,5 +1,5 @@
 import './ResultPanel.scss';
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { GameResult } from '../../model/GameResult';
 import { ModalityId } from '../../model/modalities';
 import { useGameStore } from '../../store/gameStore';
@@ -9,6 +9,10 @@ import {
     formatSdtMetric,
 } from '../adaptiveDisplay';
 import SessionPrimaryButton from '../SessionPrimaryButton';
+import RestTimer from '../RestTimer';
+import { downloadGameDebugLog } from '../../model/gameDebugLog';
+import { remainingRestSeconds } from '../../model/restTimer';
+import { useMountEffect } from '../../hooks/useMountEffect';
 
 interface ResultPanelProps {
     result: GameResult;
@@ -18,6 +22,13 @@ export const ResultPanel = ({ result }: ResultPanelProps) => {
     const lastBlockRole = useGameStore((state) => state.lastBlockRole);
     const lastControllerAction = useGameStore((state) => state.lastControllerAction);
     const pendingContinue = useGameStore((state) => state.adaptiveSession?.pendingContinue === true);
+    const restTimer = useGameStore((state) => state.restTimer);
+    const [nowMs, setNowMs] = useState(Date.now);
+
+    useMountEffect(() => {
+        const interval = window.setInterval(() => setNowMs(Date.now()), 250);
+        return () => window.clearInterval(interval);
+    });
 
     if (result == null) return null;
 
@@ -36,6 +47,7 @@ export const ResultPanel = ({ result }: ResultPanelProps) => {
     );
 
     const nBackDistribution = result.nBackDistribution;
+    const debugLog = result.debugLog;
     const nBackTotal =
         nBackDistribution?.reduce((sum, entry) => sum + entry.trials, 0) ?? 0;
 
@@ -104,6 +116,8 @@ export const ResultPanel = ({ result }: ResultPanelProps) => {
                     {totalSuccess} hit · {totalFailed} miss
                 </span>
             </header>
+
+            <RestTimer nowMs={nowMs} />
 
             <div className="result-modality-grid">
                 {modalities.map((modality) => (
@@ -206,7 +220,19 @@ export const ResultPanel = ({ result }: ResultPanelProps) => {
 
             {nextHint && <p className="result-next-hint">{nextHint}</p>}
             <div className="result-continue-actions">
-                <SessionPrimaryButton label={pendingContinue ? 'Continue' : 'Start'} />
+                {debugLog != null && (
+                    <button
+                        type="button"
+                        className="result-download-log"
+                        onClick={() => downloadGameDebugLog(debugLog)}
+                    >
+                        Download debug log
+                    </button>
+                )}
+                <SessionPrimaryButton
+                    label={pendingContinue ? 'Continue' : 'Start'}
+                    disabled={remainingRestSeconds(restTimer, nowMs) > 0}
+                />
             </div>
         </div>
     );

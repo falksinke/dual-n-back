@@ -9,10 +9,16 @@ import {
     FREE_PLAY_DEFAULT_ISI_MAX_MS,
     FREE_PLAY_DEFAULT_ISI_MIN_MS,
 } from '../model/isi';
-import { ModalityId, ModeId, getModalitiesForMode } from '../model/modalities';
+import {
+    ModalityId,
+    ModeId,
+    getModalitiesForMode,
+    normalizeTripleModalities,
+    resolveModalities,
+} from '../model/modalities';
 import { AudioPackId } from '../model/audioPacks';
 import { ColorId } from '../model/colorSet';
-import { ImageId } from '../model/imageSet';
+import type { ImageDifficulty, ImageId } from '../model/imageSet';
 import {
     demoteCurriculumStage,
     enterTeachRamp,
@@ -40,7 +46,24 @@ import {
     loadSettings,
     persistableSettingsFromStoreSettings,
     saveSettings,
+    clampDailyRounds,
+    clampDailySessions,
+    clampFreePlayPromotePct,
+    clampFreePlayDemotePct,
+    clampFreePlayFailsToDemote,
+    DEFAULT_FREE_PLAY_PROMOTE_PCT,
+    DEFAULT_FREE_PLAY_DEMOTE_PCT,
+    DEFAULT_FREE_PLAY_FAILS_TO_DEMOTE,
 } from '../model/settingsPersistence';
+import {
+    DEFAULT_DAILY_ROUNDS,
+    DEFAULT_DAILY_SESSIONS,
+    clampCompletedToGoal,
+    ensureCurrentDay,
+    recordDailyRound,
+    type DailyProgressV1,
+} from '../model/dailyProgress';
+import { decideFreePlayLevelProgression } from '../model/freePlayAutoProgress';
 import { recordBlockCompleted } from '../model/uiPreferences';
 import { ensureAudioReady } from '../audio/unlockAudio';
 import { LureStageId } from '../model/lureStages';
@@ -64,6 +87,16 @@ import {
 } from '../model/variableN';
 import type { PositionGrid } from '../model/positionGrid';
 import { GameSession } from './GameSession';
+import {
+    clampRestMinutes,
+    idleRestTimer,
+    loadRestMinutes,
+    remainingRestSeconds,
+    saveRestMinutes,
+    startRestTimer,
+    type RestMinutes,
+    type RestTimerState,
+} from '../model/restTimer';
 
 export type TeachOpStep = 'COMPARE' | 'REPLACE' | 'NEXT';
 
@@ -73,10 +106,12 @@ export function isLadderPlayMode(playMode: PlayMode): playMode is 'adaptive' | '
     return playMode === 'adaptive' || playMode === 'cyclic';
 }
 
-/** BW-style interference fractions: 0, 1/8 … 1, default 1/8. */
-export const INTERFERENCE_OPTIONS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1] as const;
+import {
+    INTERFERENCE_OPTIONS,
+    type InterferenceSetting as InterferenceChance,
+} from '../model/interference';
 
-export type InterferenceChance = (typeof INTERFERENCE_OPTIONS)[number];
+export { INTERFERENCE_OPTIONS, type InterferenceChance };
 
 export { VARIABLE_N_HOLD_OPTIONS, type VariableNHoldTrials };
 
@@ -104,6 +139,8 @@ export interface GameStoreState {
     /** Seconds remaining in start countdown; null when idle or in-session. */
     countdown: number | null;
     game: GameSession | null;
+    /** True while paced mode holds the current trial for a Space/tap continue. */
+    stepwisePaused: boolean;
     /** Classic Match% Adaptive ladder per mode. */
     ladder: Record<ModeId, MatchLadderSnapshot>;
     /** Cyclic curriculum ladder per mode. */
@@ -115,6 +152,8 @@ export interface GameStoreState {
         imageId: ImageId | null;
         currentTrials: number;
         nForTrial: number;
+        /** Most recent lag for each spatial square at the displayed onset. */
+        positionRecency: Array<number | null>;
         /** Increments on each stimulus onset so same-cell trials remount/animate. */
         stimulusEpoch: number;
     };
@@ -133,9 +172,19 @@ export interface GameStoreState {
         displayVariableNCenter: boolean;
         /** Extra claim time (ms) beyond the ISI scoring window. */
         answerGraceMs: number;
+        /** Paced mode: freeze the trial clock after each stimulus until continue. */
+        stepwisePacing: boolean;
         useFullScreen: boolean;
         mode: ModeId;
+        /** The active stream in Single N-back. */
+        singleModality: ModalityId;
+        singleStimulusBleep: boolean;
+        showPositionRecency: boolean;
+        rotatingBoard: boolean;
+        /** Which three modalities run when mode is Triple. */
+        tripleModalities: ModalityId[];
         audioPack: AudioPackId;
+        imageDifficulty: ImageDifficulty;
         interferenceChance: InterferenceChance;
         variableN: boolean;
         /** Mean stretch (trials) before Variable N randomly resamples the lag. */
@@ -150,6 +199,14 @@ export interface GameStoreState {
          * Skipped automatically when Variable N or Cyclic lure stages are active.
          */
         useJaeggiQuotas: boolean;
+        dailyRounds: number;
+        dailySessions: number;
+        freePlayAutoProgress: boolean;
+        freePlayPromotePct: number;
+        freePlayDemotePct: number;
+        freePlayFailsToDemote: number;
+        freePlayDemoteRequiresConsecutive: boolean;
+        freePlayFailStreak: number;
     };
     /** Multi-block ladder session FSM; null in free-play or when idle. */
     adaptiveSession: AdaptiveSessionState | null;
@@ -159,6 +216,10 @@ export interface GameStoreState {
     blockModalities: ModalityId[] | null;
     /** Free-play settings saved when entering Adaptive or Cyclic. */
     freePlaySettingsSnapshot: FreePlaySettingsSnapshot | null;
+    /** Local training-day completed rounds (not cloud-synced in v1). */
+    dailyProgress: DailyProgressV1;
+    /** Post-round rest preference and active wall-clock deadline. */
+    restTimer: RestTimerState;
     /** Cyclic teach_walkthrough intro dismissed for this N. */
     teachIntroDismissed: boolean;
     /** Soft-warn dialog before early I’ve got it opt-out. */
@@ -208,17 +269,38 @@ export interface GameStoreActions {
     /** Set both ISI bounds to the same value (linked dual-thumb drag). */
     setIsiBoth: (ms: number) => void;
     setAnswerGraceMs: (ms: number) => void;
+    setStepwisePacing: (enabled: boolean) => void;
+    /** Leave the paced continue-gate: score the held trial and advance. */
+    continueStepwise: () => void;
+    /** Review the prior paced stimulus without changing game history or scoring. */
+    previousStepwise: () => void;
     setAllowCenterStimulus: (allow: boolean) => void;
     setPositionGrid: (grid: PositionGrid) => void;
     setDisplayVariableNCenter: (enabled: boolean) => void;
     setMode: (mode: ModeId) => void;
+    setSingleModality: (modality: ModalityId) => void;
+    setSingleStimulusBleep: (enabled: boolean) => void;
+    setShowPositionRecency: (enabled: boolean) => void;
+    setRotatingBoard: (enabled: boolean) => void;
+    setTripleModalities: (modalities: ModalityId[]) => void;
     setAudioPack: (pack: AudioPackId) => void;
+    setImageDifficulty: (difficulty: ImageDifficulty) => void;
     cycleInterferenceChance: () => void;
     setVariableN: (enabled: boolean) => void;
     cycleVariableNHoldTrials: () => void;
     setPlayMode: (playMode: PlayMode) => void;
     setUseBlockQuotas: (enabled: boolean) => void;
     setUseJaeggiQuotas: (enabled: boolean) => void;
+    setDailyRounds: (rounds: number) => void;
+    setDailySessions: (sessions: number) => void;
+    setFreePlayAutoProgress: (enabled: boolean) => void;
+    setFreePlayPromotePct: (pct: number) => void;
+    setFreePlayDemotePct: (pct: number) => void;
+    setFreePlayFailsToDemote: (count: number) => void;
+    setFreePlayDemoteRequiresConsecutive: (enabled: boolean) => void;
+    /** Re-check 04:00 day boundary (visibility / mount). */
+    ensureDailyProgressCurrent: () => void;
+    setRestMinutes: (minutes: RestMinutes) => void;
     setActiveFeedback: (enabled: boolean) => void;
     saveLadder: () => void;
     saveCyclicLadder: () => void;
@@ -234,6 +316,7 @@ const defaultBoardState = {
     currentTrials: -1,
     nForTrial: -1,
     stimulusEpoch: 0,
+    positionRecency: [] as Array<number | null>,
 };
 
 function createEmptyButtons(modalities: ModalityId[]): Partial<Record<ModalityId, `${ButtonState}`>> {
@@ -300,11 +383,14 @@ type StoreSet = (
 const launchSession = (get: StoreGet, set: StoreSet) => {
     const state = get();
     const settings = state.settings;
-    const modalities = state.blockModalities ?? getModalitiesForMode(settings.mode);
+    const modalities =
+        state.blockModalities ??
+        resolveModalities(settings.mode, settings.tripleModalities, settings.singleModality);
     const session = new GameSession(get, set);
     set({
         game: session,
         countdown: null,
+        stepwisePaused: false,
         activeModalities: modalities,
         btns: createEmptyButtons(modalities),
         boardState: {
@@ -330,7 +416,9 @@ function applyBlockConfigToStore(
 }
 
 function asInterferenceChance(value: number): InterferenceChance {
-    const match = INTERFERENCE_OPTIONS.find((option) => option === value);
+    const match = INTERFERENCE_OPTIONS.find(
+        (option) => option !== 'easy' && option === value
+    );
     return match ?? 0.125;
 }
 
@@ -442,22 +530,58 @@ function finalizeGameEnd(
     result: GameResult
 ) {
     const state = get();
-    const modalities = getModalitiesForMode(state.settings.mode);
+    const modalities = resolveModalities(
+        state.settings.mode,
+        state.settings.tripleModalities,
+        state.settings.singleModality
+    );
     const playMode = state.settings.playMode;
+    const dailyGoal = state.settings.dailyRounds;
+    const restTimer = startRestTimer(state.restTimer.minutes);
 
     if (!isLadderPlayMode(playMode) || state.adaptiveSession == null) {
+        let nextSettings = state.settings;
+        let lastControllerAction: LadderControllerAction | null = null;
+
+        if (playMode === 'free' && state.settings.freePlayAutoProgress) {
+            const decision = decideFreePlayLevelProgression({
+                level: state.settings.level,
+                failStreak: state.settings.freePlayFailStreak,
+                matchPct: result.generalMatchPercentage,
+                promotePct: state.settings.freePlayPromotePct,
+                demotePct: state.settings.freePlayDemotePct,
+                failsToDemote: state.settings.freePlayFailsToDemote,
+                demoteRequiresConsecutive: state.settings.freePlayDemoteRequiresConsecutive,
+            });
+            nextSettings = {
+                ...state.settings,
+                level: decision.level,
+                // Strict R12: never change trials on auto promote/demote.
+                freePlayFailStreak: decision.failStreak,
+            };
+            lastControllerAction = decision;
+        }
+
+        const daily = recordDailyRound(dailyGoal);
         set({
             results: {
                 all: [...state.results.all, result],
                 last: result,
             },
             game: null,
+            stepwisePaused: false,
             activeModalities: modalities,
             btns: createEmptyButtons(modalities),
             boardState: { ...defaultBoardState },
             lastBlockRole: playMode === 'free' ? 'free' : null,
-            lastControllerAction: null,
+            lastControllerAction,
+            settings: nextSettings,
+            dailyProgress: daily,
+            restTimer,
         });
+        if (nextSettings !== state.settings) {
+            persistSettingsSnapshot(nextSettings);
+        }
         recordBlockCompleted();
         return;
     }
@@ -478,12 +602,14 @@ function finalizeGameEnd(
             ...state.ladder,
             [mode]: endResult.ladder,
         };
+        const daily = recordDailyRound(dailyGoal);
         set({
             results: {
                 all: [...state.results.all, result],
                 last: result,
             },
             game: null,
+            stepwisePaused: false,
             activeModalities: modalities,
             btns: createEmptyButtons(modalities),
             boardState: { ...defaultBoardState },
@@ -492,6 +618,8 @@ function finalizeGameEnd(
             lastBlockRole: endResult.blockRole,
             lastControllerAction: endResult.action,
             settings: applyMatchLadderToSettings(state.settings, endResult.ladder),
+            dailyProgress: daily,
+            restTimer,
         });
         get().saveLadder();
         recordBlockCompleted();
@@ -514,12 +642,14 @@ function finalizeGameEnd(
             : endResult.ladder.stage === 'teach_walkthrough'
               ? { ...resetTeachUiFlags(), teachIntroDismissed: false }
               : {};
+    const daily = recordDailyRound(dailyGoal);
     set({
         results: {
             all: [...state.results.all, result],
             last: result,
         },
         game: null,
+        stepwisePaused: false,
         activeModalities: modalities,
         btns: createEmptyButtons(modalities),
         boardState: { ...defaultBoardState },
@@ -528,6 +658,8 @@ function finalizeGameEnd(
         lastBlockRole: endResult.blockRole,
         lastControllerAction: endResult.action,
         settings: applyCyclicLadderToSettings(state.settings, endResult.ladder),
+        dailyProgress: daily,
+        restTimer,
         ...teachReset,
     });
     get().saveCyclicLadder();
@@ -577,15 +709,30 @@ export const createDefaultFreePlaySettings = (): GameStoreState['settings'] => (
     positionGrid: '3x3',
     displayVariableNCenter: false,
     answerGraceMs: ANSWER_GRACE_DEFAULT_MS,
+    stepwisePacing: false,
     useFullScreen: false,
     mode: 'dual',
+    singleModality: 'position',
+    singleStimulusBleep: false,
+    showPositionRecency: false,
+    rotatingBoard: false,
+    tripleModalities: getModalitiesForMode('triple'),
     audioPack: 'letters',
+    imageDifficulty: 'easy',
     interferenceChance: 0.125,
     variableN: false,
     variableNHoldTrials: 1,
     playMode: 'free',
     useBlockQuotas: false,
     useJaeggiQuotas: true,
+    dailyRounds: DEFAULT_DAILY_ROUNDS,
+    dailySessions: DEFAULT_DAILY_SESSIONS,
+    freePlayAutoProgress: false,
+    freePlayPromotePct: DEFAULT_FREE_PLAY_PROMOTE_PCT,
+    freePlayDemotePct: DEFAULT_FREE_PLAY_DEMOTE_PCT,
+    freePlayFailsToDemote: DEFAULT_FREE_PLAY_FAILS_TO_DEMOTE,
+    freePlayDemoteRequiresConsecutive: true,
+    freePlayFailStreak: 0,
 });
 
 function settingsFromPersisted(): GameStoreState['settings'] {
@@ -602,15 +749,30 @@ function settingsFromPersisted(): GameStoreState['settings'] {
         positionGrid: s.positionGrid,
         displayVariableNCenter: s.displayVariableNCenter,
         answerGraceMs: s.answerGraceMs,
+        stepwisePacing: s.stepwisePacing,
         useFullScreen: s.useFullScreen,
         mode: s.mode,
+        singleModality: s.singleModality,
+        singleStimulusBleep: s.singleStimulusBleep,
+        showPositionRecency: s.showPositionRecency,
+        rotatingBoard: s.rotatingBoard,
+        tripleModalities: s.tripleModalities,
         audioPack: s.audioPack,
+        imageDifficulty: s.imageDifficulty,
         interferenceChance: s.interferenceChance,
         variableN: s.variableN,
         variableNHoldTrials: s.variableNHoldTrials,
         playMode: s.playMode,
         useBlockQuotas: s.useBlockQuotas,
         useJaeggiQuotas: s.useJaeggiQuotas,
+        dailyRounds: s.dailyRounds,
+        dailySessions: s.dailySessions,
+        freePlayAutoProgress: s.freePlayAutoProgress,
+        freePlayPromotePct: s.freePlayPromotePct,
+        freePlayDemotePct: s.freePlayDemotePct,
+        freePlayFailsToDemote: s.freePlayFailsToDemote,
+        freePlayDemoteRequiresConsecutive: s.freePlayDemoteRequiresConsecutive,
+        freePlayFailStreak: s.freePlayFailStreak,
     };
 }
 
@@ -652,10 +814,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
         last: null,
     },
     speech: new Speech(initialPersistedSettings.audioPack),
-    btns: createEmptyButtons(getModalitiesForMode(initialPersistedSettings.mode)),
-    activeModalities: getModalitiesForMode(initialPersistedSettings.mode),
+    btns: createEmptyButtons(
+        resolveModalities(
+            initialPersistedSettings.mode,
+            initialPersistedSettings.tripleModalities,
+            initialPersistedSettings.singleModality
+        )
+    ),
+    activeModalities: resolveModalities(
+        initialPersistedSettings.mode,
+        initialPersistedSettings.tripleModalities,
+        initialPersistedSettings.singleModality
+    ),
     countdown: null,
     game: null,
+    stepwisePaused: false,
     ladder: initialAdaptiveLadderStorage.byMode,
     cyclicLadder: initialCyclicLadderStorage.byMode,
     boardState: { ...defaultBoardState },
@@ -665,6 +838,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     lastControllerAction: null,
     blockModalities: null,
     freePlaySettingsSnapshot: null,
+    dailyProgress: ensureCurrentDay(),
+    restTimer: idleRestTimer(loadRestMinutes()),
     ...resetTeachUiFlags(),
     startGame: () => {
         if (get().game !== null) {
@@ -674,11 +849,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
             throw new Error('Countdown is already in progress');
         }
 
+        const state = get();
+        if (remainingRestSeconds(state.restTimer) > 0) {
+            return;
+        }
+
         // Start is a user gesture — force unmute/resume even after a stuck pagehide mute.
         void ensureAudioReady();
 
-        const state = get();
         const { playMode, mode } = state.settings;
+        set({ restTimer: idleRestTimer(state.restTimer.minutes) });
 
         if (state.adaptiveSession?.pendingContinue) {
             const session = {
@@ -773,12 +953,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
         clearCountdownTimer();
         resetCountdownBackgroundPause();
         get().game?.cancel();
-        const modalities = getModalitiesForMode(get().settings.mode);
+        const modalities = resolveModalities(
+            get().settings.mode,
+            get().settings.tripleModalities,
+            get().settings.singleModality
+        );
 
         // Adaptive: Esc/Space abort the whole session (ladder deltas already saved stay).
         // Natural block ends use pendingContinue via finalizeGameEnd — not cancel.
         set({
             countdown: null,
+            stepwisePaused: false,
             blockModalities: null,
             activeModalities: modalities,
             btns: createEmptyButtons(modalities),
@@ -822,6 +1007,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             settings: {
                 ...state.settings,
                 level: state.settings.level > 1 ? state.settings.level - 1 : state.settings.level,
+                freePlayFailStreak: 0,
             },
         }));
         persistSettingsSnapshot(get().settings);
@@ -834,6 +1020,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                     ...state.settings,
                     level: nextLevel,
                     trials: Math.max(nextLevel * 2, state.settings.trials),
+                    freePlayFailStreak: 0,
                 },
             };
         });
@@ -1119,6 +1306,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }));
         persistSettingsSnapshot(get().settings);
     },
+    setStepwisePacing: (enabled) => {
+        set((state) => ({
+            settings: { ...state.settings, stepwisePacing: enabled },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    continueStepwise: () => {
+        const state = get();
+        if (!state.stepwisePaused) return;
+        const reviewing = state.game?.isReviewingStepwiseHistory() === true;
+        state.game?.stepForward();
+        if (!reviewing) set({ stepwisePaused: false });
+    },
+    previousStepwise: () => {
+        const state = get();
+        if (!state.stepwisePaused) return;
+        state.game?.stepBackward();
+    },
     setAllowCenterStimulus: (allow) => {
         set((state) => ({
             settings: {
@@ -1165,7 +1370,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
             if (state.game !== null) {
                 return { settings: { ...state.settings, mode } };
             }
-            const modalities = getModalitiesForMode(mode);
+            const modalities = resolveModalities(
+                mode,
+                state.settings.tripleModalities,
+                state.settings.singleModality
+            );
             let settings = { ...state.settings, mode };
             if (
                 isLadderPlayMode(settings.playMode) &&
@@ -1185,10 +1394,70 @@ export const useGameStore = create<GameStore>((set, get) => ({
         });
         persistSettingsSnapshot(get().settings);
     },
+    setTripleModalities: (modalities) => {
+        const tripleModalities = normalizeTripleModalities(modalities);
+        set((state) => {
+            const settings = { ...state.settings, tripleModalities };
+            // Don't reshape live session chrome mid-run; snapshot applies on next start.
+            if (state.game !== null) {
+                return { settings };
+            }
+            const active = resolveModalities(
+                settings.mode,
+                tripleModalities,
+                settings.singleModality
+            );
+            return {
+                settings,
+                activeModalities: active,
+                btns: createEmptyButtons(active),
+            };
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    setSingleModality: (singleModality) => {
+        set((state) => {
+            const settings = { ...state.settings, singleModality };
+            // Don't reshape live session chrome mid-run; snapshot applies on next start.
+            if (state.game !== null || settings.mode !== 'single') {
+                return { settings };
+            }
+            return {
+                settings,
+                activeModalities: [singleModality],
+                btns: createEmptyButtons([singleModality]),
+            };
+        });
+        persistSettingsSnapshot(get().settings);
+    },
+    setSingleStimulusBleep: (singleStimulusBleep) => {
+        set((state) => ({
+            settings: { ...state.settings, singleStimulusBleep },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setShowPositionRecency: (showPositionRecency) => {
+        set((state) => ({
+            settings: { ...state.settings, showPositionRecency },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setRotatingBoard: (rotatingBoard) => {
+        set((state) => ({
+            settings: { ...state.settings, rotatingBoard },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
     setAudioPack: (pack) => {
         set((state) => ({
             settings: { ...state.settings, audioPack: pack },
             speech: new Speech(pack),
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setImageDifficulty: (imageDifficulty) => {
+        set((state) => ({
+            settings: { ...state.settings, imageDifficulty },
         }));
         persistSettingsSnapshot(get().settings);
     },
@@ -1232,6 +1501,76 @@ export const useGameStore = create<GameStore>((set, get) => ({
             settings: { ...state.settings, useJaeggiQuotas: enabled },
         }));
         persistSettingsSnapshot(get().settings);
+    },
+    setDailyRounds: (rounds) => {
+        const dailyRounds = clampDailyRounds(rounds);
+        set((state) => ({
+            settings: { ...state.settings, dailyRounds },
+            dailyProgress: clampCompletedToGoal(dailyRounds),
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setDailySessions: (sessions) => {
+        const dailySessions = clampDailySessions(sessions);
+        set((state) => ({
+            settings: { ...state.settings, dailySessions },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setFreePlayAutoProgress: (enabled) => {
+        set((state) => ({
+            settings: { ...state.settings, freePlayAutoProgress: enabled },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setFreePlayPromotePct: (pct) => {
+        const freePlayPromotePct = clampFreePlayPromotePct(pct);
+        set((state) => ({
+            settings: { ...state.settings, freePlayPromotePct },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setFreePlayDemotePct: (pct) => {
+        const freePlayDemotePct = clampFreePlayDemotePct(pct);
+        set((state) => ({
+            settings: {
+                ...state.settings,
+                freePlayDemotePct,
+                // A count collected under a different threshold is not meaningful.
+                freePlayFailStreak: 0,
+            },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setFreePlayFailsToDemote: (count) => {
+        const freePlayFailsToDemote = clampFreePlayFailsToDemote(count);
+        set((state) => ({
+            settings: { ...state.settings, freePlayFailsToDemote },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    setFreePlayDemoteRequiresConsecutive: (enabled) => {
+        set((state) => ({
+            settings: {
+                ...state.settings,
+                freePlayDemoteRequiresConsecutive: enabled,
+                freePlayFailStreak: 0,
+            },
+        }));
+        persistSettingsSnapshot(get().settings);
+    },
+    ensureDailyProgressCurrent: () => {
+        set({ dailyProgress: ensureCurrentDay() });
+    },
+    setRestMinutes: (value) => {
+        const minutes = clampRestMinutes(value);
+        saveRestMinutes(minutes);
+        set((state) => ({
+            restTimer:
+                state.results.last == null
+                    ? idleRestTimer(minutes)
+                    : startRestTimer(minutes),
+        }));
     },
     setActiveFeedback: (enabled) => {
         set((state) => ({

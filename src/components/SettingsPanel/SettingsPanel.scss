@@ -252,6 +252,28 @@
     gap: 8px;
 }
 
+.settings-profile-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.settings-profile-chip {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--background);
+    color: var(--textForeground);
+    font: inherit;
+    cursor: pointer;
+}
+
+.settings-profile-chip.is-active {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 18%, var(--background));
+}
+
 .settings-player-code-input {
     flex: 1 1 auto;
     min-width: 0;

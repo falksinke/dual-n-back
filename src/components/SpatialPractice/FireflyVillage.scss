@@ -99,6 +99,8 @@
         scroll-margin-block: var(--space-xl);
     }
 
+    &__window-host { min-width: 0; min-height: 0; }
+
     &__street {
         position: relative;
         height: clamp(6rem, 14vw, 8.5rem);
@@ -206,7 +208,11 @@
         font-size: .875rem;
         line-height: 1.4;
 
+        .haptic-host { flex: 0 1 auto; }
+
         button {
+            display: block;
+            width: 100%;
             min-width: 44px;
             min-height: 44px;
             padding: var(--space-xs) var(--space-sm);
@@ -216,9 +222,15 @@
             color: #f1e0c4;
             cursor: pointer;
 
-            &:first-child { border-color: #ba945f; background: #efd09b; color: #343145; font-weight: 600; }
             &:hover { border-color: #efd09b; }
-            &:first-child:hover { background: #f6dcaf; }
+        }
+
+        .haptic-host:first-child button {
+            border-color: #ba945f;
+            background: #efd09b;
+            color: #343145;
+            font-weight: 600;
+            &:hover { background: #f6dcaf; }
         }
     }
 }
@@ -256,6 +268,7 @@
     transition: none;
 
     &:disabled { opacity: 1; cursor: default; }
+    &.haptic-target { overflow: visible; }
 
     &:focus-visible {
         outline: 3px dashed #fff1cf;
@@ -361,6 +374,50 @@
         font-size: clamp(1.1rem, 3vw, 2rem);
         font-weight: 700;
         pointer-events: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .firefly-village {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        container-type: size;
+
+        &__sky {
+            flex: 1 1 0;
+            min-height: 5.5rem;
+            height: auto;
+        }
+
+        &__town {
+            flex: 0 0 auto;
+            width: min(calc(100cqw - var(--space-lg) - var(--space-lg)), calc(100cqh - 16rem));
+            max-width: none;
+        }
+
+        &__street {
+            flex: 1 1 0;
+            min-height: 5.5rem;
+            height: auto;
+        }
+
+        &__caption { flex: 0 0 auto; }
+    }
+}
+
+@media (max-width: 24rem) {
+    .firefly-village__caption {
+        padding: var(--space-xs);
+        > span { display: none; }
+    }
+
+    .firefly-village__caption-actions {
+        width: 100%;
+        justify-content: center;
+        margin-inline-start: 0;
+        button { padding-inline: var(--space-xs); font-size: .75rem; }
     }
 }
 

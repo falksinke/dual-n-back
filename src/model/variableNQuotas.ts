@@ -119,7 +119,6 @@ export function planVariableNStimuli(input: PlanVariableNStimuliInput): Variable
     } = input;
     const warnings: string[] = [];
     const trials: TrialPlanEntry[] = Array.from({ length: gameLength }, () => ({ byModality: {} }));
-    const counts = scaleJaeggiTargets(gameLength);
     const lureCounts: Partial<Record<ModalityId, number>> = {};
 
     if (effectiveNs.length !== gameLength) {
@@ -139,6 +138,8 @@ export function planVariableNStimuli(input: PlanVariableNStimuliInput): Variable
             }
         }
     }
+    // Same density as fixed-N Jaeggi: scale off actual scorable trials.
+    const counts = scaleJaeggiTargets(scorableIndices.length);
 
     if (scorableIndices.length === 0 || modalities.length === 0) {
         return { ok: warnings.length === 0, warnings, trials, counts, lureCounts };

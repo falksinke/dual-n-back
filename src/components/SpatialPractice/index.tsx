@@ -1,5 +1,18 @@
 import { useEffectEvent, useRef, useState } from 'react';
 import { useMountEffect } from '../../hooks/useMountEffect';
+import {
+    createEmptyFireflyRoute,
+    loadFireflyProgress,
+    saveFireflyProgress,
+    subscribeFireflyProgress,
+    type FireflyRoute,
+    type FireflySettings,
+    type FireflyProgressV1,
+} from '../../model/fireflyProgress';
+import { loadProfile } from '../../model/profile';
+import { loadUiPreferences } from '../../model/uiPreferences';
+import { noteLocalProgressChanged } from '../../sync/noteLocal';
+import { useHaptics } from '../../haptics/useHaptics';
 import './SpatialPractice.scss';
 import { PracticeSounds } from './sounds';
 import { advanceEndbackSequence, chooseHiddenPositions, createSequence, type HiddenPlacement } from './sequence';
@@ -14,41 +27,79 @@ interface SpatialPracticeProps {
 
 type Phase = 'idle' | 'showing' | 'math' | 'recall' | 'success' | 'retry' | 'paused';
 
-const INITIAL_ITEM_MS = 1000;
 const MIN_ITEM_MS = 300;
 const ACTIVE_PORTION = 0.7;
 const SUCCESS_PAUSE_MS = 1000;
 
 const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
+    const practiceRef = useRef<HTMLElement>(null);
     const sceneRef = useRef<HTMLDivElement>(null);
     const settingsDialogRef = useRef<HTMLDialogElement>(null);
     const settingsButtonRef = useRef<HTMLButtonElement>(null);
-    const [length, setLength] = useState(5);
-    const [middleWindowEnabled, setMiddleWindowEnabled] = useState(true);
-    const [endback, setEndback] = useState(false);
-    const [hiddenCount, setHiddenCount] = useState(1);
-    const [hiddenPlacement, setHiddenPlacement] = useState<HiddenPlacement>('first');
-    const hiddenPositionsRef = useRef<Set<number>>(new Set());
-    const [increaseSpeed, setIncreaseSpeed] = useState(true);
-    const [interference, setInterference] = useState(0);
-    const [mathEnabled, setMathEnabled] = useState(false);
-    const historyRef = useRef<number[]>([]);
-    const [newSequenceOnSuccess, setNewSequenceOnSuccess] = useState(true);
+    const [saved, setSaved] = useState(() => loadFireflyProgress(loadProfile()));
+    const savedRef = useRef(saved);
+    const { length, middleWindowEnabled, endback, hiddenCount, hiddenPlacement, isiMs,
+        increaseSpeed, interference, mathEnabled, newSequenceOnSuccess } = saved.settings;
+    const streak = saved.route.streak;
+    const hiddenPositionsRef = useRef<Set<number>>(new Set(saved.route.hiddenPositions));
+    const historyRef = useRef<number[]>(saved.route.history);
     const [pressedCell, setPressedCell] = useState<number | null>(null);
     const pressRef = useRef(0);
     const soundsRef = useRef<PracticeSounds | null>(null);
     const [phase, setPhase] = useState<Phase>('idle');
-    const [streak, setStreak] = useState(0);
+    const [hapticsEnabled] = useState(() => loadUiPreferences().hapticFeedbackEnabled);
     const [activeCell, setActiveCell] = useState<number | null>(null);
     const [activeOrder, setActiveOrder] = useState<number | null>(null);
     const [recall, setRecall] = useState<number[]>([]);
-    const [itemMs, setItemMs] = useState(INITIAL_ITEM_MS);
-    const sequenceRef = useRef<number[]>([]);
-    const itemMsRef = useRef(INITIAL_ITEM_MS);
+    const [itemMs, setItemMs] = useState(saved.route.itemMs);
+    const sequenceRef = useRef<number[]>(saved.route.sequence);
+    const itemMsRef = useRef(saved.route.itemMs);
     const phaseRef = useRef<Phase>('idle');
     const recallRef = useRef<number[]>([]);
     const timersRef = useRef<Set<number>>(new Set());
     const runRef = useRef(0);
+    useHaptics({ rootRef: practiceRef, enabled: hapticsEnabled, uiRevision: phase });
+
+    const persist = (settings: FireflySettings, route: FireflyRoute): void => {
+        const previousTime = Date.parse(savedRef.current.updatedAt ?? '');
+        const timestamp = Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0);
+        const next: FireflyProgressV1 = {
+            version: 1, updatedAt: new Date(timestamp).toISOString(), settings, route,
+        };
+        savedRef.current = next;
+        saveFireflyProgress(loadProfile(), next);
+        setSaved(next);
+        noteLocalProgressChanged();
+    };
+
+    const persistRoute = (route: Partial<FireflyRoute>): void => {
+        persist(savedRef.current.settings, { ...savedRef.current.route, ...route });
+    };
+
+    const changeSetting = (setting: Partial<FireflySettings>): void => {
+        const settings = { ...savedRef.current.settings, ...setting };
+        let route = savedRef.current.route;
+        if (settings.middleWindowEnabled === false && route.sequence.includes(4)) {
+            sequenceRef.current = [];
+            hiddenPositionsRef.current = new Set();
+            historyRef.current = [];
+            itemMsRef.current = settings.isiMs;
+            setItemMs(settings.isiMs);
+            persist(settings, createEmptyFireflyRoute(settings.isiMs));
+            return;
+        }
+        if (setting.endback === false) {
+            hiddenPositionsRef.current = new Set();
+            route = { ...route, hiddenPositions: [] };
+        }
+        if (setting.isiMs !== undefined || setting.increaseSpeed === false) {
+            itemMsRef.current = settings.isiMs;
+            setItemMs(settings.isiMs);
+            persist(settings, { ...route, itemMs: settings.isiMs });
+            return;
+        }
+        persist(settings, route);
+    };
 
     const updatePhase = (next: Phase): void => {
         phaseRef.current = next;
@@ -78,9 +129,11 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
 
     const playSequence = (nextSequence: number[], speed: number): void => {
         cancelScheduled();
-        // Bring targets into view synchronously after starting from the village caption.
-        sceneRef.current?.querySelector<HTMLElement>('.firefly-village__grid')
-            ?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        // Desktop may scroll to the grid; the phone game is a locked viewport.
+        if (!window.matchMedia('(max-width: 600px)').matches) {
+            sceneRef.current?.querySelector<HTMLElement>('.firefly-village__grid')
+                ?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        }
         recallRef.current = [];
         setRecall([]);
         updatePhase('showing');
@@ -105,13 +158,21 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     };
 
     const startNewSequence = (): void => {
-        if (phaseRef.current !== 'idle' && phaseRef.current !== 'success') setStreak(0);
+        const resetStreak = phaseRef.current !== 'success'
+            && (phaseRef.current !== 'idle' || sequenceRef.current.length > 0);
         const nextSequence = createSequence(length, sequenceRef.current, historyRef.current, interference, middleWindowEnabled);
         hiddenPositionsRef.current = new Set();
         sequenceRef.current = nextSequence;
-        itemMsRef.current = INITIAL_ITEM_MS;
-        setItemMs(INITIAL_ITEM_MS);
-        playSequence(nextSequence, INITIAL_ITEM_MS);
+        itemMsRef.current = isiMs;
+        setItemMs(isiMs);
+        persistRoute({ streak: resetStreak ? 0 : streak, sequence: nextSequence,
+            hiddenPositions: [], history: historyRef.current, itemMs: isiMs });
+        playSequence(nextSequence, isiMs);
+    };
+
+    const startOrResume = (): void => {
+        if (sequenceRef.current.length === length) replaySequence();
+        else startNewSequence();
     };
 
     const replaySequence = (): void => {
@@ -125,11 +186,11 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         sequenceRef.current = [];
         hiddenPositionsRef.current = new Set();
         historyRef.current = [];
-        itemMsRef.current = INITIAL_ITEM_MS;
-        setStreak(0);
+        itemMsRef.current = isiMs;
+        persistRoute(createEmptyFireflyRoute(isiMs));
         recallRef.current = [];
         setRecall([]);
-        setItemMs(INITIAL_ITEM_MS);
+        setItemMs(isiMs);
         updatePhase('idle');
         sceneRef.current?.focus({ preventScroll: true });
     };
@@ -147,13 +208,12 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         setRecall(nextRecall);
         const expected = sequenceRef.current[nextRecall.length - 1];
         if (cell !== expected) {
-            setStreak(0);
+            persistRoute({ streak: 0 });
             soundsRef.current?.play('failure');
             updatePhase('retry');
             return;
         }
         if (nextRecall.length === sequenceRef.current.length) {
-            setStreak((current) => current + 1);
             const faster = increaseSpeed
                 ? Math.max(MIN_ITEM_MS, Math.round(itemMsRef.current * 0.9)) : itemMsRef.current;
             itemMsRef.current = faster;
@@ -169,6 +229,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             sequenceRef.current = next;
             hiddenPositionsRef.current = endback
                 ? chooseHiddenPositions(length, hiddenCount, hiddenPlacement) : new Set();
+            persistRoute({ streak: savedRef.current.route.streak + 1, sequence: next,
+                hiddenPositions: [...hiddenPositionsRef.current], history: historyRef.current,
+                itemMs: faster });
             schedule(() => {
                 playSequence(next, faster);
             }, SUCCESS_PAUSE_MS, run);
@@ -180,13 +243,12 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         sequenceRef.current = [];
         hiddenPositionsRef.current = new Set();
         historyRef.current = [];
-        itemMsRef.current = INITIAL_ITEM_MS;
-        setStreak(0);
-        setLength(nextLength);
-        setHiddenCount((count) => Math.min(count, nextLength - 1));
+        itemMsRef.current = isiMs;
+        persist({ ...savedRef.current.settings, length: nextLength,
+            hiddenCount: Math.min(hiddenCount, nextLength - 1) }, createEmptyFireflyRoute(isiMs));
         recallRef.current = [];
         setRecall([]);
-        setItemMs(INITIAL_ITEM_MS);
+        setItemMs(isiMs);
         updatePhase('idle');
     };
 
@@ -200,10 +262,20 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     };
 
     // The document listener is mounted once; the event uses the latest route settings.
-    const startRouteFromKeyboard = useEffectEvent(() => startNewSequence());
+    const startRouteFromKeyboard = useEffectEvent(() => startOrResume());
 
     useMountEffect(() => {
         soundsRef.current = new PracticeSounds();
+        const unsubscribe = subscribeFireflyProgress((profile, progress) => {
+            if (profile !== loadProfile() || phaseRef.current !== 'idle') return;
+            savedRef.current = progress;
+            setSaved(progress);
+            sequenceRef.current = progress.route.sequence;
+            hiddenPositionsRef.current = new Set(progress.route.hiddenPositions);
+            historyRef.current = progress.route.history;
+            itemMsRef.current = progress.route.itemMs;
+            setItemMs(progress.route.itemMs);
+        });
         const handleVisibility = (): void => {
             if (document.hidden && (
                 phaseRef.current === 'showing'
@@ -239,6 +311,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             document.removeEventListener('visibilitychange', handleVisibility);
             document.removeEventListener('keydown', handleEscape);
             document.removeEventListener('keydown', handleSpace);
+            unsubscribe();
             soundsRef.current?.dispose();
             soundsRef.current = null;
             runRef.current += 1;
@@ -259,7 +332,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const hiddenOrder = phase === 'showing' && activeOrder !== null
         && hiddenPositionsRef.current.has(activeOrder - 1) ? activeOrder : null;
     const status = phase === 'idle'
-        ? 'Watch the windows light up. Then deliver your letters in the same order.'
+        ? sequenceRef.current.length > 0
+            ? 'Your route is saved. Continue it from the first window when you’re ready.'
+            : 'Watch the windows light up. Then deliver your letters in the same order.'
         : phase === 'showing'
             ? hiddenOrder !== null
                 ? `Stop ${hiddenOrder} of ${length} is hidden. Recall it from the last route.`
@@ -278,7 +353,8 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             : phase === 'math' ? 'Postage check'
                 : phase === 'success' ? 'Route delivered ✓'
                     : phase === 'retry' ? 'Wrong address · replay to try again'
-                        : phase === 'paused' ? 'Route paused' : 'The village is ready';
+                        : phase === 'paused' ? 'Route paused'
+                            : sequenceRef.current.length > 0 ? 'Saved route ready' : 'The village is ready';
     // Only a completed tap is projected into the art; sequence stays in this owner.
     const tapFeedback = pressedCell === null ? null : {
         cell: pressedCell, correct: phase !== 'retry', id: recall.length,
@@ -286,7 +362,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const wrongCell = phase === 'retry' ? recall[recall.length - 1] ?? null : null;
 
     return (
-        <section className={`spatial-practice firefly-post is-${phase}`} aria-labelledby="spatial-practice-title">
+        <section ref={practiceRef} className={`spatial-practice firefly-post is-${phase}`} aria-labelledby="spatial-practice-title">
             <header className="spatial-practice__header">
                 <div className="spatial-practice__brand">
                     <span className="spatial-practice__emblem" aria-hidden="true"><FireflyMark /></span>
@@ -295,9 +371,11 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                         <h1 id="spatial-practice-title">Firefly Post</h1>
                     </div>
                 </div>
-                <button type="button" className="spatial-practice__back" onClick={exit}>
-                    <span aria-hidden="true">←</span> All exercises
-                </button>
+                <div className="haptic-host">
+                    <button type="button" className="spatial-practice__back" onClick={exit}>
+                        <span aria-hidden="true">←</span> All exercises
+                    </button>
+                </div>
             </header>
 
             <div className="spatial-practice__body">
@@ -308,23 +386,26 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                         <div className="spatial-practice__scene-note" aria-hidden="true">{sceneNote}</div>
                         {(phase === 'retry' || phase === 'paused') && (
                             <div className="spatial-practice__controls spatial-practice__controls--scene">
-                                <button type="button" className="is-primary" onClick={replaySequence}>Replay route</button>
-                                <button type="button" onClick={startNewSequence}>New sequence</button>
+                                <div className="haptic-host"><button type="button" className="is-primary" onClick={replaySequence}>Replay route</button></div>
+                                <div className="haptic-host"><button type="button" onClick={startNewSequence}>New sequence</button></div>
                             </div>
                         )}
                     </div>
-                    <button ref={settingsButtonRef} type="button" className="spatial-practice__scene-settings"
-                        aria-label="Firefly Post settings" title={phase === 'idle' ? 'Settings' : 'Stop the route to change settings'}
-                        disabled={phase !== 'idle'} onClick={openSettings}>
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-                            <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                            <circle cx="9" cy="7" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
-                            <circle cx="15" cy="12" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
-                            <circle cx="10" cy="17" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
-                        </svg>
-                    </button>
+                    <div className="spatial-practice__scene-settings-host haptic-host">
+                        <button ref={settingsButtonRef} type="button" className="spatial-practice__scene-settings"
+                            aria-label="Firefly Post settings" title={phase === 'idle' ? 'Settings' : 'Stop the route to change settings'}
+                            disabled={phase !== 'idle'} onClick={openSettings}>
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                                <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                                <circle cx="9" cy="7" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
+                                <circle cx="15" cy="12" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
+                                <circle cx="10" cy="17" r="2" fill="#292e47" stroke="currentColor" strokeWidth="1.6" />
+                            </svg>
+                        </button>
+                    </div>
                     <FireflyVillage phase={phase} activeCell={activeCell} activeOrder={activeOrder}
                         middleWindowEnabled={middleWindowEnabled} streak={streak}
+                        hasSavedRoute={sequenceRef.current.length > 0} onStart={startOrResume}
                         tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell}
                         onReplay={replaySequence} onNewSequence={startNewSequence} onReset={stop} />
                     <p id="spatial-practice-status" className="spatial-practice__sr-only"
@@ -351,18 +432,21 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                         <p className="spatial-practice__eyebrow">Keeper's notebook</p>
                         <h2 id="spatial-settings-title">Tonight's route</h2>
                     </div>
-                    <button type="button" className="spatial-practice__settings-close"
-                        aria-label="Close settings" onClick={() => settingsDialogRef.current?.close()}>×</button>
+                    <div className="haptic-host">
+                        <button type="button" className="spatial-practice__settings-close"
+                            aria-label="Close settings" onClick={() => settingsDialogRef.current?.close()}>×</button>
+                    </div>
                 </div>
                 <PracticeSettings length={length} onLengthChange={changeLength}
-                    middleWindowEnabled={middleWindowEnabled} onMiddleWindowChange={setMiddleWindowEnabled}
-                    endback={endback} onEndbackChange={setEndback}
-                    hiddenCount={hiddenCount} onHiddenCountChange={setHiddenCount}
-                    hiddenPlacement={hiddenPlacement} onHiddenPlacementChange={setHiddenPlacement}
-                    newSequence={newSequenceOnSuccess} onNewSequenceChange={setNewSequenceOnSuccess}
-                    increaseSpeed={increaseSpeed} onIncreaseSpeedChange={setIncreaseSpeed}
-                    interference={interference} onInterferenceChange={setInterference}
-                    mathEnabled={mathEnabled} onMathEnabledChange={setMathEnabled}
+                    isiMs={isiMs} onIsiMsChange={(value) => changeSetting({ isiMs: value })}
+                    middleWindowEnabled={middleWindowEnabled} onMiddleWindowChange={(value) => changeSetting({ middleWindowEnabled: value })}
+                    endback={endback} onEndbackChange={(value) => changeSetting({ endback: value })}
+                    hiddenCount={hiddenCount} onHiddenCountChange={(value) => changeSetting({ hiddenCount: value })}
+                    hiddenPlacement={hiddenPlacement} onHiddenPlacementChange={(value: HiddenPlacement) => changeSetting({ hiddenPlacement: value })}
+                    newSequence={newSequenceOnSuccess} onNewSequenceChange={(value) => changeSetting({ newSequenceOnSuccess: value })}
+                    increaseSpeed={increaseSpeed} onIncreaseSpeedChange={(value) => changeSetting({ increaseSpeed: value })}
+                    interference={interference} onInterferenceChange={(value) => changeSetting({ interference: value })}
+                    mathEnabled={mathEnabled} onMathEnabledChange={(value) => changeSetting({ mathEnabled: value })}
                     disabled={phase !== 'idle'} />
             </dialog>
             {phase === 'math' && <MathChallenge

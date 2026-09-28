@@ -73,6 +73,61 @@ describe('Game', () => {
         expect(lastMatch?.position).toBe('success');
     });
 
+    it('exports the effective N and exact scoring evidence for every trial', async () => {
+        let result: import('./GameResult').GameResult | null = null;
+        const game = new Game(
+            1,
+            2,
+            50,
+            50,
+            () => undefined,
+            () => undefined,
+            (gameResult) => {
+                result = gameResult;
+            },
+            {
+                modalities: ['position'],
+                random: () => 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 1,
+            }
+        );
+
+        const startPromise = game.start();
+        await vi.advanceTimersByTimeAsync(50);
+        game.addChoice('position');
+        await vi.advanceTimersByTimeAsync(50);
+        await startPromise;
+
+        expect(result?.debugLog?.config).toMatchObject({
+            level: 1,
+            trials: 2,
+            modalities: ['position'],
+            variableN: false,
+        });
+        expect(result?.debugLog?.trials).toHaveLength(2);
+        expect(result?.debugLog?.trials[0]).toMatchObject({
+            trialIndex: 0,
+            effectiveN: 1,
+            scorable: false,
+            referenceTrialIndex: null,
+        });
+        expect(result?.debugLog?.trials[1]).toMatchObject({
+            trialIndex: 1,
+            effectiveN: 1,
+            scorable: true,
+            referenceTrialIndex: 0,
+            modalities: {
+                position: {
+                    matched: true,
+                    claimed: true,
+                    feedback: 'success',
+                    scoreCell: 'hit',
+                },
+            },
+        });
+    });
+
     it('does not call onGameEnded when stopped mid-game', async () => {
         const onEnded = vi.fn();
         const game = new Game(2, 10, 100, 100, () => undefined, () => undefined, onEnded, {
@@ -429,13 +484,16 @@ describe('Game', () => {
     });
 
     it('keeps the full fixed ISI responsive when instant feedback is enabled', async () => {
+        const feedbackMs: number[] = [];
         const game = new Game(
             1,
             1,
             1000,
             1000,
             () => undefined,
-            () => undefined,
+            (_match, ms) => {
+                feedbackMs.push(ms);
+            },
             () => undefined,
             {
                 activeFeedback: true,
@@ -452,6 +510,56 @@ describe('Game', () => {
         expect(game.addChoice('position')).toBe(true);
 
         await vi.advanceTimersByTimeAsync(100);
+        await startPromise;
+        expect(feedbackMs).toEqual([200]);
+    });
+
+    it('reserves a visible pre-onset miss flash when instant feedback is on', async () => {
+        const scored: Array<{ match: Record<string, string | undefined>; ms: number }> = [];
+        const stateTimes: number[] = [];
+        const game = new Game(
+            1,
+            3,
+            1000,
+            1000,
+            () => {
+                stateTimes.push(Date.now());
+            },
+            (match, ms) => {
+                scored.push({ match: { ...match }, ms });
+            },
+            () => undefined,
+            {
+                activeFeedback: true,
+                random: () => 0.5,
+                interferenceChance: 0,
+                guaranteedMatchChance: 1,
+                answerGraceMs: 250,
+            }
+        );
+
+        const startPromise = game.start();
+        // 1,250ms onset gap leaves a 1,050ms claim window plus 200ms feedback.
+        await vi.advanceTimersByTimeAsync(1050);
+        expect(scored).toHaveLength(1); // warm-up trial
+        await vi.advanceTimersByTimeAsync(200);
+        expect(stateTimes).toHaveLength(2);
+
+        // Trial 1 is a guaranteed target. Not claiming it must produce a visible
+        // miss before trial 2 appears, rather than in the same turn as its onset.
+        await vi.advanceTimersByTimeAsync(1050);
+        expect(scored).toHaveLength(2);
+        expect(scored[1]!.match.position).toBe('failed');
+        expect(scored[1]!.ms).toBe(200);
+        expect(stateTimes).toHaveLength(2);
+
+        await vi.advanceTimersByTimeAsync(199);
+        expect(stateTimes).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(stateTimes).toHaveLength(3);
+
+        await vi.advanceTimersByTimeAsync(1050);
+        await vi.advanceTimersByTimeAsync(200);
         await startPromise;
     });
 
@@ -569,6 +677,143 @@ describe('Game', () => {
         expect(result!.sdt?.byModality.position?.all.counts.correctRejections ?? 0).toBeGreaterThan(
             0
         );
+    });
+
+    it('Easy mode does not reuse positions during the 5-back warmup window', async () => {
+        const positions: number[] = [];
+        const game = new Game(
+            5,
+            5,
+            10,
+            10,
+            (state) => positions.push(state.positionIndex),
+            () => undefined,
+            () => undefined,
+            {
+                modalities: ['position'],
+                interferenceChance: 0,
+                avoidAccidentalLures: true,
+                guaranteedMatchChance: 0,
+                random: () => 0,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 5; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(positions).toHaveLength(5);
+        expect(new Set(positions).size).toBe(5);
+    });
+
+    it('Easy mode excludes the N+1 lure when lag reaches the first trial', async () => {
+        const positions: number[] = [];
+        const game = new Game(
+            5,
+            7,
+            10,
+            10,
+            (state) => positions.push(state.positionIndex),
+            () => undefined,
+            () => undefined,
+            {
+                modalities: ['position'],
+                interferenceChance: 0,
+                avoidAccidentalLures: true,
+                guaranteedMatchChance: 0,
+                random: () => 0,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 7; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(positions).toHaveLength(7);
+        expect(positions[6]).not.toBe(positions[0]);
+    });
+
+    it('Easy mode still permits a genuine 5-back target', async () => {
+        const positions: number[] = [];
+        const game = new Game(
+            5,
+            6,
+            10,
+            10,
+            (state) => positions.push(state.positionIndex),
+            () => undefined,
+            () => undefined,
+            {
+                modalities: ['position'],
+                interferenceChance: 0,
+                avoidAccidentalLures: true,
+                guaranteedMatchChance: 1,
+                random: () => 0,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 6; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(positions).toHaveLength(6);
+        expect(positions[5]).toBe(positions[0]);
+    });
+
+    it('Easy mode avoids accidental near-miss values on non-match trials', async () => {
+        const states: BoardState[] = [];
+        let randomCall = 0;
+        const n = 3;
+        const game = new Game(
+            n,
+            48,
+            10,
+            10,
+            (state) => states.push({ ...state }),
+            () => undefined,
+            () => undefined,
+            {
+                random: () => (randomCall++ % 97) / 97,
+                interferenceChance: 0,
+                avoidAccidentalLures: true,
+                guaranteedMatchChance: 0,
+                useJaeggiQuotas: false,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 48; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        const offsets = n < 3 ? [1, n] : [-1, 1, n];
+        for (let t = n; t < states.length; t++) {
+            for (const modality of ['position', 'audio'] as const) {
+                const current =
+                    modality === 'position' ? states[t].positionIndex : states[t].audioToken;
+                const trueMatch =
+                    modality === 'position'
+                        ? states[t - n].positionIndex
+                        : states[t - n].audioToken;
+                if (current === trueMatch) continue;
+                for (const offset of offsets) {
+                    const lag = n + offset;
+                    if (lag < 1 || t - lag < 0) continue;
+                    const lureValue =
+                        modality === 'position'
+                            ? states[t - lag].positionIndex
+                            : states[t - lag].audioToken;
+                    expect(current).not.toBe(lureValue);
+                }
+            }
+        }
     });
 
     it('uses near-miss history when interference is 1 and claiming N-back fails', async () => {
@@ -1005,8 +1250,104 @@ describe('Game', () => {
         expect(result).not.toBeNull();
         const position = result!.sdt?.byModality.position?.all.counts;
         const audio = result!.sdt?.byModality.audio?.all.counts;
-        expect((position?.hits ?? 0) + (position?.misses ?? 0)).toBe(4);
-        expect((audio?.hits ?? 0) + (audio?.misses ?? 0)).toBe(4);
+        // 20 total / n=2 → 18 scorable → round(6*18/20)=5
+        expect((position?.hits ?? 0) + (position?.misses ?? 0)).toBe(5);
+        expect((audio?.hits ?? 0) + (audio?.misses ?? 0)).toBe(5);
+    });
+
+    it('realizes every planned Jaeggi target as an actual n-back match (classic 20+n and free-play 30)', async () => {
+        const getModalityValue = (await import('./types')).getModalityValue;
+        type BoardState = import('./types').BoardState;
+        type TrialPlanEntry = import('./blockQuotas').TrialPlanEntry;
+
+        async function runBlock(opts: {
+            seed: number;
+            n: number;
+            gameLength: number;
+            expectPerModality: number;
+        }) {
+            let seed = opts.seed;
+            const random = () => {
+                seed = (seed * 1664525 + 1013904223) >>> 0;
+                return seed / 0x100000000;
+            };
+
+            const boards: BoardState[] = [];
+            let result: import('./GameResult').GameResult | null = null;
+            const game = new Game(
+                opts.n,
+                opts.gameLength,
+                10,
+                10,
+                (boardState) => {
+                    boards.push(boardState);
+                },
+                () => undefined,
+                (gameResult) => {
+                    result = gameResult;
+                },
+                {
+                    useJaeggiQuotas: true,
+                    interferenceChance: 0,
+                    guaranteedMatchChance: 0,
+                    random,
+                }
+            );
+
+            const plan = (game as unknown as { trialPlan: TrialPlanEntry[] | null }).trialPlan;
+            expect(plan).not.toBeNull();
+
+            const startPromise = game.start();
+            for (let i = 0; i < opts.gameLength; i++) {
+                await vi.advanceTimersByTimeAsync(10);
+            }
+            await startPromise;
+
+            expect(boards).toHaveLength(opts.gameLength);
+            expect(result).not.toBeNull();
+
+            let plannedMissed = 0;
+            let realizedPosition = 0;
+            let realizedAudio = 0;
+
+            for (let t = opts.n; t < opts.gameLength; t++) {
+                const prior = boards[t - opts.n];
+                const cur = boards[t];
+                const posMatch =
+                    getModalityValue(cur, 'position') === getModalityValue(prior, 'position');
+                const audioMatch =
+                    getModalityValue(cur, 'audio') === getModalityValue(prior, 'audio');
+                if (posMatch) realizedPosition++;
+                if (audioMatch) realizedAudio++;
+
+                if (plan![t].byModality.position?.role === 'target' && !posMatch) {
+                    plannedMissed++;
+                }
+                if (plan![t].byModality.audio?.role === 'target' && !audioMatch) {
+                    plannedMissed++;
+                }
+            }
+
+            // Planned targets must always become true matches in the stimulus stream.
+            expect(plannedMissed).toBe(0);
+            // SDT target count (= hits+misses with no claims) must match plan density.
+            const position = result!.sdt?.byModality.position?.all.counts;
+            const audio = result!.sdt?.byModality.audio?.all.counts;
+            expect((position?.hits ?? 0) + (position?.misses ?? 0)).toBe(opts.expectPerModality);
+            expect((audio?.hits ?? 0) + (audio?.misses ?? 0)).toBe(opts.expectPerModality);
+            // Stimulus-level matches should equal SDT targets when clean trials never collide.
+            expect(realizedPosition).toBe(opts.expectPerModality);
+            expect(realizedAudio).toBe(opts.expectPerModality);
+        }
+
+        // Classic Jaeggi: 20 scorable → 6+6
+        for (const seed of [1, 7, 42, 99, 12345]) {
+            await runBlock({ seed, n: 2, gameLength: 22, expectPerModality: 6 });
+        }
+        // Free-play default: 28 scorable → 8+8
+        for (const seed of [1, 7, 42, 99, 12345]) {
+            await runBlock({ seed, n: 2, gameLength: 30, expectPerModality: 8 });
+        }
     });
 
     it('plans Jaeggi-scale targets when variable N is on', async () => {
@@ -1040,8 +1381,123 @@ describe('Game', () => {
         expect(result).not.toBeNull();
         const position = result!.sdt?.byModality.position?.all.counts;
         const audio = result!.sdt?.byModality.audio?.all.counts;
-        // Variable N planner restores Jaeggi density (4+4 at 20 trials).
-        expect((position?.hits ?? 0) + (position?.misses ?? 0)).toBe(4);
-        expect((audio?.hits ?? 0) + (audio?.misses ?? 0)).toBe(4);
+        // Variable N planner uses Jaeggi density scaled to scorable trials.
+        const positionTargets = (position?.hits ?? 0) + (position?.misses ?? 0);
+        const audioTargets = (audio?.hits ?? 0) + (audio?.misses ?? 0);
+        expect(positionTargets).toBeGreaterThanOrEqual(5);
+        expect(audioTargets).toBeGreaterThanOrEqual(5);
+        expect(positionTargets).toBe(audioTargets);
+    });
+
+    it('pins stimuli to center when Position is not an active modality', async () => {
+        const positions: number[] = [];
+        const game = new Game(
+            2,
+            8,
+            10,
+            10,
+            (state) => {
+                positions.push(state.positionIndex);
+            },
+            () => undefined,
+            () => undefined,
+            {
+                mode: 'triple',
+                modalities: ['color', 'image', 'audio'],
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+                useJaeggiQuotas: false,
+                random: () => 0.9,
+            }
+        );
+
+        const startPromise = game.start();
+        for (let i = 0; i < 8; i++) {
+            await vi.advanceTimersByTimeAsync(10);
+        }
+        await startPromise;
+
+        expect(positions.length).toBe(8);
+        expect(positions.every((p) => p === 4)).toBe(true);
+        expect(game.modalities).toEqual(['color', 'image', 'audio']);
+    });
+
+    it('stepForward leaves the pause gate and scores the held trial immediately', async () => {
+        const states: BoardState[] = [];
+        let ended = false;
+        const game = new Game(
+            2,
+            3,
+            50,
+            50,
+            (state) => states.push({ ...state }),
+            () => undefined,
+            () => {
+                ended = true;
+            },
+            {
+                modalities: ['position'],
+                random: () => 0.9,
+                interferenceChance: 0,
+                guaranteedMatchChance: 0,
+            }
+        );
+
+        const startPromise = game.start();
+        game.pause({ allowClaims: true });
+        expect(game.isPaused).toBe(true);
+
+        // The frozen clock never advances to the next onset on its own.
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(states).toHaveLength(1);
+
+        game.stepForward();
+        expect(game.isPaused).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(100);
+        await startPromise;
+
+        expect(states).toHaveLength(3);
+        expect(ended).toBe(true);
+    });
+
+    it('scores claims made during the stepwise pause on stepForward', async () => {
+        let lastMatch: Record<string, string> | undefined;
+        const game = new Game(
+            2,
+            3,
+            50,
+            50,
+            () => undefined,
+            (match) => {
+                lastMatch = match;
+            },
+            () => undefined,
+            {
+                modalities: ['position'],
+                random: () => 0.9,
+                interferenceChance: 0,
+                guaranteedMatchChance: 1,
+            }
+        );
+
+        const startPromise = game.start();
+        // Trials 0–1 (warm-up): hold the gate, then continue unclaimed. A 1ms
+        // advance flushes the scoring continuation without consuming the next
+        // onset timer (re-armed at the same fake-clock time).
+        for (let i = 0; i < 2; i++) {
+            game.pause({ allowClaims: true });
+            game.stepForward();
+            await vi.advanceTimersByTimeAsync(1);
+        }
+
+        // Third onset: scorable trial with a guaranteed n-back match. Claims
+        // made while the gate holds must attach to this trial, not the next.
+        game.pause({ allowClaims: true });
+        expect(game.addChoice('position')).toBe(true);
+        game.stepForward();
+        await startPromise;
+
+        expect(lastMatch?.position).toBe('success');
     });
 });

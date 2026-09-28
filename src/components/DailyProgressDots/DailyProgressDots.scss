@@ -1,13 +1,23 @@
 .daily-progress-dots {
-    --gap-tight: 4px;
-    --gap-group: 10px;
-    --dot-size: 8px;
+    /* Larger than chrome gap-tight/group so the day goal reads at a glance. */
+    --gap-tight: 6px;
+    --gap-group: 16px;
+    --dot-size: 11px;
 
-    flex: 1 1 auto;
-    min-width: 0;
+    /* True viewport center (not the flex slot between brand and gear). */
+    position: absolute;
+    left: 50%;
+    top: calc(var(--frame-top) + 44px + var(--space-sm));
+    transform: translateX(-50%);
     display: flex;
     justify-content: center;
     align-items: center;
+    width: max-content;
+    max-width: calc(100% - var(--frame-left) - var(--frame-right));
+    height: 44px;
+    max-height: 44px;
+    overflow: hidden;
+    pointer-events: none;
 }
 
 .daily-progress-dots__row {
@@ -15,9 +25,9 @@
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
-    gap: var(--gap-group) var(--gap-group);
-    max-width: 100%;
+    column-gap: var(--gap-group);
     row-gap: var(--gap-tight);
+    max-width: 100%;
 }
 
 .daily-progress-dots__session {
@@ -55,11 +65,19 @@
     }
 }
 
+@media (max-width: 380px) {
+    .daily-progress-dots {
+        --dot-size: 9px;
+        --gap-tight: 5px;
+        --gap-group: 12px;
+    }
+}
+
 @media (max-width: 320px) {
     .daily-progress-dots {
-        --dot-size: 5px;
+        --dot-size: 7px;
         --gap-tight: 4px;
-        --gap-group: 8px;
+        --gap-group: 10px;
     }
 }
 

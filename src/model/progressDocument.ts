@@ -16,6 +16,21 @@ import {
     parseUiPreferences,
     type UiPreferencesV1,
 } from './uiPreferences';
+import {
+    createEmptyStatisticsHistory,
+    parseStatisticsHistory,
+    type StatisticsHistory,
+} from './statistics';
+import {
+    createDefaultDailyProgress,
+    parseDailyProgress,
+    type DailyProgressV1,
+} from './dailyProgress';
+import {
+    createDefaultFireflyProgress,
+    normalizeFireflyProgress,
+    type FireflyProgressV1,
+} from './fireflyProgress';
 
 export const PROGRESS_DOCUMENT_VERSION = 1 as const;
 
@@ -28,6 +43,9 @@ export interface ProgressDocumentV1 {
     cyclicLadder: CyclicLadderStorageV3;
     settings: PersistableSettings;
     uiPreferences: UiPreferencesV1;
+    statistics: StatisticsHistory;
+    dailyProgress: DailyProgressV1;
+    fireflyPost: FireflyProgressV1;
 }
 
 export function createDefaultProgressDocument(
@@ -40,6 +58,9 @@ export function createDefaultProgressDocument(
         cyclicLadder: createDefaultCyclicLadderStorage(),
         settings: createDefaultPersistableSettings(),
         uiPreferences: createDefaultUiPreferences(),
+        statistics: createEmptyStatisticsHistory(),
+        dailyProgress: createDefaultDailyProgress(),
+        fireflyPost: createDefaultFireflyProgress(),
     };
 }
 
@@ -120,6 +141,16 @@ export function normalizeProgressDocument(raw: unknown): ProgressDocumentV1 {
         uiPreferences = parseUiPreferences(JSON.stringify(obj.uiPreferences));
     }
 
+    const statistics =
+        obj.statistics != null
+            ? parseStatisticsHistory(JSON.stringify(obj.statistics))
+            : defaults.statistics;
+    const dailyProgress =
+        obj.dailyProgress != null
+            ? parseDailyProgress(JSON.stringify(obj.dailyProgress))
+            : defaults.dailyProgress;
+    const fireflyPost = normalizeFireflyProgress(obj.fireflyPost);
+
     return {
         version: PROGRESS_DOCUMENT_VERSION,
         updatedAt: isIsoDate(obj.updatedAt) ? obj.updatedAt : defaults.updatedAt,
@@ -127,6 +158,9 @@ export function normalizeProgressDocument(raw: unknown): ProgressDocumentV1 {
         cyclicLadder,
         settings,
         uiPreferences,
+        statistics,
+        dailyProgress,
+        fireflyPost,
     };
 }
 
@@ -143,6 +177,9 @@ export function progressDocumentFromParts(parts: {
     cyclicLadder: CyclicLadderStorageV3;
     settings: PersistableSettings;
     uiPreferences: UiPreferencesV1;
+    statistics?: StatisticsHistory;
+    dailyProgress?: DailyProgressV1;
+    fireflyPost?: FireflyProgressV1;
     updatedAt?: string;
 }): ProgressDocumentV1 {
     return {
@@ -152,5 +189,8 @@ export function progressDocumentFromParts(parts: {
         cyclicLadder: parts.cyclicLadder,
         settings: parts.settings,
         uiPreferences: parts.uiPreferences,
+        statistics: parts.statistics ?? createEmptyStatisticsHistory(),
+        dailyProgress: parts.dailyProgress ?? createDefaultDailyProgress(),
+        fireflyPost: parts.fireflyPost ?? createDefaultFireflyProgress(),
     };
 }

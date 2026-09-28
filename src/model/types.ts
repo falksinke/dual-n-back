@@ -1,5 +1,5 @@
 import { ColorId } from './colorSet';
-import { ImageId } from './imageSet';
+import type { ImageDifficulty, ImageId } from './imageSet';
 import { ModalityId, ModeId } from './modalities';
 import { AudioPackId } from './audioPacks';
 import { LureStageId } from './lureStages';
@@ -23,8 +23,13 @@ export type GameDeps = {
     allowCenterStimulus?: boolean;
     /** Active modalities for this session. Defaults to dual preset. */
     modalities?: ModalityId[];
-    /** BW-style interference chance (default 0.125). */
+    /** BW-style interference chance (default 0.125). Easy mode passes 0 here. */
     interferenceChance?: number;
+    /**
+     * When true (free-play Easy), non-match picks also avoid near-miss history
+     * values so accidental lures are repaired away.
+     */
+    avoidAccidentalLures?: boolean;
     /** BW-style guaranteed true-match chance (default 0.125). */
     guaranteedMatchChance?: number;
     /** When true, per-trial N is sampled from a beta distribution. */
@@ -36,6 +41,8 @@ export type GameDeps = {
     /** Extra claim time (ms) beyond the ISI scoring window; extends onset gap. */
     answerGraceMs?: number;
     audioPack?: AudioPackId;
+    /** Visual symbol bank used for Image trials. Defaults to Easy. */
+    imageDifficulty?: ImageDifficulty;
     mode?: ModeId;
     /**
      * When set, Adaptive lure-stage generation replaces free-play interferenceChance.

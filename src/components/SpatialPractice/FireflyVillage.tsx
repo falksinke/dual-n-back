@@ -11,7 +11,9 @@ export interface FireflyVillageProps {
     wrongCell: number | null;
     middleWindowEnabled: boolean;
     streak: number;
+    hasSavedRoute: boolean;
     onChoose: (cell: number) => void;
+    onStart: () => void;
     onReplay: () => void;
     onNewSequence: () => void;
     onReset: () => void;
@@ -35,7 +37,7 @@ function MiddleBalcony() {
 }
 
 /** A view of the current pulse and the player's last tap only — no hidden route. */
-export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, middleWindowEnabled, streak, onChoose, onReplay, onNewSequence, onReset }: FireflyVillageProps) {
+export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, middleWindowEnabled, streak, hasSavedRoute, onChoose, onStart, onReplay, onNewSequence, onReset }: FireflyVillageProps) {
     const windowsRef = useRef<Array<HTMLButtonElement | null>>([]);
     const courierPose = phase === 'idle' ? 'idle'
         : phase === 'success' ? 'success'
@@ -81,12 +83,13 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
                     const delivered = (phase === 'recall' || phase === 'success')
                         && tapFeedback?.cell === cell && tapFeedback.correct;
                     const wrong = phase === 'retry' && wrongCell === cell;
-                    return <button key={cell} type="button"
-                        ref={(node) => { windowsRef.current[cell] = node; }}
-                        className={`firefly-window${active ? ' is-active' : ''}${delivered ? ' is-delivered' : ''}${wrong ? ' is-wrong' : ''}`}
-                        disabled={phase !== 'recall'}
-                        aria-label={`Position ${cell + 1}, row ${Math.floor(cell / 3) + 1}, column ${cell % 3 + 1}`}
-                        onClick={() => onChoose(cell)} onKeyDown={(event) => moveFocus(event, cell)}>
+                    return <div key={cell} className="firefly-village__window-host haptic-host">
+                        <button type="button"
+                            ref={(node) => { windowsRef.current[cell] = node; }}
+                            className={`firefly-window${active ? ' is-active' : ''}${delivered ? ' is-delivered' : ''}${wrong ? ' is-wrong' : ''}`}
+                            disabled={phase !== 'recall'}
+                            aria-label={`Position ${cell + 1}, row ${Math.floor(cell / 3) + 1}, column ${cell % 3 + 1}`}
+                            onClick={() => onChoose(cell)} onKeyDown={(event) => moveFocus(event, cell)}>
                         <svg className="firefly-window__frame" viewBox="0 0 120 120" aria-hidden="true" focusable="false">
                             <path d="M8 26h10v66H8zm94 0h10v66h-10Z" className="firefly-window__shutters" />
                             <path d="M9 38h7m-7 13h7m-7 13h7m-7 13h7m88-39h7m-7 13h7m-7 13h7m-7 13h7" stroke="#444659" strokeWidth="2" />
@@ -109,7 +112,8 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
                             <EnvelopeMark /><span className="firefly-window__check">✓</span>
                         </span>}
                         {wrong && <span className="firefly-window__return" aria-hidden="true">×</span>}
-                    </button>;
+                        </button>
+                    </div>;
                 })}
             </div>
         </div>
@@ -129,13 +133,18 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
             <span aria-hidden="true">F I R E F L Y &nbsp; P O S T</span>
             <div className="firefly-village__caption-actions">
                 {phase === 'idle' ? (
-                    <button type="button" onClick={onNewSequence}>Start route <span aria-hidden="true">→</span></button>
+                    <>
+                        <div className="haptic-host"><button type="button" onClick={onStart}>
+                            {hasSavedRoute ? 'Continue route' : 'Start route'} <span aria-hidden="true">→</span>
+                        </button></div>
+                        {hasSavedRoute && <div className="haptic-host"><button type="button" onClick={onNewSequence}>New sequence</button></div>}
+                    </>
                 ) : <>
                     {(phase === 'retry' || phase === 'paused') && (
-                        <button type="button" onClick={onReplay}>Replay route</button>
+                        <div className="haptic-host"><button type="button" onClick={onReplay}>Replay route</button></div>
                     )}
-                    <button type="button" onClick={onNewSequence}>New sequence</button>
-                    <button type="button" onClick={onReset}>Stop / reset</button>
+                    <div className="haptic-host"><button type="button" onClick={onNewSequence}>New sequence</button></div>
+                    <div className="haptic-host"><button type="button" aria-label="Stop and reset route" onClick={onReset}>Stop / reset</button></div>
                 </>}
             </div>
         </div>

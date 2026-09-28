@@ -1,11 +1,15 @@
 import { ModalityId } from './modalities';
 import { TrialPlanEntry } from './blockQuotas';
 
-/** Classic Jaeggi dual block length used as the scaling baseline. */
+/**
+ * Classic Jaeggi dual block: 20 **scorable** trials (total length = 20 + n warm-up).
+ * Targets: 6 visual + 6 auditory, of which 2 are simultaneous
+ * (i.e. 4 visual-only + 4 auditory-only + 2 both).
+ */
 export const JAEGGI_BASE_TRIALS = 20;
-/** Documented Jaeggi visual/auditory match counts at the baseline length. */
-export const JAEGGI_BASE_PER_MODALITY = 4;
-/** Documented Jaeggi simultaneous (both streams) match count at baseline. */
+/** Total true matches per modality at the baseline (includes simultaneous). */
+export const JAEGGI_BASE_PER_MODALITY = 6;
+/** Simultaneous (both streams) match count at baseline. */
 export const JAEGGI_BASE_BOTH = 2;
 
 export interface JaeggiTargetCounts {
@@ -61,11 +65,11 @@ function pickSpreadIndices(pool: number[], count: number, random: () => number):
 }
 
 /**
- * Scale Jaeggi fixed counts from the 20-trial baseline.
- * At 20 trials → 4 per modality + 2 simultaneous; at 30 → 6 + 3.
+ * Scale Jaeggi fixed counts from the 20-**scorable**-trial baseline.
+ * At 20 scorable → 6 per modality + 2 simultaneous; at 30 → 9 + 3.
  */
-export function scaleJaeggiTargets(trials: number): JaeggiTargetCounts {
-    const scale = Math.max(1, trials) / JAEGGI_BASE_TRIALS;
+export function scaleJaeggiTargets(scorableTrials: number): JaeggiTargetCounts {
+    const scale = Math.max(1, scorableTrials) / JAEGGI_BASE_TRIALS;
     const perModality = Math.max(1, Math.round(JAEGGI_BASE_PER_MODALITY * scale));
     let both = Math.max(1, Math.round(JAEGGI_BASE_BOTH * scale));
     both = Math.min(both, perModality);
@@ -91,7 +95,6 @@ export function planJaeggiStimuli(input: PlanJaeggiStimuliInput): JaeggiPlanResu
     const { gameLength, sessionN, modalities, random = Math.random } = input;
     const warnings: string[] = [];
     const trials: TrialPlanEntry[] = Array.from({ length: gameLength }, () => ({ byModality: {} }));
-    const counts = scaleJaeggiTargets(gameLength);
 
     for (let t = 0; t < Math.min(sessionN, gameLength); t++) {
         for (const m of modalities) {
@@ -101,6 +104,8 @@ export function planJaeggiStimuli(input: PlanJaeggiStimuliInput): JaeggiPlanResu
 
     const scorableIndices: number[] = [];
     for (let t = sessionN; t < gameLength; t++) scorableIndices.push(t);
+    // Scale off scorable count (Jaeggi's "20" is experimental trials, not 20+n total).
+    const counts = scaleJaeggiTargets(scorableIndices.length);
 
     if (scorableIndices.length === 0 || modalities.length === 0) {
         return { ok: true, warnings, trials, counts };

@@ -16,6 +16,8 @@
     padding: var(--frame-top) var(--frame-right) 0 var(--frame-left);
 
     .brand {
+        position: relative;
+        z-index: 1;
         display: flex;
         align-items: center;
         gap: 12px;
@@ -46,7 +48,69 @@
         max-width: 7.5rem;
     }
 
+    .quick-level {
+        display: inline-flex;
+        align-items: center;
+        flex: 0 0 auto;
+        height: 44px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--background) 92%, transparent);
+        overflow: hidden;
+    }
+
+    .quick-level__button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--textBackground);
+        font: inherit;
+        font-size: 1rem;
+        line-height: 1;
+        cursor: pointer;
+        transition:
+            color var(--settle),
+            background-color var(--settle);
+
+        &:hover:not(:disabled) {
+            color: var(--textForeground);
+            background: color-mix(in srgb, var(--textForeground) 6%, transparent);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--focus-ring-color);
+            outline-offset: -3px;
+            color: var(--textForeground);
+        }
+
+        &:active:not(:disabled) {
+            color: var(--primary);
+        }
+
+        &:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+    }
+
+    .quick-level__value {
+        min-width: 1.5rem;
+        color: var(--textForeground);
+        font-size: 1rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        text-align: center;
+    }
+
     .settings-trigger {
+        position: relative;
+        z-index: 1;
         flex: 0 0 auto;
         touch-action: manipulation;
         display: inline-flex;
