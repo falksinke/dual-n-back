@@ -36,6 +36,19 @@ function progressKey(profile: string): string {
     return `nback:v2:progress:${encodeURIComponent(profile.toLocaleLowerCase('en-US'))}`;
 }
 
+function revisionKey(profile: string): string {
+    return `nback:v2:revision:${encodeURIComponent(profile.toLocaleLowerCase('en-US'))}`;
+}
+
+const SAVE_IF_UNCHANGED = `
+local revision = tonumber(redis.call('GET', KEYS[2]) or '0')
+if revision ~= tonumber(ARGV[1]) then return -1 end
+redis.call('SET', KEYS[1], ARGV[2])
+redis.call('SET', KEYS[2], revision + 1)
+redis.call('SADD', KEYS[3], ARGV[3])
+return revision + 1
+`;
+
 function clientIp(req: VercelRequest): string {
     const forwarded = req.headers['x-forwarded-for'];
     if (typeof forwarded === 'string' && forwarded.length > 0) {
@@ -144,10 +157,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     const key = progressKey(profile);
+    const revision = revisionKey(profile);
 
     try {
         if (req.method === 'GET') {
-            const raw = await redis.get<string | ProgressDocumentV1>(key);
+            const [raw, currentRevision] = await redis.mget<[
+                string | ProgressDocumentV1 | null, string | number | null
+            ]>(key, revision);
+            res.setHeader('X-Progress-Revision', String(currentRevision ?? 0));
             if (raw == null) {
                 sendJson(res, 404, { error: 'Profile does not exist' });
                 return;
@@ -161,13 +178,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         }
 
         // PUT
+        const expectedHeader = req.headers['if-match'];
+        const expected = typeof expectedHeader === 'string' ? Number(expectedHeader) : NaN;
+        if (!Number.isSafeInteger(expected) || expected < 0) {
+            sendJson(res, 428, { error: 'Expected progress revision required' });
+            return;
+        }
         const incoming = normalizeProgressDocument(req.body);
         const stamped: ProgressDocumentV1 = {
             ...incoming,
             updatedAt: new Date().toISOString(),
         };
-        await redis.set(key, JSON.stringify(stamped));
-        await redis.sadd(PROFILES_KEY, profile.toLocaleLowerCase('en-US'));
+        const nextRevision = await redis.eval<string[], number>(SAVE_IF_UNCHANGED,
+            [key, revision, PROFILES_KEY],
+            [String(expected), JSON.stringify(stamped), profile.toLocaleLowerCase('en-US')]);
+        if (nextRevision === -1) {
+            sendJson(res, 409, { error: 'Profile changed on another device' });
+            return;
+        }
+        res.setHeader('X-Progress-Revision', String(nextRevision));
         sendJson(res, 200, stamped);
     } catch {
         sendJson(res, 503, { error: 'Progress sync temporarily unavailable' });

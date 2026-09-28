@@ -61,7 +61,10 @@ export type SyncStatus =
     | { kind: 'linking' }
     | { kind: 'linked'; lastSyncedAt: string | null }
     | { kind: 'syncing'; lastSyncedAt: string | null }
+    | { kind: 'conflict'; message: string; lastSyncedAt: string | null }
     | { kind: 'error'; message: string; lastSyncedAt: string | null };
+
+class ProgressConflictError extends Error {}
 
 type Listener = () => void;
 
@@ -152,7 +155,7 @@ function mergeLocalActivity(doc: ProgressDocumentV1): ProgressDocumentV1 {
     };
 }
 
-function authHeaders(code: string): HeadersInit {
+function authHeaders(code: string): Record<string, string> {
     return {
         'X-Profile-Name': code,
         'Content-Type': 'application/json',
@@ -175,10 +178,10 @@ export async function listProfiles(): Promise<string[]> {
         : [];
 }
 
-async function putProgress(code: string, doc: ProgressDocumentV1): Promise<Response> {
+async function putProgress(code: string, doc: ProgressDocumentV1, revision: number): Promise<Response> {
     return fetch('/api/progress', {
         method: 'PUT',
-        headers: authHeaders(code),
+        headers: { ...authHeaders(code), 'If-Match': String(revision) },
         body: JSON.stringify(doc),
     });
 }
@@ -293,10 +296,28 @@ async function pushProgressOnce(): Promise<void> {
 
         let doc = collectLocalProgress();
         const remoteResponse = await fetchProgress(code);
+        let revision = 0;
         if (remoteResponse.ok) {
-            const remote = mergeLocalActivity(
-                normalizeProgressDocument(await remoteResponse.json())
-            );
+            revision = Number(remoteResponse.headers.get('X-Progress-Revision'));
+            if (!Number.isSafeInteger(revision) || revision < 0) {
+                throw new Error('Progress revision was missing');
+            }
+            const remoteOriginal = normalizeProgressDocument(await remoteResponse.json());
+            const remote = mergeLocalActivity(remoteOriginal);
+            const remoteTime = Date.parse(remote.updatedAt);
+            const lastTime = lastSyncedAt == null ? 0 : Date.parse(lastSyncedAt);
+            if (Number.isFinite(remoteTime) && remoteTime > (Number.isFinite(lastTime) ? lastTime : 0)) {
+                const localContent = { ...doc, updatedAt: '' };
+                const remoteContent = { ...remoteOriginal, updatedAt: '' };
+                if (getLocalChangeSerial() === startSerial
+                    && JSON.stringify(localContent) === JSON.stringify(remoteContent)) {
+                    writeLastSyncedAt(remote.updatedAt);
+                    setProgressDirty(false);
+                    emitStatus({ kind: 'linked', lastSyncedAt: remote.updatedAt });
+                    return;
+                }
+                throw new ProgressConflictError('This profile changed on another device. Local changes were not uploaded.');
+            }
             doc = {
                 ...doc,
                 statistics: remote.statistics,
@@ -307,7 +328,10 @@ async function pushProgressOnce(): Promise<void> {
             // Without the latest profile document, a PUT could erase another device's checkpoint.
             throw new Error(await readErrorMessage(remoteResponse));
         }
-        const res = await putProgress(code, doc);
+        const res = await putProgress(code, doc, revision);
+        if (res.status === 409) {
+            throw new ProgressConflictError(await readErrorMessage(res));
+        }
         if (!res.ok) {
             if (loadProfile() !== code) return;
             const message = await readErrorMessage(res);
@@ -333,7 +357,7 @@ async function pushProgressOnce(): Promise<void> {
         if (loadProfile() !== code) return;
         setProgressDirty(true);
         emitStatus({
-            kind: 'error',
+            kind: error instanceof ProgressConflictError ? 'conflict' : 'error',
             message: error instanceof Error ? error.message : 'Could not reach the server',
             lastSyncedAt,
         });
@@ -362,6 +386,11 @@ export async function applyProfile(rawProfile: string): Promise<void> {
             lastSyncedAt: readLastSyncedAt(),
         });
         throw new Error(validationError);
+    }
+    if (previousProfile?.toLocaleLowerCase('en-US') === code.toLocaleLowerCase('en-US')) {
+        if (isProgressDirty()) scheduleProgressPush();
+        else refreshLinkedStatus();
+        return;
     }
 
     try {
@@ -402,7 +431,7 @@ export async function applyProfile(rawProfile: string): Promise<void> {
             }
             seed.fireflyPost = seedFirefly;
             if (selectionGeneration !== profileSelectionGeneration) return;
-            const putRes = await putProgress(code, seed);
+            const putRes = await putProgress(code, seed, 0);
             if (selectionGeneration !== profileSelectionGeneration) return;
             if (!putRes.ok) {
                 const message = await readErrorMessage(putRes);
@@ -470,10 +499,17 @@ export async function pullIfNewer(): Promise<void> {
     }
 
     const lastSyncedAt = readLastSyncedAt();
+    const startSerial = getLocalChangeSerial();
     emitStatus({ kind: 'syncing', lastSyncedAt });
 
     try {
         const res = await fetchProgress(code);
+        if (loadProfile() !== code) return;
+        if (getLocalChangeSerial() !== startSerial || isProgressDirty()) {
+            setProgressDirty(true);
+            scheduleProgressPush();
+            return;
+        }
         if (res.status === 404) {
             await pushProgress();
             return;
@@ -486,6 +522,11 @@ export async function pullIfNewer(): Promise<void> {
         }
         if (loadProfile() !== code) return;
         const doc = mergeLocalActivity(normalizeProgressDocument(await res.json()));
+        if (getLocalChangeSerial() !== startSerial || isProgressDirty()) {
+            setProgressDirty(true);
+            scheduleProgressPush();
+            return;
+        }
         const remoteFirefly = doc.fireflyPost;
         const localFirefly = loadFireflyProgress(code);
         const mergedFirefly = newerFireflyProgress(localFirefly, remoteFirefly);
@@ -511,6 +552,34 @@ export async function pullIfNewer(): Promise<void> {
             message: 'Could not reach the server',
             lastSyncedAt,
         });
+    }
+}
+
+/** Explicitly replace unsynced local progress after a sync conflict. */
+export async function useCloudProgress(): Promise<void> {
+    const profile = loadProfile();
+    if (profile == null) return;
+    const startSerial = getLocalChangeSerial();
+    const lastSyncedAt = readLastSyncedAt();
+    emitStatus({ kind: 'syncing', lastSyncedAt });
+    try {
+        const res = await fetchProgress(profile);
+        if (!res.ok) throw new Error(await readErrorMessage(res));
+        const doc = normalizeProgressDocument(await res.json());
+        if (loadProfile() !== profile || getLocalChangeSerial() !== startSerial) {
+            throw new ProgressConflictError('Progress changed while loading the cloud version. Try again.');
+        }
+        hydrateStoreFromDocument(doc);
+        writeLastSyncedAt(doc.updatedAt);
+        setProgressDirty(false);
+        emitStatus({ kind: 'linked', lastSyncedAt: doc.updatedAt });
+    } catch (error) {
+        if (loadProfile() !== profile) return;
+        setProgressDirty(true);
+        emitStatus({ kind: error instanceof ProgressConflictError ? 'conflict' : 'error',
+            message: error instanceof Error ? error.message : 'Could not load cloud progress',
+            lastSyncedAt });
+        throw error;
     }
 }
 

@@ -29,6 +29,7 @@ import {
     getSyncStatus,
     listProfiles,
     subscribeSyncStatus,
+    useCloudProgress,
     type SyncStatus,
 } from '../../sync/progressSync';
 import { fireKind, isIOS } from '../../haptics/haptics';
@@ -101,6 +102,7 @@ function syncStatusLabel(status: SyncStatus): string {
         case 'linked':
             return status.lastSyncedAt != null ? 'Linked · synced' : 'Linked';
         case 'error':
+        case 'conflict':
             return status.message;
         default:
             return 'Not linked';
@@ -247,6 +249,20 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
             const selected = loadProfile() ?? profile.trim();
             setProfileDraft(selected);
             setProfiles(await listProfiles());
+            fireKind('selection');
+        } catch {
+            // Status text already updated in progressSync.
+        } finally {
+            setApplyBusy(false);
+            setSyncStatus(getSyncStatus());
+        }
+    };
+
+    const onUseCloudProgress = async () => {
+        if (applyBusy) return;
+        setApplyBusy(true);
+        try {
+            await useCloudProgress();
             fireKind('selection');
         } catch {
             // Status text already updated in progressSync.
@@ -1366,7 +1382,7 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             <div className="settings-row-copy">
                                 <span className="settings-row-label">Profile</span>
                                 <span className="settings-row-hint">
-                                    Create or select a private profile. Use the same profile on each device.
+                                    Use the same profile on each device. Anyone with access to this site can select it.
                                 </span>
                             </div>
                             {profiles.length > 0 && (
@@ -1423,12 +1439,18 @@ const SettingsPanel = ({ open, onClose, onHapticsEnabledChange }: SettingsPanelP
                             </div>
                             <span
                                 className={`settings-player-code-status${
-                                    syncStatus.kind === 'error' ? ' is-error' : ''
+                                    syncStatus.kind === 'error' || syncStatus.kind === 'conflict' ? ' is-error' : ''
                                 }`}
                                 role="status"
                             >
                                 {syncStatusLabel(syncStatus)}
                             </span>
+                            {syncStatus.kind === 'conflict' && (
+                                <button type="button" className="settings-player-code-apply"
+                                    disabled={applyBusy} onClick={() => void onUseCloudProgress()}>
+                                    Use cloud version · discard unsynced changes here
+                                </button>
+                            )}
                         </div>
                     </SettingsSection>
                 </div>

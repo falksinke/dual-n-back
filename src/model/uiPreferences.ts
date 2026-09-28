@@ -120,7 +120,6 @@ export function recordVisit(storage?: StorageLike): UiPreferencesV1 {
     const current = loadUiPreferences(storage);
     const next = { ...current, visitCount: current.visitCount + 1 };
     saveUiPreferences(next, storage);
-    noteUiPrefsChanged();
     return next;
 }
 
@@ -150,4 +149,3 @@ export function setHapticFeedbackEnabled(
     noteUiPrefsChanged();
     return next;
 }
-
