@@ -38,7 +38,6 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const pressRef = useRef(0);
     const soundsRef = useRef<PracticeSounds | null>(null);
     const [phase, setPhase] = useState<Phase>('idle');
-    const [sequence, setSequence] = useState<number[]>([]);
     const [activeCell, setActiveCell] = useState<number | null>(null);
     const [activeOrder, setActiveOrder] = useState<number | null>(null);
     const [recall, setRecall] = useState<number[]>([]);
@@ -78,8 +77,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
 
     const playSequence = (nextSequence: number[], speed: number): void => {
         cancelScheduled();
-        // Dispatch controls can sit below the village on narrow screens. Bring targets into
-        // view synchronously, not through an animation or an extra cue delay.
+        // Bring targets into view synchronously after starting from the village caption.
         sceneRef.current?.querySelector<HTMLElement>('.firefly-village__grid')
             ?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
         recallRef.current = [];
@@ -110,14 +108,12 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         hiddenPositionsRef.current = new Set();
         sequenceRef.current = nextSequence;
         itemMsRef.current = INITIAL_ITEM_MS;
-        setSequence(nextSequence);
         setItemMs(INITIAL_ITEM_MS);
         playSequence(nextSequence, INITIAL_ITEM_MS);
     };
 
     const replaySequence = (): void => {
         if (sequenceRef.current.length > 0) {
-            setSequence(sequenceRef.current);
             playSequence(sequenceRef.current, itemMsRef.current);
         }
     };
@@ -128,7 +124,6 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         hiddenPositionsRef.current = new Set();
         historyRef.current = [];
         itemMsRef.current = INITIAL_ITEM_MS;
-        setSequence([]);
         recallRef.current = [];
         setRecall([]);
         setItemMs(INITIAL_ITEM_MS);
@@ -170,7 +165,6 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             hiddenPositionsRef.current = endback
                 ? chooseHiddenPositions(length, hiddenCount, hiddenPlacement) : new Set();
             schedule(() => {
-                setSequence(next);
                 playSequence(next, faster);
             }, SUCCESS_PAUSE_MS, run);
         }
@@ -184,7 +178,6 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         itemMsRef.current = INITIAL_ITEM_MS;
         setLength(nextLength);
         setHiddenCount((count) => Math.min(count, nextLength - 1));
-        setSequence([]);
         recallRef.current = [];
         setRecall([]);
         setItemMs(INITIAL_ITEM_MS);
@@ -313,41 +306,15 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                     <FireflyVillage phase={phase} activeCell={activeCell} activeOrder={activeOrder}
                         middleWindowEnabled={middleWindowEnabled}
                         tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell}
-                        onNewSequence={startNewSequence} onReset={stop} />
-                </div>
-
-                <aside className="spatial-practice__dispatch" aria-label="Post-office dispatch">
-                    <p className="spatial-practice__eyebrow">The night shift</p>
-                    <div className="spatial-practice__status" role="status" aria-live="polite" aria-atomic="true">
-                        <h2><span className="spatial-practice__feedback-icon" aria-hidden="true">
-                            {phase === 'success' ? '✓' : phase === 'retry' ? '×' : phase === 'paused' ? 'Ⅱ' : null}
-                        </span>{titles[phase]}</h2>
-                        <p id="spatial-practice-status">{status}</p>
-                    </div>
-                    <dl className="spatial-practice__route-facts">
-                        <div><dt>Letters</dt><dd>{sequence.length || length}</dd></div>
-                        <div><dt>{phase === 'success' ? 'Next pace' : 'Pace'}</dt><dd>{itemMs}<small> ms / window</small></dd></div>
-                    </dl>
-
-                    <div className="spatial-practice__controls">
-                        {phase === 'idle' ? (
-                            <button type="button" className="is-primary" onClick={startNewSequence}>
-                                Start route <span aria-hidden="true">→</span>
-                            </button>
-                        ) : (
-                            <>
-                                {(phase === 'retry' || phase === 'paused') && (
-                                    <button type="button" className="is-primary" onClick={replaySequence}>Replay route</button>
-                                )}
-                                <button type="button" onClick={startNewSequence}>New sequence</button>
-                                <button type="button" onClick={stop}>Stop / reset</button>
-                            </>
-                        )}
-                    </div>
-                    <p id="spatial-practice-help" className="spatial-practice__instruction">
+                        onReplay={replaySequence} onNewSequence={startNewSequence} onReset={stop} />
+                    <p id="spatial-practice-status" className="spatial-practice__sr-only"
+                        role="status" aria-live="polite" aria-atomic="true">
+                        {titles[phase]} {status}
+                    </p>
+                    <p id="spatial-practice-help" className="spatial-practice__sr-only">
                         Tap once per letter, in order. A window may appear more than once.
                     </p>
-                </aside>
+                </div>
             </div>
 
             <p className="spatial-practice__keyboard-hint">

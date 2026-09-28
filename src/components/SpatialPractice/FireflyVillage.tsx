@@ -11,6 +11,7 @@ export interface FireflyVillageProps {
     wrongCell: number | null;
     middleWindowEnabled: boolean;
     onChoose: (cell: number) => void;
+    onReplay: () => void;
     onNewSequence: () => void;
     onReset: () => void;
 }
@@ -33,7 +34,7 @@ function MiddleBalcony() {
 }
 
 /** A view of the current pulse and the player's last tap only — no hidden route. */
-export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, middleWindowEnabled, onChoose, onNewSequence, onReset }: FireflyVillageProps) {
+export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, middleWindowEnabled, onChoose, onReplay, onNewSequence, onReset }: FireflyVillageProps) {
     const windowsRef = useRef<Array<HTMLButtonElement | null>>([]);
     const courierPose = phase === 'idle' ? 'idle'
         : phase === 'success' ? 'success'
@@ -126,6 +127,9 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
                 {phase === 'idle' ? (
                     <button type="button" onClick={onNewSequence}>Start route <span aria-hidden="true">→</span></button>
                 ) : <>
+                    {(phase === 'retry' || phase === 'paused') && (
+                        <button type="button" onClick={onReplay}>Replay route</button>
+                    )}
                     <button type="button" onClick={onNewSequence}>New sequence</button>
                     <button type="button" onClick={onReset}>Stop / reset</button>
                 </>}

@@ -16,12 +16,12 @@ The courier stays at street level, outside the decision area. A correct tap inse
 
 | Phase | Interface and behavior |
 | --- | --- |
-| Idle | **Start route** appears in both the village caption and dispatch slip. A button beside the moon opens the route-settings dialog. Length defaults to 5 and ranges from 1–9. The middle window defaults on and can be turned into a balcony. Interference defaults to Off and retains the existing eighth-step fractions through 1. New-sequence-after-success and speed increase default on; maths and Endback default off. |
+| Idle | **Start route** appears in the village caption. A button beside the moon opens the route-settings dialog. Length defaults to 5 and ranges from 1–9. The middle window defaults on and can be turned into a balcony. Interference defaults to Off and retains the existing eighth-step fractions through 1. New-sequence-after-success and speed increase default on; maths and Endback default off. |
 | Showing | The available targets stay in place; the balcony never lights or receives a delivery. Each item uses the same full stimulus bleep and volume as Single N-Back, with the existing 70% active / 30% blank timing. The initial interval is 1000 ms. Window illumination fades in over 160 ms and out over 60 ms; the outfade finishes within the blank interval, including at the fastest pace. Brackets, firefly and ordinal disappear at the active-to-blank boundary. |
 | Maths | The existing modal subtraction gates recall. Two independently random integers from 10–99 are arranged as larger minus smaller. The existing trimmed-digits validation, zero-answer handling, retry, input reselection, one-shot completion guard and Cancel/Escape behavior remain. A wrong maths answer stays in this dialog and is not a spatial error. The confirmation button is called **Check change**. |
 | Recall | Every native button tap is graded immediately by the existing owner. The current delivery count is shown, not an answer strip. A wrong tap ends recall immediately. The final correct tap starts success automatically. No route Submit, Undo, answer editing or deferred grading was added. |
 | Success | The existing 1000 ms success timeout controls the next presentation. With speed increase enabled, the interval becomes `Math.max(300, Math.round(current * 0.9))`. Standard mode retains the original same/new-sequence choice. The next intended route is selected immediately, before the timeout, exactly as in the supplied controller. No additional celebration delay or blocking overlay exists. |
-| Retry | The wrong window has a cross; the status reports the wrong delivery step without revealing the expected destination. **Replay route**, **New sequence** and **Stop / reset** remain available. Replay uses the current route and speed. |
+| Retry | The wrong window has a cross; the screen-reader status reports the wrong delivery step without revealing the expected destination. **Replay route**, **New sequence** and **Stop / reset** remain available in the village. Replay uses the current route and speed. |
 | Paused | Hiding the page during showing, maths, recall or success cancels scheduled work and sounds, clears partial recall and removes target/tap material. Return does not resume automatically. Replay starts the intended route from the beginning at the retained speed. The stable village geography remains visible, but not a remembered route. |
 
 A manually requested **New sequence** resets the interval to 1000 ms. It is distinct from retry Replay and from automatic progression after success. **Stop / reset** clears route, history and recall, resets pace to 1000 ms, and returns to idle while retaining the current settings. Changing the length retains its existing reset behavior. **All exercises** invokes the supplied `onExit` callback after cancellation.
@@ -42,7 +42,7 @@ The standard generator and history-based interference rules apply to the availab
 - Whether the middle window is available or shown as a balcony.
 - The current completed-tap feedback and, on retry, the already-reported wrong location.
 - A callback for the player's chosen button.
-- Callbacks for Start route/New sequence and Stop / reset in the village caption.
+- Callbacks for Start route/New sequence, Replay route and Stop / reset in the village caption.
 
 It does not receive the hidden sequence, expected next destination, history or recall array. Its only ref is an array of native buttons for keyboard focus. `Courier` receives a pose derived from the phase and already-completed feedback, never any location. There are no destination-dependent SVG titles, hidden ARIA hints, data attributes or route-related decorative cues.
 
@@ -56,17 +56,17 @@ The available response areas are native buttons with static position, row and co
 
 On non-idle phase transitions, focus moves to the **neutral village group**, never an expected destination. This removes the previous response's focus ring before presentation or pause. Reset also returns focus to that group. Existing modal mount/unmount synchronization uses `useMountEffect`; no direct React `useEffect` call was introduced.
 
-The village precedes the dispatch slip in document order. At wide sizes the slip sits beside the village; on narrow screens it sits below it. Both stay mounted across phases, so changing a status or control does not reflow the window map. Before a presentation, the controller requests a synchronous nearest scroll of the entire response grid when needed, so starting from dispatch below the scene does not intentionally add a delay or require a flight animation. It does not scroll to an individual answer.
+The village is centered in a single-column practice layout. The former Post-office dispatch panel is removed; its status and instructions remain visually hidden for screen readers and as descriptions of the village. The scene controls stay mounted across phases, so changing a status or control does not reflow the window map. Before a presentation, the controller requests a synchronous nearest scroll of the entire response grid when needed. It does not scroll to an individual answer.
 
-After a wrong address or a pause, **Replay route** and **New sequence** also appear beside the status at the top of the village. These native buttons reuse the dispatch actions, wrap on narrow screens and have 44 px minimum touch targets. The toolbar sits over the sky without moving the window map.
+After a wrong address or a pause, **Replay route** and **New sequence** also appear in the toolbar at the top of the village. These native buttons wrap on narrow screens and have 44 px minimum touch targets. The toolbar sits over the sky without moving the window map.
 
-The village's bottom caption bar shows **Start route** while idle and **New sequence** plus **Stop / reset** during a route. They call the same controller actions as the dispatch buttons; the window map stays fixed. The gear button in the sky beside the moon opens a native modal dialog containing all dispatch settings. The dialog uses the village's night palette, traps focus, closes with Escape or its close button, and returns focus to the gear. Settings no longer take space in the dispatch slip.
+The village's bottom caption bar shows **Start route** while idle and **New sequence** plus **Stop / reset** during a route. On retry or pause it also shows **Replay route**, keeping that action reachable when the bottom of the village is in view. The window map stays fixed. The gear button in the sky beside the moon opens a native modal dialog containing all route settings. The dialog uses the village's night palette, traps focus, closes with Escape or its close button, and returns focus to the gear.
 
-The grid explicitly specifies both `repeat(3, minmax(0, 1fr))` columns and rows, has a 1:1 aspect ratio, and does not shrink as a flex child. Buttons fill equal square cells and have 44 px minimum dimensions. SVG and transient markers do not contribute intrinsic row height. Town width also has a viewport-height cap for shorter screens. Very short viewports can still require scrolling to the dispatch controls.
+The grid explicitly specifies both `repeat(3, minmax(0, 1fr))` columns and rows, has a 1:1 aspect ratio, and does not shrink as a flex child. Buttons fill equal square cells and have 44 px minimum dimensions. SVG and transient markers do not contribute intrinsic row height. Town width also has a viewport-height cap for shorter screens.
 
 Layout gaps, margins and padding use the supplied `--space-xs`, `--space-sm`, `--space-md`, `--space-lg` and `--space-xl` tokens. Pixel/percentage values inside art describe illustration geometry, stroke widths, sizes or animation offsets.
 
-Surrounding text, forms, dispatch background and borders inherit the app's existing theme variables. The village deliberately remains a night scene in both themes. No assumption about an omitted theme hook's internal data attributes is needed. The existing chooser remains the place to change the app theme.
+Surrounding text and forms inherit the app's existing theme variables. The village deliberately remains a night scene in both themes. No assumption about an omitted theme hook's internal data attributes is needed. The existing chooser remains the place to change the app theme.
 
 Current presentation is still a **visual spatial-memory task**: position labels and keyboard operation do not constitute an equivalent nonvisual presentation mode. No new spoken location or mnemonic cues were added.
 
@@ -78,7 +78,7 @@ All paths in the ZIP are repository-relative; there is no `source/` prefix.
 | --- | --- |
 | `src/components/SpatialPractice/index.tsx` | Themed composition, current-feedback projection, neutral focus and grid visibility handling; existing controller retained. |
 | `src/components/SpatialPractice/PracticeSettings.tsx` | Dispatch copy and interference help; the same settings, values and idle-only lock. |
-| `src/components/SpatialPractice/SpatialPractice.scss` | Local responsive game layout, dispatch slip, controls, theme-token styling and focus. |
+| `src/components/SpatialPractice/SpatialPractice.scss` | Local single-column game layout, scene controls, theme-token styling and focus. |
 | `src/components/SpatialPractice/MathChallenge.tsx` | Postage copy, original envelope seal and accessible dialog description; arithmetic and validation retained. |
 | `src/components/SpatialPractice/MathChallenge.scss` | Local postage-dialog styling. |
 | `src/components/SpatialPractice/FireflyVillage.tsx` | **New:** presentational village, native targets, inline window SVG and keyboard focus navigation. |

@@ -63,10 +63,8 @@
 }
 
 .spatial-practice__body {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 18rem;
-    align-items: start;
-    gap: var(--space-lg);
+    width: min(100%, 50rem);
+    margin-inline: auto;
     min-width: 0;
 }
 
@@ -77,6 +75,18 @@
     scroll-margin-block-start: var(--space-sm);
     &:focus { outline: none; }
     &:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+}
+
+.spatial-practice__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .spatial-practice__scene-toolbar {
@@ -127,53 +137,6 @@
     line-height: 1.4;
     font-weight: 500;
     pointer-events: none;
-}
-
-.spatial-practice__dispatch {
-    position: relative;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-    padding: var(--space-lg) var(--space-md);
-    border-block: 1px solid var(--border);
-    background: var(--fp-paper);
-
-    > .spatial-practice__eyebrow { margin: 0; }
-}
-
-.spatial-practice__status {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-    h2 {
-        margin: 0;
-        font-family: Georgia, 'Times New Roman', serif;
-        font-weight: 400;
-        font-size: clamp(1.5rem, 2.5vw, 1.875rem);
-        line-height: 1.15;
-        letter-spacing: -.025em;
-    }
-    p { margin: 0; font-size: .9rem; line-height: 1.6; color: var(--fp-muted); }
-}
-
-.spatial-practice__feedback-icon:not(:empty) {
-    display: inline-block;
-    margin-inline-end: var(--space-xs);
-    font: 600 .9em / 1 system-ui, sans-serif;
-}
-
-.spatial-practice__route-facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-sm) var(--space-lg);
-    margin: 0;
-    padding-block: var(--space-sm);
-    border-block: 1px solid var(--border);
-    font-variant-numeric: tabular-nums;
-    dt { font-size: .7rem; line-height: 1.5; color: var(--fp-muted); }
-    dd { margin: 0; line-height: 1.6; font-size: 1.05rem; font-weight: 500; }
-    small { font-size: .7rem; font-weight: 400; color: var(--fp-muted); }
 }
 
 .spatial-practice__controls {
@@ -257,7 +220,6 @@
     &:hover { background: var(--fp-paper); border-color: var(--primary); }
 }
 
-.spatial-practice__instruction,
 .spatial-practice__setting-help, .spatial-practice__keyboard-hint {
     margin: 0;
     color: var(--fp-muted);
@@ -370,19 +332,9 @@
     text-align: center;
 }
 
-.spatial-practice.is-success .spatial-practice__feedback-icon { color: var(--textForeground); }
-.spatial-practice.is-retry .spatial-practice__dispatch { border-block-start-color: #bd8c7d; }
-
-@media (max-width: 54rem) {
-    .spatial-practice__body { grid-template-columns: minmax(0, 1fr); }
-    .spatial-practice__dispatch { padding: var(--space-lg); }
-    .spatial-practice__controls .is-primary { flex-basis: auto; }
-}
-
 @media (max-width: 24rem) {
     .spatial-practice__header { gap: var(--space-sm); }
     .spatial-practice__back { padding-inline: var(--space-sm); }
-    .spatial-practice__dispatch { padding-inline: var(--space-md); }
     .spatial-practice__settings-dialog { padding: var(--space-md); }
 }
 
