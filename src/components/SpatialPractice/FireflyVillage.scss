@@ -107,6 +107,38 @@
         pointer-events: none;
     }
 
+    &__streak {
+        position: absolute;
+        z-index: 1;
+        top: var(--space-xs);
+        left: min(calc(46% + 4.25rem), calc(100% - 7.25rem));
+        margin: 0;
+        padding: var(--space-xs) var(--space-sm);
+        border: 2px solid #514655;
+        border-radius: var(--radius-md);
+        background: #f4dfb9;
+        box-shadow: 0 3px 0 rgb(30 34 54 / 30%);
+        color: #303247;
+        font-size: clamp(.75rem, 2vw, .875rem);
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
+
+        strong { font-size: 1.2em; font-variant-numeric: tabular-nums; }
+        &::after {
+            content: '';
+            position: absolute;
+            left: -.4rem;
+            bottom: .35rem;
+            width: .6rem;
+            height: .6rem;
+            border-left: 2px solid #514655;
+            border-bottom: 2px solid #514655;
+            background: #f4dfb9;
+            transform: rotate(45deg);
+        }
+    }
+
     &__cobbles {
         position: absolute;
         inset: 0;

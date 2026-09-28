@@ -10,6 +10,7 @@ export interface FireflyVillageProps {
     tapFeedback: { cell: number; correct: boolean; id: number } | null;
     wrongCell: number | null;
     middleWindowEnabled: boolean;
+    streak: number;
     onChoose: (cell: number) => void;
     onReplay: () => void;
     onNewSequence: () => void;
@@ -34,7 +35,7 @@ function MiddleBalcony() {
 }
 
 /** A view of the current pulse and the player's last tap only — no hidden route. */
-export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, middleWindowEnabled, onChoose, onReplay, onNewSequence, onReset }: FireflyVillageProps) {
+export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeedback, wrongCell, middleWindowEnabled, streak, onChoose, onReplay, onNewSequence, onReset }: FireflyVillageProps) {
     const windowsRef = useRef<Array<HTMLButtonElement | null>>([]);
     const courierPose = phase === 'idle' ? 'idle'
         : phase === 'success' ? 'success'
@@ -112,7 +113,7 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
                 })}
             </div>
         </div>
-        <div className="firefly-village__street" aria-hidden="true">
+        <div className="firefly-village__street">
             <span className="firefly-village__cobbles" />
             <PostOffice />
             <StreetLamp />
@@ -120,6 +121,9 @@ export default function FireflyVillage({ phase, activeCell, activeOrder, tapFeed
             <Planter className="firefly-village__plant firefly-village__plant--right" />
             <SleepingCat />
             <Courier pose={courierPose} />
+            <p className="firefly-village__streak" role="status" aria-live="polite" aria-atomic="true">
+                Streak <strong>{streak}</strong>
+            </p>
         </div>
         <div className="firefly-village__caption">
             <span aria-hidden="true">F I R E F L Y &nbsp; P O S T</span>

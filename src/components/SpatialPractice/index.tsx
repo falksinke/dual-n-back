@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffectEvent, useRef, useState } from 'react';
 import { useMountEffect } from '../../hooks/useMountEffect';
 import './SpatialPractice.scss';
 import { PracticeSounds } from './sounds';
@@ -38,6 +38,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const pressRef = useRef(0);
     const soundsRef = useRef<PracticeSounds | null>(null);
     const [phase, setPhase] = useState<Phase>('idle');
+    const [streak, setStreak] = useState(0);
     const [activeCell, setActiveCell] = useState<number | null>(null);
     const [activeOrder, setActiveOrder] = useState<number | null>(null);
     const [recall, setRecall] = useState<number[]>([]);
@@ -104,6 +105,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     };
 
     const startNewSequence = (): void => {
+        if (phaseRef.current !== 'idle' && phaseRef.current !== 'success') setStreak(0);
         const nextSequence = createSequence(length, sequenceRef.current, historyRef.current, interference, middleWindowEnabled);
         hiddenPositionsRef.current = new Set();
         sequenceRef.current = nextSequence;
@@ -124,6 +126,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         hiddenPositionsRef.current = new Set();
         historyRef.current = [];
         itemMsRef.current = INITIAL_ITEM_MS;
+        setStreak(0);
         recallRef.current = [];
         setRecall([]);
         setItemMs(INITIAL_ITEM_MS);
@@ -144,11 +147,13 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         setRecall(nextRecall);
         const expected = sequenceRef.current[nextRecall.length - 1];
         if (cell !== expected) {
+            setStreak(0);
             soundsRef.current?.play('failure');
             updatePhase('retry');
             return;
         }
         if (nextRecall.length === sequenceRef.current.length) {
+            setStreak((current) => current + 1);
             const faster = increaseSpeed
                 ? Math.max(MIN_ITEM_MS, Math.round(itemMsRef.current * 0.9)) : itemMsRef.current;
             itemMsRef.current = faster;
@@ -176,6 +181,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         hiddenPositionsRef.current = new Set();
         historyRef.current = [];
         itemMsRef.current = INITIAL_ITEM_MS;
+        setStreak(0);
         setLength(nextLength);
         setHiddenCount((count) => Math.min(count, nextLength - 1));
         recallRef.current = [];
@@ -192,6 +198,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const openSettings = (): void => {
         if (phaseRef.current === 'idle') settingsDialogRef.current?.showModal();
     };
+
+    // The document listener is mounted once; the event uses the latest route settings.
+    const startRouteFromKeyboard = useEffectEvent(() => startNewSequence());
 
     useMountEffect(() => {
         soundsRef.current = new PracticeSounds();
@@ -214,11 +223,22 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             event.preventDefault();
             stop();
         };
+        const handleSpace = (event: KeyboardEvent): void => {
+            if (event.code !== 'Space' || event.repeat || event.defaultPrevented
+                || phaseRef.current !== 'idle' || document.querySelector('dialog[open]')) return;
+            if (event.target instanceof Element && event.target.closest(
+                'button, a, input, select, textarea, summary, [contenteditable], [role="button"], [role="checkbox"]'
+            )) return;
+            event.preventDefault();
+            startRouteFromKeyboard();
+        };
         document.addEventListener('visibilitychange', handleVisibility);
         document.addEventListener('keydown', handleEscape);
+        document.addEventListener('keydown', handleSpace);
         return () => {
             document.removeEventListener('visibilitychange', handleVisibility);
             document.removeEventListener('keydown', handleEscape);
+            document.removeEventListener('keydown', handleSpace);
             soundsRef.current?.dispose();
             soundsRef.current = null;
             runRef.current += 1;
@@ -304,7 +324,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                         </svg>
                     </button>
                     <FireflyVillage phase={phase} activeCell={activeCell} activeOrder={activeOrder}
-                        middleWindowEnabled={middleWindowEnabled}
+                        middleWindowEnabled={middleWindowEnabled} streak={streak}
                         tapFeedback={tapFeedback} wrongCell={wrongCell} onChoose={chooseCell}
                         onReplay={replaySequence} onNewSequence={startNewSequence} onReset={stop} />
                     <p id="spatial-practice-status" className="spatial-practice__sr-only"
@@ -318,6 +338,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             </div>
 
             <p className="spatial-practice__keyboard-hint">
+                <span>When idle, Space starts a route.</span>
                 <span>Tab to a window; arrow keys move focus.</span>
                 <span>Enter or Space delivers. Touch: tap a window.</span>
                 <span>Escape stops the route.</span>
