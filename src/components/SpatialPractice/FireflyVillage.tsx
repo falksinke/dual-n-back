@@ -18,14 +18,13 @@ export interface FireflyVillageProps {
 const HOUSES = ['clay', 'sage', 'plum'] as const;
 
 function MiddleBalcony() {
-    return <div className="firefly-balcony" role="img" aria-label="Middle balcony, no deliveries">
+    return <div className="firefly-balcony" role="img" aria-label="Middle balcony with closed curtains, no deliveries">
         <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
             <rect x="18" y="13" width="84" height="91" rx="8" fill="#b8aea4" stroke="#34364c" strokeWidth="3" />
             <path d="M25 22h70v67H25Z" fill="#35485c" />
-            <path d="M60 22v67M27 66h66" stroke="#a6a7a5" strokeWidth="4" />
-            <path d="m29 24 14 0-14 28Zm62 0H77l14 28Z" fill="#c7d1d9" opacity=".12" />
-            <circle cx="54" cy="60" r="2" fill="#efd09b" />
-            <circle cx="66" cy="60" r="2" fill="#efd09b" />
+            <path d="M25 22h35v67H25Zm35 0h35v67H60Z" fill="#c6b3a2" />
+            <path d="M31 23c-3 17 3 48 0 65m10-65c-2 19 2 47 0 65m10-65c-2 21 2 46 0 65m18-65c-2 19 2 48 0 65m10-65c-3 18 3 47 0 65m10-65c-2 19 2 47 0 65" fill="none" stroke="#9b897f" strokeWidth="2" opacity=".65" />
+            <path d="M60 22v67" stroke="#a6a7a5" strokeWidth="4" />
             <path d="M11 77h98v8H11Z" fill="#d0b7a0" stroke="#4e495b" strokeWidth="2" />
             <path d="M17 85v26m86-26v26M32 85v24m14-24v24m14-24v24m14-24v24m14-24v24" stroke="#4e495b" strokeWidth="4" />
             <path d="M10 110h100v6H10Z" fill="#b89b83" stroke="#4e495b" strokeWidth="2" />
