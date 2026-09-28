@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useMountEffect } from '../../hooks/useMountEffect';
 import './SpatialPractice.scss';
 import { PracticeSounds } from './sounds';
-import { createSequence } from './sequence';
+import { advanceEndbackSequence, chooseHiddenPositions, createSequence, type HiddenPlacement } from './sequence';
 import MathChallenge from './MathChallenge';
 import PracticeSettings from './PracticeSettings';
 import FireflyVillage from './FireflyVillage';
@@ -22,6 +22,10 @@ const SUCCESS_PAUSE_MS = 1000;
 const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const sceneRef = useRef<HTMLDivElement>(null);
     const [length, setLength] = useState(5);
+    const [endback, setEndback] = useState(false);
+    const [hiddenCount, setHiddenCount] = useState(1);
+    const [hiddenPlacement, setHiddenPlacement] = useState<HiddenPlacement>('first');
+    const hiddenPositionsRef = useRef<Set<number>>(new Set());
     const [increaseSpeed, setIncreaseSpeed] = useState(true);
     const [interference, setInterference] = useState(0);
     const [mathEnabled, setMathEnabled] = useState(false);
@@ -85,8 +89,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
                 return;
             }
             historyRef.current = [...historyRef.current, nextSequence[index]].slice(-2 * length);
+            // The neutral bleep marks every slot; only its window location is hidden.
             soundsRef.current?.play('item');
-            setActiveCell(nextSequence[index]);
+            setActiveCell(hiddenPositionsRef.current.has(index) ? null : nextSequence[index]);
             setActiveOrder(index + 1);
             schedule(() => {
                 setActiveCell(null);
@@ -99,6 +104,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
 
     const startNewSequence = (): void => {
         const nextSequence = createSequence(length, sequenceRef.current, historyRef.current, interference);
+        hiddenPositionsRef.current = new Set();
         sequenceRef.current = nextSequence;
         itemMsRef.current = INITIAL_ITEM_MS;
         setSequence(nextSequence);
@@ -116,6 +122,7 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const stop = (): void => {
         cancelScheduled();
         sequenceRef.current = [];
+        hiddenPositionsRef.current = new Set();
         historyRef.current = [];
         itemMsRef.current = INITIAL_ITEM_MS;
         setSequence([]);
@@ -152,9 +159,13 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
             updatePhase('success');
             const run = runRef.current;
             // Select the next pattern now so a background pause resumes the intended round.
-            const next = newSequenceOnSuccess
-                ? createSequence(length, sequenceRef.current, historyRef.current, interference) : sequenceRef.current;
+            const next = endback
+                ? advanceEndbackSequence(sequenceRef.current, interference)
+                : newSequenceOnSuccess
+                    ? createSequence(length, sequenceRef.current, historyRef.current, interference) : sequenceRef.current;
             sequenceRef.current = next;
+            hiddenPositionsRef.current = endback
+                ? chooseHiddenPositions(length, hiddenCount, hiddenPlacement) : new Set();
             schedule(() => {
                 setSequence(next);
                 playSequence(next, faster);
@@ -165,9 +176,11 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
     const changeLength = (nextLength: number): void => {
         cancelScheduled();
         sequenceRef.current = [];
+        hiddenPositionsRef.current = new Set();
         historyRef.current = [];
         itemMsRef.current = INITIAL_ITEM_MS;
         setLength(nextLength);
+        setHiddenCount((count) => Math.min(count, nextLength - 1));
         setSequence([]);
         recallRef.current = [];
         setRecall([]);
@@ -215,21 +228,25 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
         retry: 'Not this address.',
         paused: 'The village can wait.',
     };
+    const hiddenOrder = phase === 'showing' && activeOrder !== null
+        && hiddenPositionsRef.current.has(activeOrder - 1) ? activeOrder : null;
     const status = phase === 'idle'
         ? 'Watch the windows light up. Then deliver your letters in the same order.'
         : phase === 'showing'
-            ? 'Remember the order. Wait for the firefly to finish before delivering.'
+            ? hiddenOrder !== null
+                ? `Stop ${hiddenOrder} of ${length} is hidden. Recall it from the last route.`
+                : 'Remember the order. Wait for the firefly to finish before delivering.'
             : phase === 'math'
                 ? 'Work out the change, then deliver the route from memory.'
                 : phase === 'recall'
                     ? `${recall.length} of ${length} delivered. Tap the next window from memory.`
                     : phase === 'success'
-                        ? `Correct! ${newSequenceOnSuccess ? 'New sequence' : 'Same sequence'} next${!increaseSpeed ? ' at the same speed.' : itemMs === MIN_ITEM_MS ? ' at top speed.' : ', faster.'}`
+                        ? `Correct! ${endback ? 'Route shifts one stop' : newSequenceOnSuccess ? 'New sequence' : 'Same sequence'} next${!increaseSpeed ? ' at the same speed.' : itemMs === MIN_ITEM_MS ? ' at top speed.' : ', faster.'}`
                         : phase === 'retry'
                             ? `Wrong address at delivery ${recall.length}. Replay the route at the same pace.`
                             : 'Paused when you left the page. Replay when you’re ready to see the whole route from the beginning.';
     const sceneNote = phase === 'recall' ? `Deliver from memory · ${recall.length}/${length}`
-        : phase === 'showing' ? 'Watch the firefly'
+        : phase === 'showing' ? hiddenOrder !== null ? `? · Stop ${hiddenOrder}/${length} is hidden` : 'Watch the firefly'
             : phase === 'math' ? 'Postage check'
                 : phase === 'success' ? 'Route delivered ✓'
                     : phase === 'retry' ? 'Wrong address · replay to try again'
@@ -306,6 +323,9 @@ const SpatialPractice = ({ onExit }: SpatialPracticeProps) => {
 
                     <div className="spatial-practice__setup">
                         <PracticeSettings length={length} onLengthChange={changeLength}
+                            endback={endback} onEndbackChange={setEndback}
+                            hiddenCount={hiddenCount} onHiddenCountChange={setHiddenCount}
+                            hiddenPlacement={hiddenPlacement} onHiddenPlacementChange={setHiddenPlacement}
                             newSequence={newSequenceOnSuccess} onNewSequenceChange={setNewSequenceOnSuccess}
                             increaseSpeed={increaseSpeed} onIncreaseSpeedChange={setIncreaseSpeed}
                             interference={interference} onInterferenceChange={setInterference}
