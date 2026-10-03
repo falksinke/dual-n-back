@@ -222,7 +222,8 @@ $thin-border: thin solid var(--boardBorder);
     justify-content: center;
 }
 
-.position-recency {
+.position-recency,
+.memory-order {
     position: absolute;
     right: 8px;
     bottom: 8px;
@@ -238,6 +239,12 @@ $thin-border: thin solid var(--boardBorder);
     line-height: 1.25;
     text-align: center;
     font-variant-numeric: tabular-nums;
+}
+
+.memory-order {
+    max-width: calc(100% - 16px);
+    border-color: var(--primary);
+    pointer-events: none;
 }
 
 .center-n {
@@ -418,7 +425,8 @@ $thin-border: thin solid var(--boardBorder);
     // Keep glyphs readable: they spin back so only positions carry the turn.
     .stimulus-image,
     .center-n,
-    .position-recency {
+    .position-recency,
+    .memory-order {
         transform: rotate(calc(-1 * var(--board-turn, 0deg)));
         transition: transform var(--board-turn-ms, 0ms) cubic-bezier(0.65, 0, 0.35, 1);
     }
@@ -429,7 +437,8 @@ $thin-border: thin solid var(--boardBorder);
     .board-container .board.board--rotating,
     .board-container .board.board--rotating .stimulus-image,
     .board-container .board.board--rotating .center-n,
-    .board-container .board.board--rotating .position-recency {
+    .board-container .board.board--rotating .position-recency,
+    .board-container .board.board--rotating .memory-order {
         transition-duration: 0ms !important;
     }
 }

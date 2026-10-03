@@ -190,16 +190,16 @@ export class GameSession extends Game {
         return this.stepwiseFrameIndex >= 0 && this.stepwiseFrameIndex < this.stepwiseFrames.length - 1;
     }
 
-    /** The last N displayed positions, including the current/reviewed stimulus. */
-    public getMemoryPositionIndices(): number[] {
+    /** Occurrences in the last N stimuli, numbered oldest to newest. */
+    public getMemoryPositionOrder(positionIndex: number): number[] {
         const frame = this.stepwiseFrames[this.stepwiseFrameIndex];
         if (!frame) return [];
-        const positions = new Set([frame.boardState.positionIndex]);
-        frame.positionRecency.forEach((lag, index) => {
-            // Recency was captured before this stimulus entered the history.
-            if (lag !== null && lag < frame.boardState.nForTrial) positions.add(index);
-        });
-        return [...positions];
+        const start = Math.max(0, this.stepwiseFrameIndex - frame.boardState.nForTrial + 1);
+        return this.stepwiseFrames
+            .slice(start, this.stepwiseFrameIndex + 1)
+            .flatMap((remembered, index) =>
+                remembered.boardState.positionIndex === positionIndex ? [index + 1] : []
+            );
     }
 
     public stepBackward(): void {
