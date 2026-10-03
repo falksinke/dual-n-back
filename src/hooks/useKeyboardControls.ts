@@ -55,6 +55,13 @@ export const useKeyboardControls = () => {
             }
 
             switch (e.key) {
+                case 'n':
+                case 'N':
+                    if (inSession && stepwisePaused && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        if (!e.repeat) continueStepwise();
+                    }
+                    break;
                 case 'Enter':
                     // Let focused controls keep their native activation behavior.
                     if (target instanceof HTMLElement && target.closest('button, a, select')) return;

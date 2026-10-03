@@ -197,10 +197,11 @@ const Board = () => {
                         className="stepwise-continue-btn"
                         data-haptic="light"
                         onClick={continueStepwise}
+                        aria-keyshortcuts={mode === 'single' ? 'N' : 'N Space'}
                     >
                         {reviewingHistory ? 'Next' : 'Next stimulus'}
                         <span className="stepwise-continue-hint" aria-hidden="true">
-                            or <kbd>Space</kbd>
+                            or <kbd>N</kbd>{mode !== 'single' && <> / <kbd>Space</kbd></>}
                         </span>
                     </button>
                 </div>
