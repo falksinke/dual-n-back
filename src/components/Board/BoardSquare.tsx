@@ -8,6 +8,14 @@ interface BoardSquareProps {
 
 const BoardSquare = ({ index }: BoardSquareProps) => {
     const highlighted = useGameStore((state) => state.boardState.positionIndex === index);
+    const memoryHighlighted = useGameStore((state) =>
+        state.game !== null &&
+        state.activeModalities.includes('position') &&
+        state.memoryPreviewBoard !== null &&
+        state.memoryPreviewBoard.stimulusEpoch === state.boardState.stimulusEpoch &&
+        state.memoryPreviewBoard.positionRecency === state.boardState.positionRecency &&
+        state.game.getMemoryPositionIndices().includes(index)
+    );
     const teachRevealIndex = useGameStore((state) => state.teachRevealPositionIndex);
     const stimulusEpoch = useGameStore((state) => state.boardState.stimulusEpoch);
     const colorId = useGameStore((state) => state.boardState.colorId);
@@ -57,6 +65,7 @@ const BoardSquare = ({ index }: BoardSquareProps) => {
             className={[
                 `square square-${index}`,
                 highlighted ? 'highlighted' : '',
+                memoryHighlighted ? 'is-memory-preview' : '',
                 teachRevealIndex === index && !highlighted ? 'is-teach-reveal' : '',
             ]
                 .filter(Boolean)

@@ -31,6 +31,7 @@ export const useKeyboardControls = () => {
                 startGame,
                 cancelGame,
                 continueStepwise,
+                toggleMemoryPreview,
                 selectModality,
                 decreaseLevel,
                 increaseLevel,
@@ -55,6 +56,16 @@ export const useKeyboardControls = () => {
             }
 
             switch (e.key) {
+                case 'm':
+                case 'M':
+                    if (
+                        inSession && activeModalities.includes('position') &&
+                        !e.altKey && !e.ctrlKey && !e.metaKey
+                    ) {
+                        e.preventDefault();
+                        if (!e.repeat) toggleMemoryPreview();
+                    }
+                    break;
                 case 'n':
                 case 'N':
                     if (inSession && stepwisePaused && !e.altKey && !e.ctrlKey && !e.metaKey) {

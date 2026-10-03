@@ -190,6 +190,18 @@ export class GameSession extends Game {
         return this.stepwiseFrameIndex >= 0 && this.stepwiseFrameIndex < this.stepwiseFrames.length - 1;
     }
 
+    /** The last N displayed positions, including the current/reviewed stimulus. */
+    public getMemoryPositionIndices(): number[] {
+        const frame = this.stepwiseFrames[this.stepwiseFrameIndex];
+        if (!frame) return [];
+        const positions = new Set([frame.boardState.positionIndex]);
+        frame.positionRecency.forEach((lag, index) => {
+            // Recency was captured before this stimulus entered the history.
+            if (lag !== null && lag < frame.boardState.nForTrial) positions.add(index);
+        });
+        return [...positions];
+    }
+
     public stepBackward(): void {
         if (!this.canStepBackward()) return;
         this.stepwiseFrameIndex -= 1;
@@ -217,6 +229,7 @@ export class GameSession extends Game {
         this.stop();
         this.setStore({
             game: null,
+            memoryPreviewBoard: null,
             boardState: defaultBoardReset,
         });
     }

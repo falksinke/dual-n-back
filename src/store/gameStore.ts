@@ -141,6 +141,8 @@ export interface GameStoreState {
     game: GameSession | null;
     /** True while paced mode holds the current trial for a Space/tap continue. */
     stepwisePaused: boolean;
+    /** Display-only memory reveal, tied to one presented stimulus. */
+    memoryPreviewBoard: GameStoreState['boardState'] | null;
     /** Classic Match% Adaptive ladder per mode. */
     ladder: Record<ModeId, MatchLadderSnapshot>;
     /** Cyclic curriculum ladder per mode. */
@@ -274,6 +276,7 @@ export interface GameStoreActions {
     continueStepwise: () => void;
     /** Review the prior paced stimulus without changing game history or scoring. */
     previousStepwise: () => void;
+    toggleMemoryPreview: () => void;
     setAllowCenterStimulus: (allow: boolean) => void;
     setPositionGrid: (grid: PositionGrid) => void;
     setDisplayVariableNCenter: (enabled: boolean) => void;
@@ -829,6 +832,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     countdown: null,
     game: null,
     stepwisePaused: false,
+    memoryPreviewBoard: null,
     ladder: initialAdaptiveLadderStorage.byMode,
     cyclicLadder: initialCyclicLadderStorage.byMode,
     boardState: { ...defaultBoardState },
@@ -1323,6 +1327,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const state = get();
         if (!state.stepwisePaused) return;
         state.game?.stepBackward();
+    },
+    toggleMemoryPreview: () => {
+        const { game, activeModalities, boardState, memoryPreviewBoard } = get();
+        if (!game || !activeModalities.includes('position') || boardState.currentTrials < 0) return;
+        const showing = memoryPreviewBoard !== null &&
+            memoryPreviewBoard.stimulusEpoch === boardState.stimulusEpoch &&
+            memoryPreviewBoard.positionRecency === boardState.positionRecency;
+        set({ memoryPreviewBoard: showing ? null : boardState });
     },
     setAllowCenterStimulus: (allow) => {
         set((state) => ({

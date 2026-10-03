@@ -312,6 +312,14 @@ $thin-border: thin solid var(--boardBorder);
     outline-offset: -2px;
 }
 
+.is-memory-preview .inner-square {
+    opacity: 1;
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    transition: none;
+    animation: none;
+}
+
 @keyframes stimulus-onset {
     from {
         opacity: 0;
