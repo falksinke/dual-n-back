@@ -240,6 +240,7 @@ export interface GameStoreState {
 
 export interface GameStoreActions {
     startGame: () => void;
+    skipCountdown: () => void;
     cancelGame: () => void;
     selectModality: (modality: ModalityId) => void;
     setBoardPosition: (positionIndex: number) => void;
@@ -952,6 +953,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
 
         beginCountdown(get, set, true);
+    },
+    skipCountdown: () => {
+        if (get().countdown === null || get().game !== null) return;
+        clearCountdownTimer();
+        resetCountdownBackgroundPause();
+        launchSession(get, set);
     },
     cancelGame: () => {
         clearCountdownTimer();

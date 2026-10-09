@@ -129,13 +129,14 @@ describe('useKeyboardControls', () => {
         unmount();
     });
 
-    it('does not cancel countdown on a second space tap', () => {
+    it('starts immediately on a second space tap during countdown', () => {
         const { unmount } = renderHook(() => useKeyboardControls());
         document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
         expect(useGameStore.getState().countdown).toBe(3);
 
         document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
-        expect(useGameStore.getState().countdown).toBe(3);
+        expect(useGameStore.getState().countdown).toBeNull();
+        expect(useGameStore.getState().game).not.toBeNull();
 
         useGameStore.getState().cancelGame();
         unmount();

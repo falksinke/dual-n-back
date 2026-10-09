@@ -29,6 +29,7 @@ export const useKeyboardControls = () => {
                 settings,
                 stepwisePaused,
                 startGame,
+                skipCountdown,
                 cancelGame,
                 continueStepwise,
                 toggleMemoryPreview,
@@ -103,13 +104,15 @@ export const useKeyboardControls = () => {
                     }
                     break;
                 case ' ':
-                    // Key-repeat would start then immediately cancel during countdown.
+                    // Holding Space must not skip the countdown or submit a match.
                     if (e.repeat) {
                         e.preventDefault();
                         break;
                     }
                     e.preventDefault();
-                    if (inSession && settings.mode === 'single') {
+                    if (countingDown) {
+                        skipCountdown();
+                    } else if (inSession && settings.mode === 'single') {
                         const singleModality = activeModalities[0];
                         if (singleModality) selectModality(singleModality);
                     } else if (inSession && stepwisePaused) {
