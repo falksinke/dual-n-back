@@ -224,6 +224,67 @@ body {
     }
 }
 
+/* Fill the current phone viewport instead of inheriting a shorter layout height. */
+@media (max-width: 600px) and (pointer: coarse) {
+    .app-container {
+        height: 100dvh;
+        --frame-bottom: max(var(--space-sm), var(--safe-bottom));
+    }
+
+    .app-container .app {
+        --chrome-top: calc(var(--frame-top) + 3 * var(--touch-min)
+            + 2 * var(--space-xs) + var(--space-sm));
+    }
+
+    .app-container .topbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: repeat(3, var(--touch-min));
+        gap: var(--space-xs);
+    }
+
+    .app-container .topbar .brand {
+        grid-row: 1;
+    }
+
+    .app-container .topbar-actions {
+        grid-row: 2;
+        width: 100%;
+        flex-wrap: nowrap;
+    }
+
+    .app-container .daily-progress-dots {
+        grid-row: 3;
+        position: static;
+        transform: none;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .app-container:not(.playing) .session-status {
+        /* When daily dots are disabled, their row holds the trial counters. */
+        top: calc(var(--frame-top) + 2 * var(--touch-min) + 2 * var(--space-xs));
+        right: var(--frame-right);
+    }
+
+    .app-container.showing-results {
+        .result-panel {
+            flex: 1;
+            min-height: 0;
+            max-height: 100%;
+            /* The app frame already reserves the home-indicator inset. */
+            padding-bottom: var(--result-pad);
+        }
+
+        &:not(.playing) .footer {
+            /* Reserve the footer's touch target below the expanded results. */
+            position: static;
+            flex-shrink: 0;
+            padding: 0;
+        }
+    }
+}
+
 /* Use the extra portrait height, including Safari's changing browser viewport. */
 @media (max-width: 600px) and (min-height: 700px) {
     .app-container {
